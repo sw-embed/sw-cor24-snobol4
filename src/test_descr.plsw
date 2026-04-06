@@ -100,10 +100,10 @@ MAIN: PROC;
     OK = (HPTR->OKIND = OBK_STRING) AND (HPTR->OSIZE = 24);
     CALL REPORT(OK, ADDR(M_T4));
 
-    /* Test 5: flags field (using OBF_PINNED=64 to avoid lb sign bug plsw#8) */
+    /* Test 5: GC mark flag (OBF_MARK=128) */
     HPTR = ADDR(FAKEHEAP);
-    HPTR->OFLAGS = OBF_PINNED;
-    OK = (HPTR->OFLAGS = OBF_PINNED);
+    HPTR->OFLAGS = OBF_MARK;
+    OK = (HPTR->OFLAGS = OBF_MARK);
     CALL REPORT(OK, ADDR(M_T5));
 
     CALL UART_PUTS(ADDR(M_DONE));

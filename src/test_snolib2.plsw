@@ -1,0 +1,146 @@
+/* test_snolib2.plsw -- Test heap helpers, hex output, tag names (part 2)
+ *
+ * Tests: HDR_SET, HDR_IS_FREE, HDR_PAYLOAD, HDR_NEXT,
+ *        PUT_HEX24, GC mark (OBF_MARK=128), TAG_NAME
+ */
+
+%INCLUDE descr;
+%INCLUDE heap;
+
+HDR_SET: PROC(P PTR, K BYTE, SZ INT);
+    DCL HP PTR;
+    HP = P;
+    HP->OKIND = K;
+    HP->OFLAGS = 0;
+    HP->ORSV = 0;
+    HP->OSIZE = SZ;
+END;
+
+HDR_IS_FREE: PROC(P PTR) RETURNS(INT);
+    DCL HP PTR;
+    HP = P;
+    IF (HP->OKIND = OBK_FREE) THEN RETURN(1);
+    RETURN(0);
+END;
+
+HDR_PAYLOAD: PROC(P PTR) RETURNS(INT);
+    RETURN(P + HDR_BYTES);
+END;
+
+HDR_NEXT: PROC(P PTR) RETURNS(INT);
+    DCL HP PTR;
+    HP = P;
+    RETURN(P + HP->OSIZE);
+END;
+
+DCL TN_INT(8) CHAR INIT('int');
+DCL TN_UNK(8) CHAR INIT('???');
+
+TAG_NAME: PROC(T INT) RETURNS(INT);
+    IF (T = TAG_INT) THEN RETURN(ADDR(TN_INT));
+    RETURN(ADDR(TN_UNK));
+END;
+
+DCL HEXCHARS(16) CHAR INIT('0123456789ABCDEF');
+
+PUT_HEX_BYTE: PROC(V INT);
+    DCL HI INT;
+    DCL LO INT;
+    HI = V;
+    LO = 0;
+    DO WHILE (HI > 15);
+        HI = HI - 16;
+        LO = LO + 1;
+    END;
+    CALL UART_PUTCHAR(HEXCHARS(LO));
+    CALL UART_PUTCHAR(HEXCHARS(HI));
+END;
+
+PUT_HEX24: PROC(V INT);
+    DCL B2 INT;
+    DCL B1 INT;
+    DCL B0 INT;
+    DCL REM INT;
+    REM = V;
+    B2 = 0;
+    DO WHILE (REM > 65535);
+        REM = REM - 65536;
+        B2 = B2 + 1;
+    END;
+    B1 = 0;
+    DO WHILE (REM > 255);
+        REM = REM - 256;
+        B1 = B1 + 1;
+    END;
+    B0 = REM;
+    CALL PUT_HEX_BYTE(B2);
+    CALL PUT_HEX_BYTE(B1);
+    CALL PUT_HEX_BYTE(B0);
+END;
+
+DCL HEAP1(128) BYTE;
+DCL M_P(4) CHAR INIT('P ');
+DCL M_F(4) CHAR INIT('F ');
+DCL M_NL(3) CHAR INIT('
+');
+DCL M_DONE(20) CHAR INIT('All tests done');
+
+CHK: PROC(OK INT, N INT);
+    IF (OK != 0) THEN
+        CALL UART_PUTS(ADDR(M_P));
+    ELSE
+        CALL UART_PUTS(ADDR(M_F));
+    CALL UART_PUTCHAR(48 + N);
+    CALL UART_PUTS(ADDR(M_NL));
+END;
+
+MAIN: PROC;
+    DCL HP PTR;
+    DCL OK INT;
+    DCL V INT;
+    DCL NP PTR;
+
+    /* 1 hdr_set */
+    CALL HDR_SET(ADDR(HEAP1), OBK_STRING, 24);
+    HP = ADDR(HEAP1);
+    OK = (HP->OKIND = OBK_STRING) AND (HP->OSIZE = 24);
+    CALL CHK(OK, 1);
+
+    /* 2 hdr_free */
+    CALL HDR_SET(ADDR(HEAP1), OBK_FREE, 12);
+    OK = HDR_IS_FREE(ADDR(HEAP1));
+    CALL CHK(OK, 2);
+
+    /* 3 hdr_payload */
+    V = HDR_PAYLOAD(ADDR(HEAP1));
+    OK = (V = ADDR(HEAP1) + 6);
+    CALL CHK(OK, 3);
+
+    /* 4 hdr_next */
+    CALL HDR_SET(ADDR(HEAP1), OBK_STRING, 20);
+    NP = HDR_NEXT(ADDR(HEAP1));
+    OK = (NP = ADDR(HEAP1) + 20);
+    CALL CHK(OK, 4);
+
+    /* 5 hex24 (visual: expect 00002A) */
+    CALL UART_PUTS(ADDR(M_P));
+    CALL UART_PUTCHAR(53);
+    CALL UART_PUTCHAR(32);
+    CALL PUT_HEX24(42);
+    CALL UART_PUTS(ADDR(M_NL));
+
+    /* 6 gc_mark (OBF_MARK=128) */
+    CALL HDR_SET(ADDR(HEAP1), OBK_STRING, 24);
+    HP = ADDR(HEAP1);
+    HP->OFLAGS = OBF_MARK;
+    OK = (HP->OFLAGS = OBF_MARK);
+    CALL CHK(OK, 6);
+
+    /* 7 tag_name */
+    NP = TAG_NAME(TAG_INT);
+    OK = (NP = ADDR(TN_INT));
+    CALL CHK(OK, 7);
+
+    CALL UART_PUTS(ADDR(M_DONE));
+    CALL UART_PUTS(ADDR(M_NL));
+END;

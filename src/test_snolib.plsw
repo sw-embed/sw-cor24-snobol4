@@ -1,0 +1,155 @@
+/* test_snolib.plsw -- Test descriptor helpers (part 1)
+ *
+ * Tests: DESC_SET_NULL, DESC_SET_INT, DESC_CELL_CPY,
+ *        DESC_IS_NULL, DESC_IS_INT, DESC_TAG_GET, DESC_PAY_GET,
+ *        DESC_EQ (equal and not-equal)
+ *
+ * Note: split into two test files due to plsw#10 (64 symbol limit)
+ */
+
+%INCLUDE descr;
+%INCLUDE heap;
+
+DESC_SET_NULL: PROC(P PTR);
+    DCL DP PTR;
+    DP = P;
+    DP->DTAG = TAG_NULL;
+    DP->DSUB = 0;
+    DP->DRSV = 0;
+    DP->DPAY = 0;
+END;
+
+DESC_SET_INT: PROC(P PTR, V INT);
+    DCL DP PTR;
+    DP = P;
+    DP->DTAG = TAG_INT;
+    DP->DSUB = 0;
+    DP->DRSV = 0;
+    DP->DPAY = V;
+END;
+
+DESC_CELL_CPY: PROC(DST PTR, SRC PTR);
+    DCL DP PTR;
+    DCL SP PTR;
+    DP = DST;
+    SP = SRC;
+    DP->DTAG = SP->DTAG;
+    DP->DSUB = SP->DSUB;
+    DP->DRSV = SP->DRSV;
+    DP->DPAY = SP->DPAY;
+END;
+
+DESC_IS_NULL: PROC(P PTR) RETURNS(INT);
+    DCL DP PTR;
+    DP = P;
+    IF (DP->DTAG = TAG_NULL) THEN RETURN(1);
+    RETURN(0);
+END;
+
+DESC_IS_INT: PROC(P PTR) RETURNS(INT);
+    DCL DP PTR;
+    DP = P;
+    IF (DP->DTAG = TAG_INT) THEN RETURN(1);
+    RETURN(0);
+END;
+
+DESC_TAG_GET: PROC(P PTR) RETURNS(INT);
+    DCL DP PTR;
+    DP = P;
+    RETURN(DP->DTAG);
+END;
+
+DESC_PAY_GET: PROC(P PTR) RETURNS(INT);
+    DCL DP PTR;
+    DP = P;
+    RETURN(DP->DPAY);
+END;
+
+DESC_EQ: PROC(A PTR, B PTR) RETURNS(INT);
+    DCL AP PTR;
+    DCL BP PTR;
+    AP = A;
+    BP = B;
+    IF (AP->DTAG = BP->DTAG) THEN
+        IF (AP->DPAY = BP->DPAY) THEN
+            RETURN(1);
+    RETURN(0);
+END;
+
+DCL D1(6) BYTE;
+DCL D2(6) BYTE;
+DCL D3(6) BYTE;
+DCL M_P(4) CHAR INIT('P ');
+DCL M_F(4) CHAR INIT('F ');
+DCL M_NL(3) CHAR INIT('
+');
+DCL M_DONE(20) CHAR INIT('All tests done');
+
+CHK: PROC(OK INT, N INT);
+    IF (OK != 0) THEN
+        CALL UART_PUTS(ADDR(M_P));
+    ELSE
+        CALL UART_PUTS(ADDR(M_F));
+    CALL UART_PUTCHAR(48 + N);
+    CALL UART_PUTS(ADDR(M_NL));
+END;
+
+MAIN: PROC;
+    DCL DP PTR;
+    DCL OK INT;
+    DCL V INT;
+
+    /* 1 set_null */
+    CALL DESC_SET_NULL(ADDR(D1));
+    DP = ADDR(D1);
+    OK = (DP->DTAG = TAG_NULL) AND (DP->DPAY = 0);
+    CALL CHK(OK, 1);
+
+    /* 2 set_int */
+    CALL DESC_SET_INT(ADDR(D1), 99);
+    DP = ADDR(D1);
+    OK = (DP->DTAG = TAG_INT) AND (DP->DPAY = 99);
+    CALL CHK(OK, 2);
+
+    /* 3 cell_cpy */
+    CALL DESC_SET_INT(ADDR(D2), 77);
+    CALL DESC_CELL_CPY(ADDR(D3), ADDR(D2));
+    DP = ADDR(D3);
+    OK = (DP->DTAG = TAG_INT) AND (DP->DPAY = 77);
+    CALL CHK(OK, 3);
+
+    /* 4 is_null */
+    CALL DESC_SET_NULL(ADDR(D1));
+    OK = DESC_IS_NULL(ADDR(D1));
+    CALL CHK(OK, 4);
+
+    /* 5 is_int */
+    CALL DESC_SET_INT(ADDR(D1), 5);
+    OK = DESC_IS_INT(ADDR(D1));
+    CALL CHK(OK, 5);
+
+    /* 6 tag_get */
+    V = DESC_TAG_GET(ADDR(D1));
+    OK = (V = TAG_INT);
+    CALL CHK(OK, 6);
+
+    /* 7 pay_get */
+    V = DESC_PAY_GET(ADDR(D1));
+    OK = (V = 5);
+    CALL CHK(OK, 7);
+
+    /* 8 desc_eq */
+    CALL DESC_SET_INT(ADDR(D1), 42);
+    CALL DESC_SET_INT(ADDR(D2), 42);
+    OK = DESC_EQ(ADDR(D1), ADDR(D2));
+    CALL CHK(OK, 8);
+
+    /* 9 desc_neq */
+    CALL DESC_SET_INT(ADDR(D2), 43);
+    V = DESC_EQ(ADDR(D1), ADDR(D2));
+    OK = (V = 0);
+    CALL CHK(OK, 9);
+
+    CALL UART_PUTS(ADDR(M_DONE));
+    CALL UART_PUTS(ADDR(M_NL));
+END;

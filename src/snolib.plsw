@@ -1,0 +1,275 @@
+/* snolib.plsw -- SNOBOL4 runtime library
+ *
+ * Descriptor and heap header helper procedures.
+ * This file is the runtime core used by all SNOBOL4 programs.
+ */
+
+%INCLUDE descr;
+%INCLUDE heap;
+%INCLUDE trace;
+
+/* ================================================================
+ * Descriptor construction
+ * ================================================================ */
+
+/* DESC_SET: initialize a descriptor at pointer P */
+DESC_SET: PROC(P PTR, T BYTE, S BYTE, V INT);
+    DCL DP PTR;
+    DP = P;
+    DP->DTAG = T;
+    DP->DSUB = S;
+    DP->DRSV = 0;
+    DP->DPAY = V;
+END;
+
+/* DESC_SET_NULL: set descriptor to null */
+DESC_SET_NULL: PROC(P PTR);
+    DCL DP PTR;
+    DP = P;
+    DP->DTAG = TAG_NULL;
+    DP->DSUB = 0;
+    DP->DRSV = 0;
+    DP->DPAY = 0;
+END;
+
+/* DESC_SET_INT: set descriptor to integer value */
+DESC_SET_INT: PROC(P PTR, V INT);
+    DCL DP PTR;
+    DP = P;
+    DP->DTAG = TAG_INT;
+    DP->DSUB = 0;
+    DP->DRSV = 0;
+    DP->DPAY = V;
+END;
+
+/* DESC_SET_STR: set descriptor to string reference */
+DESC_SET_STR: PROC(P PTR, SPTR PTR);
+    DCL DP PTR;
+    DP = P;
+    DP->DTAG = TAG_STR;
+    DP->DSUB = 0;
+    DP->DRSV = 0;
+    DP->DPAY = SPTR;
+END;
+
+/* DESC_SET_LABEL: set descriptor to label reference */
+DESC_SET_LABEL: PROC(P PTR, ID INT);
+    DCL DP PTR;
+    DP = P;
+    DP->DTAG = TAG_LABEL;
+    DP->DSUB = 0;
+    DP->DRSV = 0;
+    DP->DPAY = ID;
+END;
+
+/* ================================================================
+ * Descriptor copy
+ * ================================================================ */
+
+/* DESC_CELL_CPY: copy descriptor from SRC to DST (6 bytes) */
+DESC_CELL_CPY: PROC(DST PTR, SRC PTR);
+    DCL DP PTR;
+    DCL SP PTR;
+    DP = DST;
+    SP = SRC;
+    DP->DTAG = SP->DTAG;
+    DP->DSUB = SP->DSUB;
+    DP->DRSV = SP->DRSV;
+    DP->DPAY = SP->DPAY;
+END;
+
+/* ================================================================
+ * Descriptor type tests -- return 1 if true, 0 if false
+ * ================================================================ */
+
+DESC_IS_NULL: PROC(P PTR) RETURNS(INT);
+    DCL DP PTR;
+    DP = P;
+    IF (DP->DTAG = TAG_NULL) THEN
+        RETURN(1);
+    RETURN(0);
+END;
+
+DESC_IS_INT: PROC(P PTR) RETURNS(INT);
+    DCL DP PTR;
+    DP = P;
+    IF (DP->DTAG = TAG_INT) THEN
+        RETURN(1);
+    RETURN(0);
+END;
+
+DESC_IS_STR: PROC(P PTR) RETURNS(INT);
+    DCL DP PTR;
+    DP = P;
+    IF (DP->DTAG = TAG_STR) THEN
+        RETURN(1);
+    RETURN(0);
+END;
+
+DESC_IS_PAT: PROC(P PTR) RETURNS(INT);
+    DCL DP PTR;
+    DP = P;
+    IF (DP->DTAG = TAG_PAT) THEN
+        RETURN(1);
+    RETURN(0);
+END;
+
+/* DESC_TAG_GET: return the tag byte of descriptor at P */
+DESC_TAG_GET: PROC(P PTR) RETURNS(INT);
+    DCL DP PTR;
+    DP = P;
+    RETURN(DP->DTAG);
+END;
+
+/* DESC_PAY_GET: return the payload word of descriptor at P */
+DESC_PAY_GET: PROC(P PTR) RETURNS(INT);
+    DCL DP PTR;
+    DP = P;
+    RETURN(DP->DPAY);
+END;
+
+/* ================================================================
+ * Descriptor comparison -- return 1 if equal, 0 if not
+ * ================================================================ */
+
+/* DESC_EQ: compare two descriptors for equality (tag + payload) */
+DESC_EQ: PROC(A PTR, B PTR) RETURNS(INT);
+    DCL AP PTR;
+    DCL BP PTR;
+    AP = A;
+    BP = B;
+    IF (AP->DTAG = BP->DTAG) THEN
+        IF (AP->DPAY = BP->DPAY) THEN
+            RETURN(1);
+    RETURN(0);
+END;
+
+/* ================================================================
+ * Heap header helpers
+ * ================================================================ */
+
+/* HDR_SET: initialize a heap object header */
+HDR_SET: PROC(P PTR, K BYTE, SZ INT);
+    DCL HP PTR;
+    HP = P;
+    HP->OKIND = K;
+    HP->OFLAGS = 0;
+    HP->ORSV = 0;
+    HP->OSIZE = SZ;
+END;
+
+/* HDR_IS_FREE: return 1 if object is a free block */
+HDR_IS_FREE: PROC(P PTR) RETURNS(INT);
+    DCL HP PTR;
+    HP = P;
+    IF (HP->OKIND = OBK_FREE) THEN
+        RETURN(1);
+    RETURN(0);
+END;
+
+/* HDR_PAYLOAD: return pointer to first byte after header */
+HDR_PAYLOAD: PROC(P PTR) RETURNS(INT);
+    RETURN(P + HDR_BYTES);
+END;
+
+/* HDR_NEXT: return pointer to next object (P + size) */
+HDR_NEXT: PROC(P PTR) RETURNS(INT);
+    DCL HP PTR;
+    HP = P;
+    RETURN(P + HP->OSIZE);
+END;
+
+/* ================================================================
+ * Tag name for diagnostics -- returns pointer to static string
+ * ================================================================ */
+
+DCL TN_NULL(8) CHAR INIT('null');
+DCL TN_UNINIT(8) CHAR INIT('uninit');
+DCL TN_INT(8) CHAR INIT('int');
+DCL TN_STR(8) CHAR INIT('str');
+DCL TN_SYM(8) CHAR INIT('sym');
+DCL TN_PAT(8) CHAR INIT('pat');
+DCL TN_LABEL(8) CHAR INIT('label');
+DCL TN_BUILTIN(8) CHAR INIT('builtin');
+DCL TN_UNK(8) CHAR INIT('???');
+
+TAG_NAME: PROC(T INT) RETURNS(INT);
+    IF (T = TAG_NULL) THEN RETURN(ADDR(TN_NULL));
+    IF (T = TAG_UNINIT) THEN RETURN(ADDR(TN_UNINIT));
+    IF (T = TAG_INT) THEN RETURN(ADDR(TN_INT));
+    IF (T = TAG_STR) THEN RETURN(ADDR(TN_STR));
+    IF (T = TAG_SYM) THEN RETURN(ADDR(TN_SYM));
+    IF (T = TAG_PAT) THEN RETURN(ADDR(TN_PAT));
+    IF (T = TAG_LABEL) THEN RETURN(ADDR(TN_LABEL));
+    IF (T = TAG_BUILTIN) THEN RETURN(ADDR(TN_BUILTIN));
+    RETURN(ADDR(TN_UNK));
+END;
+
+/* ================================================================
+ * Object kind name for diagnostics
+ * ================================================================ */
+
+DCL KN_FREE(8) CHAR INIT('free');
+DCL KN_STRING(8) CHAR INIT('string');
+DCL KN_SYMCELL(8) CHAR INIT('symcell');
+DCL KN_PATNODE(8) CHAR INIT('patnode');
+DCL KN_BTFRAME(8) CHAR INIT('btframe');
+DCL KN_RBENTRY(8) CHAR INIT('rbentry');
+DCL KN_CODEBLK(8) CHAR INIT('codeblk');
+DCL KN_UNK(8) CHAR INIT('???');
+
+KIND_NAME: PROC(K INT) RETURNS(INT);
+    IF (K = OBK_FREE) THEN RETURN(ADDR(KN_FREE));
+    IF (K = OBK_STRING) THEN RETURN(ADDR(KN_STRING));
+    IF (K = OBK_SYMCELL) THEN RETURN(ADDR(KN_SYMCELL));
+    IF (K = OBK_PATNODE) THEN RETURN(ADDR(KN_PATNODE));
+    IF (K = OBK_BTFRAME) THEN RETURN(ADDR(KN_BTFRAME));
+    IF (K = OBK_RBENTRY) THEN RETURN(ADDR(KN_RBENTRY));
+    IF (K = OBK_CODEBLK) THEN RETURN(ADDR(KN_CODEBLK));
+    RETURN(ADDR(KN_UNK));
+END;
+
+/* ================================================================
+ * Hex output helper (for diagnostic dumps)
+ * ================================================================ */
+
+DCL HEXCHARS(16) CHAR INIT('0123456789ABCDEF');
+
+/* PUT_HEX_BYTE: print 2 hex digits for a byte value */
+PUT_HEX_BYTE: PROC(V INT);
+    DCL HI INT;
+    DCL LO INT;
+    HI = V;
+    /* Divide by 16 using subtract loop (no hardware divide) */
+    LO = 0;
+    DO WHILE (HI > 15);
+        HI = HI - 16;
+        LO = LO + 1;
+    END;
+    CALL UART_PUTCHAR(HEXCHARS(LO));
+    CALL UART_PUTCHAR(HEXCHARS(HI));
+END;
+
+/* PUT_HEX24: print 6 hex digits for a 24-bit value */
+PUT_HEX24: PROC(V INT);
+    DCL B2 INT;
+    DCL B1 INT;
+    DCL B0 INT;
+    DCL REM INT;
+    /* Extract byte 2 (high), byte 1 (mid), byte 0 (low) */
+    REM = V;
+    B2 = 0;
+    DO WHILE (REM > 65535);
+        REM = REM - 65536;
+        B2 = B2 + 1;
+    END;
+    B1 = 0;
+    DO WHILE (REM > 255);
+        REM = REM - 256;
+        B1 = B1 + 1;
+    END;
+    B0 = REM;
+    CALL PUT_HEX_BYTE(B2);
+    CALL PUT_HEX_BYTE(B1);
+    CALL PUT_HEX_BYTE(B0);
+END;

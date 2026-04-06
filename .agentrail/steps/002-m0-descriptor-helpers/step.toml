@@ -1,6 +1,6 @@
 number = 2
 slug = "m0-descriptor-helpers"
-status = "pending"
+status = "in-progress"
 description = "Descriptor helper routines and conversion utilities"
 role = "legacy"
 context_files = []
