@@ -1,0 +1,327 @@
+/* test_parser.plsw -- SNOBOL4 parser */
+
+%INCLUDE descr;
+%INCLUDE heap;
+
+/* Token types */
+%DEFINE TK_IDENT 1;
+%DEFINE TK_INT 2;
+%DEFINE TK_STR 3;
+%DEFINE TK_EQ 4;
+%DEFINE TK_LPAREN 5;
+%DEFINE TK_RPAREN 6;
+%DEFINE TK_COLON 7;
+%DEFINE TK_COMMA 8;
+%DEFINE TK_PLUS 9;
+%DEFINE TK_MINUS 10;
+%DEFINE TK_EOL 11;
+%DEFINE TK_EOF 12;
+%DEFINE TK_ERR 13;
+
+/* Statement/expression types */
+%DEFINE ST_EMPTY 0;
+%DEFINE ST_ASSIGN 1;
+%DEFINE ST_END 2;
+%DEFINE OE_NONE 0;
+%DEFINE OE_IDENT 1;
+%DEFINE OE_INT 2;
+%DEFINE OE_STR 3;
+%DEFINE OE_BINOP 4;
+
+/* ---- Source + Lexer (compact) ---- */
+
+DCL SRC_BUF(128) CHAR INIT('OUTPUT = 42
+LOOP   X = X + 1
+       OUTPUT = 3
+END
+');
+DCL SRC_POS INT STATIC INIT(0);
+DCL SRC_LEN INT STATIC INIT(0);
+DCL TOK_TYPE INT STATIC INIT(0);
+DCL TOK_IVAL INT STATIC INIT(0);
+DCL TOK_BUF(32) CHAR INIT('                                ');
+DCL TOK_BLEN INT STATIC INIT(0);
+/* Flag: 1 if current line started with non-space (has label) */
+DCL LINE_HAS_LABEL INT STATIC INIT(0);
+/* Flag: 1 at start of a new line */
+DCL AT_LINE_START INT STATIC INIT(1);
+
+IS_ALPHA: PROC(C INT) RETURNS(INT);
+    IF (C >= 65) THEN IF (C <= 90) THEN RETURN(1);
+    IF (C >= 97) THEN IF (C <= 122) THEN RETURN(1);
+    RETURN(0);
+END;
+
+IS_DIGIT: PROC(C INT) RETURNS(INT);
+    IF (C >= 48) THEN IF (C <= 57) THEN RETURN(1);
+    RETURN(0);
+END;
+
+IS_ALNUM: PROC(C INT) RETURNS(INT);
+    IF (IS_ALPHA(C) != 0) THEN RETURN(1);
+    IF (IS_DIGIT(C) != 0) THEN RETURN(1);
+    RETURN(0);
+END;
+
+SRC_INIT: PROC(LEN INT);
+    SRC_POS = 0;
+    SRC_LEN = LEN;
+END;
+
+SRC_PEEK: PROC RETURNS(INT);
+    IF (SRC_POS >= SRC_LEN) THEN RETURN(0);
+    RETURN(SRC_BUF(SRC_POS));
+END;
+
+SRC_NEXT: PROC RETURNS(INT);
+    DCL C INT;
+    IF (SRC_POS >= SRC_LEN) THEN RETURN(0);
+    C = SRC_BUF(SRC_POS);
+    SRC_POS = SRC_POS + 1;
+    RETURN(C);
+END;
+
+LEX_NEXT: PROC;
+    DCL C INT;
+    DCL I INT;
+    C = SRC_PEEK();
+    /* At line start, check if first char is non-space (label) */
+    IF (AT_LINE_START = 1) THEN DO;
+        AT_LINE_START = 0;
+        IF (C != 32 AND C != 9 AND C != 10 AND C != 0) THEN
+            LINE_HAS_LABEL = 1;
+        ELSE
+            LINE_HAS_LABEL = 0;
+    END;
+    DO WHILE (C = 32 OR C = 9);
+        SRC_POS = SRC_POS + 1;
+        C = SRC_PEEK();
+    END;
+    IF (C = 0) THEN DO; TOK_TYPE = TK_EOF; RETURN; END;
+    IF (C = 10) THEN DO; SRC_POS = SRC_POS + 1; TOK_TYPE = TK_EOL; AT_LINE_START = 1; RETURN; END;
+    IF (C = 61) THEN DO; SRC_POS = SRC_POS + 1; TOK_TYPE = TK_EQ; RETURN; END;
+    IF (C = 40) THEN DO; SRC_POS = SRC_POS + 1; TOK_TYPE = TK_LPAREN; RETURN; END;
+    IF (C = 41) THEN DO; SRC_POS = SRC_POS + 1; TOK_TYPE = TK_RPAREN; RETURN; END;
+    IF (C = 58) THEN DO; SRC_POS = SRC_POS + 1; TOK_TYPE = TK_COLON; RETURN; END;
+    IF (C = 44) THEN DO; SRC_POS = SRC_POS + 1; TOK_TYPE = TK_COMMA; RETURN; END;
+    IF (C = 43) THEN DO; SRC_POS = SRC_POS + 1; TOK_TYPE = TK_PLUS; RETURN; END;
+    IF (C = 45) THEN DO; SRC_POS = SRC_POS + 1; TOK_TYPE = TK_MINUS; RETURN; END;
+    IF (C = 39) THEN DO;
+        SRC_POS = SRC_POS + 1;
+        I = 0;
+        C = SRC_PEEK();
+        DO WHILE (C != 39 AND C != 0 AND C != 10);
+            IF (I < 31) THEN DO; TOK_BUF(I) = C; I = I + 1; END;
+            SRC_POS = SRC_POS + 1;
+            C = SRC_PEEK();
+        END;
+        IF (C = 39) THEN SRC_POS = SRC_POS + 1;
+        TOK_BUF(I) = 0;
+        TOK_BLEN = I;
+        TOK_TYPE = TK_STR;
+        RETURN;
+    END;
+    IF (IS_DIGIT(C) != 0) THEN DO;
+        TOK_IVAL = 0;
+        DO WHILE (IS_DIGIT(SRC_PEEK()) != 0);
+            C = SRC_NEXT();
+            TOK_IVAL = TOK_IVAL * 10 + (C - 48);
+        END;
+        TOK_TYPE = TK_INT;
+        RETURN;
+    END;
+    IF (IS_ALPHA(C) != 0) THEN DO;
+        I = 0;
+        DO WHILE (IS_ALNUM(SRC_PEEK()) != 0);
+            C = SRC_NEXT();
+            IF (C >= 97) THEN IF (C <= 122) THEN C = C - 32;
+            IF (I < 31) THEN DO; TOK_BUF(I) = C; I = I + 1; END;
+        END;
+        TOK_BUF(I) = 0;
+        TOK_BLEN = I;
+        TOK_TYPE = TK_IDENT;
+        RETURN;
+    END;
+    SRC_POS = SRC_POS + 1;
+    TOK_TYPE = TK_ERR;
+END;
+
+/* ---- Statement table (parallel arrays, max 16) ---- */
+
+DCL ST_TYPE(16) INT;
+DCL ST_SUBJ(16) INT;
+DCL ST_OETYPE(16) INT;
+DCL ST_OEVAL(16) INT;
+DCL ST_OEOP(16) INT;
+DCL ST_OEVAL2(16) INT;
+DCL STMT_CNT INT STATIC INIT(0);
+
+/* For subject/object ident, store first char as simple ID.
+ * Full name table deferred to step 009 (symbol table). */
+
+/* IS_END: check if TOK_BUF = "END" */
+IS_END: PROC RETURNS(INT);
+    IF (TOK_BUF(0) = 69) THEN
+        IF (TOK_BUF(1) = 78) THEN
+            IF (TOK_BUF(2) = 68) THEN
+                IF (TOK_BUF(3) = 0) THEN
+                    RETURN(1);
+    RETURN(0);
+END;
+
+/* PARSE_LINE: parse one statement. Returns 1=ok, 0=eof */
+PARSE_LINE: PROC RETURNS(INT);
+    DCL S INT;
+
+    IF (TOK_TYPE = TK_EOF) THEN RETURN(0);
+    S = STMT_CNT;
+    IF (S >= 16) THEN RETURN(0);
+
+    ST_TYPE(S) = ST_EMPTY;
+    ST_SUBJ(S) = 0;
+    ST_OETYPE(S) = OE_NONE;
+    ST_OEVAL(S) = 0;
+    ST_OEOP(S) = 0;
+    ST_OEVAL2(S) = 0;
+
+    /* Skip blank lines */
+    IF (TOK_TYPE = TK_EOL) THEN DO;
+        CALL LEX_NEXT;
+        STMT_CNT = STMT_CNT + 1;
+        RETURN(1);
+    END;
+
+    /* Check END */
+    IF (TOK_TYPE = TK_IDENT) THEN DO;
+        IF (IS_END() != 0) THEN DO;
+            ST_TYPE(S) = ST_END;
+            CALL LEX_NEXT;
+            IF (TOK_TYPE = TK_EOL) THEN CALL LEX_NEXT;
+            STMT_CNT = STMT_CNT + 1;
+            RETURN(1);
+        END;
+    END;
+
+    /* If line has label, first IDENT is the label */
+    IF (LINE_HAS_LABEL = 1) THEN DO;
+        IF (TOK_TYPE = TK_IDENT) THEN DO;
+            ST_SUBJ(S) = TOK_BUF(0);
+            /* Store label char -- TODO: proper label table */
+            CALL LEX_NEXT;
+        END;
+    END;
+
+    /* Subject identifier */
+    IF (TOK_TYPE = TK_IDENT) THEN DO;
+        ST_SUBJ(S) = TOK_BUF(0);
+        CALL LEX_NEXT;
+    END;
+
+    /* Assignment */
+    IF (TOK_TYPE = TK_EQ) THEN DO;
+        ST_TYPE(S) = ST_ASSIGN;
+        CALL LEX_NEXT;
+
+        /* Object value */
+        IF (TOK_TYPE = TK_INT) THEN DO;
+            ST_OETYPE(S) = OE_INT;
+            ST_OEVAL(S) = TOK_IVAL;
+            CALL LEX_NEXT;
+        END;
+        ELSE IF (TOK_TYPE = TK_IDENT) THEN DO;
+            ST_OETYPE(S) = OE_IDENT;
+            ST_OEVAL(S) = TOK_BUF(0);
+            CALL LEX_NEXT;
+        END;
+
+        /* Binary op */
+        IF (TOK_TYPE = TK_PLUS OR TOK_TYPE = TK_MINUS) THEN DO;
+            ST_OEOP(S) = TOK_TYPE;
+            ST_OETYPE(S) = OE_BINOP;
+            CALL LEX_NEXT;
+            IF (TOK_TYPE = TK_INT) THEN DO;
+                ST_OEVAL2(S) = TOK_IVAL;
+                CALL LEX_NEXT;
+            END;
+            ELSE IF (TOK_TYPE = TK_IDENT) THEN DO;
+                ST_OEVAL2(S) = TOK_BUF(0);
+                CALL LEX_NEXT;
+            END;
+        END;
+    END;
+
+    /* Skip rest of line */
+    DO WHILE (TOK_TYPE != TK_EOL AND TOK_TYPE != TK_EOF);
+        CALL LEX_NEXT;
+    END;
+    IF (TOK_TYPE = TK_EOL) THEN CALL LEX_NEXT;
+
+    STMT_CNT = STMT_CNT + 1;
+    RETURN(1);
+END;
+
+PARSE_ALL: PROC;
+    STMT_CNT = 0;
+    CALL LEX_NEXT;
+    DO WHILE (PARSE_LINE() != 0);
+    END;
+END;
+
+/* ---- Test ---- */
+
+DCL M_NL(3) CHAR INIT('
+');
+DCL M_P(4) CHAR INIT('P ');
+DCL M_F(4) CHAR INIT('F ');
+DCL M_DONE(20) CHAR INIT('All tests done');
+
+CHK: PROC(OK INT, N INT);
+    IF (OK != 0) THEN
+        CALL UART_PUTS(ADDR(M_P));
+    ELSE
+        CALL UART_PUTS(ADDR(M_F));
+    CALL UART_PUTCHAR(48 + N);
+    CALL UART_PUTS(ADDR(M_NL));
+END;
+
+MAIN: PROC;
+    DCL OK INT;
+
+    CALL SRC_INIT(52);
+    CALL PARSE_ALL;
+
+    /* 1: 4 statements */
+    OK = (STMT_CNT = 4);
+    CALL CHK(OK, 1);
+
+    /* 2: stmt 0 is assign */
+    OK = (ST_TYPE(0) = ST_ASSIGN);
+    CALL CHK(OK, 2);
+
+    /* 3: stmt 0 object = INT 42 */
+    OK = (ST_OETYPE(0) = OE_INT) AND (ST_OEVAL(0) = 42);
+    CALL CHK(OK, 3);
+
+    /* 4: stmt 1 is assign */
+    OK = (ST_TYPE(1) = ST_ASSIGN);
+    CALL CHK(OK, 4);
+
+    /* 5: stmt 1 object = BINOP with PLUS */
+    OK = (ST_OETYPE(1) = OE_BINOP) AND (ST_OEOP(1) = TK_PLUS);
+    CALL CHK(OK, 5);
+
+    /* 6: stmt 1 second operand = 1 */
+    OK = (ST_OEVAL2(1) = 1);
+    CALL CHK(OK, 6);
+
+    /* 7: stmt 2 is assign, object = INT 3 */
+    OK = (ST_TYPE(2) = ST_ASSIGN) AND (ST_OEVAL(2) = 3);
+    CALL CHK(OK, 7);
+
+    /* 8: stmt 3 is END */
+    OK = (ST_TYPE(3) = ST_END);
+    CALL CHK(OK, 8);
+
+    CALL UART_PUTS(ADDR(M_DONE));
+    CALL UART_PUTS(ADDR(M_NL));
+END;

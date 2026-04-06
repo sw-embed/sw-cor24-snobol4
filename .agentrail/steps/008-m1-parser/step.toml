@@ -1,6 +1,6 @@
 number = 8
 slug = "m1-parser"
-status = "pending"
+status = "in-progress"
 description = "Parser for assignments, labels, transfers, literals"
 role = "legacy"
 context_files = []
