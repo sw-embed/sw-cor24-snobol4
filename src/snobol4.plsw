@@ -26,6 +26,8 @@
 %DEFINE TK_EOF 12;
 %DEFINE TK_DOT 13;
 %DEFINE TK_STAR 14;
+%DEFINE TK_LT 15;
+%DEFINE TK_GT 16;
 
 /* Statement / expression / goto types */
 %DEFINE ST_EMPTY 0;
@@ -158,6 +160,8 @@ LEX: PROC;
     IF (C = 43) THEN DO; SPOS = SPOS + 1; TT = TK_PLUS; RETURN; END;
     IF (C = 45) THEN DO; SPOS = SPOS + 1; TT = TK_MINUS; RETURN; END;
     IF (C = 42) THEN DO; SPOS = SPOS + 1; TT = TK_STAR; RETURN; END;
+    IF (C = 60) THEN DO; SPOS = SPOS + 1; TT = TK_LT; RETURN; END;
+    IF (C = 62) THEN DO; SPOS = SPOS + 1; TT = TK_GT; RETURN; END;
     IF (C = 39 OR C = 34) THEN DO;
         Q = C;
         SPOS = SPOS + 1;
@@ -378,6 +382,7 @@ END;
 
 DCL S_TYP(16) INT;
 DCL S_SUBJ(16) INT;
+DCL S_SIDX(16) INT;
 DCL S_OETY(16) INT;
 DCL S_OEV1(16) INT;
 DCL S_OEOP(16) INT;
@@ -402,6 +407,8 @@ DCL EP_VAL(64) INT;
 %DEFINE OE_BREAK 6;
 %DEFINE OE_REM 7;
 %DEFINE OE_CAP 8;
+%DEFINE OE_ARRAY 9;
+%DEFINE OE_ARRREF 10;
 DCL S_PPCNT(16) INT;
 DCL PP_TYP(128) INT;
 DCL PP_VAL(128) INT;
@@ -434,6 +441,7 @@ PARSE: PROC;
         S_SPTR(S) = 0 - 1;
         S_EPCNT(S) = 0;
         S_PPCNT(S) = 0;
+        S_SIDX(S) = 0 - 1;
 
         IF (TT = TK_EOL) THEN DO;
             CALL LEX;
@@ -458,6 +466,21 @@ PARSE: PROC;
                 NOFF = SBSAVE();
                 S_SUBJ(S) = SYM_LOOKUP(NOFF);
                 CALL LEX;
+                /* Check for <index> (array element access) */
+                IF (TT = TK_LT) THEN DO;
+                    CALL LEX;
+                    IF (TT = TK_IDENT) THEN DO;
+                        NOFF = SBSAVE();
+                        S_SIDX(S) = SYM_LOOKUP(NOFF);
+                        CALL LEX;
+                    END;
+                    ELSE IF (TT = TK_INT) THEN DO;
+                        /* Literal index -- store as negative (flag) */
+                        S_SIDX(S) = 0 - TV - 1;
+                        CALL LEX;
+                    END;
+                    IF (TT = TK_GT) THEN CALL LEX;
+                END;
             END;
 
             /* Check: is this a pattern match? (SUBJ parts... :goto)
@@ -566,7 +589,7 @@ PARSE: PROC;
                     END;
                     ELSE IF (TT = TK_IDENT) THEN DO;
                         NOFF = SBSAVE();
-                        /* Check for SPAN(...) */
+                        /* Check for SPAN/ARRAY(...) */
                         IF (TB(0) = 83 AND TB(1) = 80 AND TB(2) = 65 AND TB(3) = 78 AND TB(4) = 0) THEN DO;
                             CALL LEX;
                             IF (TT = TK_LPAREN) THEN DO;
@@ -582,13 +605,59 @@ PARSE: PROC;
                                 IF (TT = TK_RPAREN) THEN CALL LEX;
                             END;
                         END;
-                        ELSE DO;
+                        ELSE IF (TB(0) = 65 AND TB(1) = 82 AND TB(2) = 82 AND TB(3) = 65 AND TB(4) = 89 AND TB(5) = 0) THEN DO;
+                            /* ARRAY('1:50') */
+                            CALL LEX;
+                            IF (TT = TK_LPAREN) THEN DO;
+                                CALL LEX;
+                                IF (TT = TK_STR) THEN CALL LEX;
+                                IF (TT = TK_RPAREN) THEN CALL LEX;
+                            END;
                             IF (EPI < 4) THEN DO;
-                                EP_TYP(EPB + EPI) = OE_IDENT;
-                                EP_VAL(EPB + EPI) = SYM_LOOKUP(NOFF);
+                                EP_TYP(EPB + EPI) = OE_ARRAY;
+                                EP_VAL(EPB + EPI) = 0;
                                 EPI = EPI + 1;
                             END;
+                        END;
+                        ELSE DO;
+                            DCL SYMIDX INT;
+                            SYMIDX = SYM_LOOKUP(NOFF);
                             CALL LEX;
+                            /* Check for <index> (array ref in expr) */
+                            IF (TT = TK_LT) THEN DO;
+                                CALL LEX;
+                                IF (EPI < 4) THEN DO;
+                                    EP_TYP(EPB + EPI) = OE_ARRREF;
+                                    EP_VAL(EPB + EPI) = SYMIDX;
+                                    EPI = EPI + 1;
+                                END;
+                                /* Index: ident or int */
+                                IF (TT = TK_IDENT) THEN DO;
+                                    NOFF = SBSAVE();
+                                    IF (EPI < 4) THEN DO;
+                                        EP_TYP(EPB + EPI) = OE_IDENT;
+                                        EP_VAL(EPB + EPI) = SYM_LOOKUP(NOFF);
+                                        EPI = EPI + 1;
+                                    END;
+                                    CALL LEX;
+                                END;
+                                ELSE IF (TT = TK_INT) THEN DO;
+                                    IF (EPI < 4) THEN DO;
+                                        EP_TYP(EPB + EPI) = OE_INT;
+                                        EP_VAL(EPB + EPI) = TV;
+                                        EPI = EPI + 1;
+                                    END;
+                                    CALL LEX;
+                                END;
+                                IF (TT = TK_GT) THEN CALL LEX;
+                            END;
+                            ELSE DO;
+                                IF (EPI < 4) THEN DO;
+                                    EP_TYP(EPB + EPI) = OE_IDENT;
+                                    EP_VAL(EPB + EPI) = SYMIDX;
+                                    EPI = EPI + 1;
+                                END;
+                            END;
                         END;
                     END;
 
@@ -775,7 +844,23 @@ LOWER_STMT: PROC(S INT);
         DCL EPV INT;
 
         /* Evaluate object expression */
-        IF (S_EPCNT(S) >= 2 AND S_OEOP(S) = 0) THEN DO;
+        IF (S_EPCNT(S) = 2 AND EP_TYP(S * 4) = OE_ARRREF) THEN DO;
+            /* Array ref: NAMES<I> */
+            EPB = S * 4;
+            EPT = EP_TYP(EPB + 1);
+            EPV = EP_VAL(EPB + 1);
+            IF (EPT = OE_IDENT) THEN DO;
+                CALL AM_EMIT_OP(OP_LOAD_VAR);
+                CALL AM_EMIT_BYTE(EPV);
+            END;
+            ELSE DO;
+                CALL AM_EMIT_OP(OP_LOAD_INT);
+                CALL AM_EMIT_WORD(EPV);
+            END;
+            CALL AM_EMIT_OP(OP_ARR_LOAD);
+            CALL AM_EMIT_BYTE(EP_VAL(EPB));
+        END;
+        ELSE IF (S_EPCNT(S) >= 2 AND S_OEOP(S) = 0) THEN DO;
             /* Concatenation: emit parts with CONCAT between them */
             EPB = S * 4;
             EPI = 0;
@@ -791,10 +876,24 @@ LOWER_STMT: PROC(S INT);
                     CALL AM_EMIT_WORD(EPV);
                 END;
                 ELSE IF (EPT = OE_IDENT) THEN DO;
-                    CALL AM_EMIT_OP(OP_LOAD_VAR);
-                    CALL AM_EMIT_BYTE(EPV);
+                    IF (EPV = INP_SYM AND INP_SYM >= 0) THEN
+                        CALL AM_EMIT_OP(OP_READ_INPUT);
+                    ELSE DO;
+                        CALL AM_EMIT_OP(OP_LOAD_VAR);
+                        CALL AM_EMIT_BYTE(EPV);
+                    END;
                 END;
-                IF (EPI > 0) THEN
+                ELSE IF (EPT = OE_ARRREF) THEN DO;
+                    /* Next part is the index */
+                    CALL AM_EMIT_OP(OP_ARR_LOAD);
+                    CALL AM_EMIT_BYTE(EPV);
+                    EPI = EPI + 1;
+                    /* Skip the index part -- it's used by ARR_LOAD */
+                END;
+                ELSE IF (EPT = OE_ARRAY) THEN DO;
+                    CALL AM_EMIT_OP(OP_MAKE_ARRAY);
+                END;
+                IF (EPI > 0 AND EPT != OE_ARRREF) THEN
                     CALL AM_EMIT_OP(OP_CONCAT);
                 EPI = EPI + 1;
             END;
@@ -852,7 +951,6 @@ LOWER_STMT: PROC(S INT);
             CALL AM_EMIT_WORD(S_SPTR(S));
         END;
         ELSE IF (S_EPCNT(S) = 1) THEN DO;
-            /* Single-part fallback via EP */
             EPB = S * 4;
             EPT = EP_TYP(EPB);
             EPV = EP_VAL(EPB);
@@ -860,12 +958,48 @@ LOWER_STMT: PROC(S INT);
                 CALL AM_EMIT_OP(OP_MAKE_SPAN);
                 CALL AM_EMIT_WORD(EPV);
             END;
+            ELSE IF (EPT = OE_ARRAY) THEN DO;
+                CALL AM_EMIT_OP(OP_MAKE_ARRAY);
+            END;
+        END;
+        ELSE IF (S_EPCNT(S) = 2 AND EP_TYP(S * 4) = OE_ARRREF) THEN DO;
+            /* Single array ref: NAMES<I> or NAMES<3> */
+            EPB = S * 4;
+            EPT = EP_TYP(EPB + 1);
+            EPV = EP_VAL(EPB + 1);
+            IF (EPT = OE_IDENT) THEN DO;
+                CALL AM_EMIT_OP(OP_LOAD_VAR);
+                CALL AM_EMIT_BYTE(EPV);
+            END;
+            ELSE DO;
+                CALL AM_EMIT_OP(OP_LOAD_INT);
+                CALL AM_EMIT_WORD(EPV);
+            END;
+            CALL AM_EMIT_OP(OP_ARR_LOAD);
+            CALL AM_EMIT_BYTE(EP_VAL(EPB));
         END;
 
         /* Store */
         IF (S_SUBJ(S) >= 0) THEN DO;
-            CALL AM_EMIT_OP(OP_STORE_VAR);
-            CALL AM_EMIT_BYTE(S_SUBJ(S));
+            IF (S_SIDX(S) != 0 - 1) THEN DO;
+                /* Array element store: NAMES<N> or NAMES<3> */
+                IF (S_SIDX(S) >= 0) THEN DO;
+                    /* Variable index */
+                    CALL AM_EMIT_OP(OP_LOAD_VAR);
+                    CALL AM_EMIT_BYTE(S_SIDX(S));
+                END;
+                ELSE DO;
+                    /* Literal index (stored as -(val+1)) */
+                    CALL AM_EMIT_OP(OP_LOAD_INT);
+                    CALL AM_EMIT_WORD(0 - S_SIDX(S) - 1);
+                END;
+                CALL AM_EMIT_OP(OP_ARR_STORE);
+                CALL AM_EMIT_BYTE(S_SUBJ(S));
+            END;
+            ELSE DO;
+                CALL AM_EMIT_OP(OP_STORE_VAR);
+                CALL AM_EMIT_BYTE(S_SUBJ(S));
+            END;
         END;
 
         /* OUTPUT print */
@@ -1003,7 +1137,7 @@ FIXUP_GOTOS: PROC;
         ELSE IF (OP = OP_LOAD_INT OR OP = OP_LOAD_STR OR OP = OP_PRINT_STR OR OP = OP_MAKE_SPAN OR OP = OP_MAKE_BREAK OR OP = OP_MAKE_LIT_PAT) THEN DO;
             PC = PC + 3;
         END;
-        ELSE IF (OP = OP_LOAD_VAR OR OP = OP_STORE_VAR OR OP = OP_PRINT_VAR OR OP = OP_PAT_CAP OR OP = OP_PAT_MATCH2) THEN DO;
+        ELSE IF (OP = OP_LOAD_VAR OR OP = OP_STORE_VAR OR OP = OP_PRINT_VAR OR OP = OP_PAT_CAP OR OP = OP_PAT_MATCH2 OR OP = OP_ARR_LOAD OR OP = OP_ARR_STORE) THEN DO;
             PC = PC + 1;
         END;
         ELSE IF (OP = OP_PAT_MATCH) THEN DO;
@@ -1031,6 +1165,12 @@ END;
 DCL ESTK(32) INT;
 DCL ESP INT STATIC INIT(0);
 DCL VARS(16) INT;
+
+/* Array pool: up to 4 arrays, each 50 elements (string offsets).
+ * ARR_DATA(arr_id * 50 + index) = SB offset for element value.
+ * ARR_CNT = number of arrays allocated. */
+DCL ARR_DATA(200) INT;
+DCL ARR_CNT INT STATIC INIT(0);
 DCL LAST_PUSH_TYP INT STATIC INIT(0);
 DCL NL(3) CHAR INIT('
 ');
@@ -1077,6 +1217,7 @@ END;
 %DEFINE VTYP_INT 0;
 %DEFINE VTYP_STR 1;
 %DEFINE VTYP_PAT 2;
+%DEFINE VTYP_ARR 3;
 
 /* Variable type tags (high byte of VARS entry for patterns) */
 DCL VTYP(16) INT;
@@ -1539,6 +1680,53 @@ AM_EXEC: PROC;
 
             PSTOP = 0;
             LAST_RESULT = MATCHED2;
+        END;
+        ELSE IF (OP = OP_MAKE_ARRAY) THEN DO;
+            /* Allocate array, push array ID */
+            V = ARR_CNT;
+            ARR_CNT = ARR_CNT + 1;
+            ESTK(ESP) = V;
+            ESP = ESP + 1;
+            LAST_PUSH_TYP = VTYP_ARR;
+        END;
+        ELSE IF (OP = OP_ARR_LOAD) THEN DO;
+            /* ARR_LOAD <arr_var>: load arr[idx] where idx is in next LOAD_VAR.
+             * Actually: arr_var tells which var holds the array ID.
+             * The index comes from the NEXT instruction (LOAD_VAR for the index var).
+             * Simpler: read arr_var, then read next byte as index_var. */
+            DCL ARR_ID INT;
+            DCL ARR_IDX INT;
+            DCL ARR_VAR INT;
+            DCL IDX_VAR INT;
+            ARR_VAR = AM_CODE(PC);
+            PC = PC + 1;
+            ARR_ID = VARS(ARR_VAR);
+            /* Index comes from eval stack (LOAD_VAR pushed it) */
+            ESP = ESP - 1;
+            ARR_IDX = ESTK(ESP);
+            /* Load element */
+            V = ARR_DATA(ARR_ID * 50 + ARR_IDX);
+            ESTK(ESP) = V;
+            ESP = ESP + 1;
+            LAST_PUSH_TYP = VTYP_STR;
+        END;
+        ELSE IF (OP = OP_ARR_STORE) THEN DO;
+            /* ARR_STORE <arr_var>: store val into arr[idx]
+             * Stack: val, idx (idx on top from LOAD_VAR) */
+            DCL AS_ARR INT;
+            DCL AS_IDX INT;
+            DCL AS_VAL INT;
+            DCL AS_VAR INT;
+            AS_VAR = AM_CODE(PC);
+            PC = PC + 1;
+            AS_ARR = VARS(AS_VAR);
+            /* Pop index */
+            ESP = ESP - 1;
+            AS_IDX = ESTK(ESP);
+            /* Pop value */
+            ESP = ESP - 1;
+            AS_VAL = ESTK(ESP);
+            ARR_DATA(AS_ARR * 50 + AS_IDX) = AS_VAL;
         END;
         ELSE IF (OP = OP_READ_INPUT) THEN DO;
             /* Read one line from input data into SB */

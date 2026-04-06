@@ -50,8 +50,12 @@ break:
 input:
     ./scripts/run-snobol4.sh examples/input.sno examples/input.dat
 
+# Array demo
+array:
+    ./scripts/run-snobol4.sh examples/array.sno
+
 # Run all demos
-demos: hello hello-goto count span span-fail multiply concat break input
+demos: hello hello-goto count span span-fail multiply concat break input array
 
 # --- Tests ---
 

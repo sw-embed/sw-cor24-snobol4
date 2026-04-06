@@ -44,8 +44,8 @@ fi
 
 BASENAME=$(basename "$SNO_FILE" .sno)
 
-# Build interpreter if not cached
-if [ ! -f "$INTERP_ASM" ]; then
+# Build interpreter (rebuild if source newer than cached asm)
+if [ ! -f "$INTERP_ASM" ] || [ "$PROJECT_DIR/src/snobol4.plsw" -nt "$INTERP_ASM" ]; then
     echo "=== Building SNOBOL4 interpreter ===" >&2
     "$PROJECT_DIR/scripts/build.sh" \
         "$PROJECT_DIR/include/descr.msw" \

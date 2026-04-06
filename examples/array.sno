@@ -1,0 +1,8 @@
+       NAMES = ARRAY('1:50')
+       NAMES<1> = 'Alice'
+       NAMES<2> = 'Bob'
+       NAMES<3> = 'Carol'
+       OUTPUT = NAMES<1>
+       OUTPUT = NAMES<2>
+       OUTPUT = NAMES<3>
+END
