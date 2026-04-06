@@ -1,6 +1,6 @@
 number = 10
 slug = "m1-executor"
-status = "pending"
+status = "in-progress"
 description = "Simple statement executor with success/failure"
 role = "legacy"
 context_files = []

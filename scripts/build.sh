@@ -62,7 +62,7 @@ echo "=== Compiling $BASENAME ===" >&2
 echo "  Macros: ${MACROS[*]:-none}" >&2
 echo "  Source: $MAIN" >&2
 
-COMPILER_OUT=$(cor24-run --run "$COMPILER_ASM" -u "$INPUT" -n 200000000 -t 120 --speed 0 2>&1)
+COMPILER_OUT=$(cor24-run --run "$COMPILER_ASM" -u "$INPUT" -n 500000000 -t 300 --speed 0 2>&1)
 UART_OUT=$(echo "$COMPILER_OUT" | sed -n '/^UART output:/,/^Executed /{/^Executed /d;p;}' | sed '1s/^UART output: //')
 
 # Check for errors
@@ -98,7 +98,7 @@ echo "  Assembly: $ASM_LINES lines -> $OUT_S" >&2
 
 # Run
 echo "=== Running $BASENAME ===" >&2
-RUN_OUT=$(cor24-run --run "$OUT_S" -n 50000000 -t 30 --speed 0 --dump 2>&1)
+RUN_OUT=$(cor24-run --run "$OUT_S" -n 100000000 -t 60 --speed 0 --dump 2>&1)
 
 # Save dump
 OUT_DUMP="build/${BASENAME}-dump.txt"

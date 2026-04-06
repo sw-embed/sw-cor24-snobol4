@@ -1,0 +1,282 @@
+/* snobol4.plsw -- Minimal SNOBOL4 interpreter
+ * Runs: OUTPUT = 'Hello, World!'  then END
+ */
+
+%INCLUDE descr;
+%INCLUDE heap;
+
+/* Token types */
+%DEFINE TK_IDENT 1;
+%DEFINE TK_INT 2;
+%DEFINE TK_STR 3;
+%DEFINE TK_EQ 4;
+%DEFINE TK_PLUS 9;
+%DEFINE TK_MINUS 10;
+%DEFINE TK_EOL 11;
+%DEFINE TK_EOF 12;
+
+/* Statement types */
+%DEFINE ST_EMPTY 0;
+%DEFINE ST_ASSIGN 1;
+%DEFINE ST_END 2;
+
+/* Object expression types */
+%DEFINE OE_NONE 0;
+%DEFINE OE_INT 2;
+%DEFINE OE_STR 3;
+
+/* ---- Source + Lexer ---- */
+
+DCL SRC(128) CHAR INIT('       OUTPUT = "Hello, World!"
+END
+');
+DCL SP INT STATIC INIT(0);
+DCL SL INT STATIC INIT(0);
+DCL TT INT STATIC INIT(0);
+DCL TV INT STATIC INIT(0);
+DCL TB(32) CHAR INIT('                                ');
+DCL TN INT STATIC INIT(0);
+DCL ALS INT STATIC INIT(1);
+
+IS_A: PROC(C INT) RETURNS(INT);
+    IF (C >= 65) THEN IF (C <= 90) THEN RETURN(1);
+    IF (C >= 97) THEN IF (C <= 122) THEN RETURN(1);
+    RETURN(0);
+END;
+
+IS_D: PROC(C INT) RETURNS(INT);
+    IF (C >= 48) THEN IF (C <= 57) THEN RETURN(1);
+    RETURN(0);
+END;
+
+IS_AN: PROC(C INT) RETURNS(INT);
+    IF (IS_A(C) != 0) THEN RETURN(1);
+    IF (IS_D(C) != 0) THEN RETURN(1);
+    RETURN(0);
+END;
+
+LEX: PROC;
+    DCL C INT;
+    DCL I INT;
+    DCL Q INT;
+    C = SRC(SP);
+    DO WHILE (C = 32 OR C = 9);
+        SP = SP + 1;
+        C = SRC(SP);
+    END;
+    IF (C = 0) THEN DO; TT = TK_EOF; RETURN; END;
+    IF (C = 10) THEN DO; SP = SP + 1; TT = TK_EOL; RETURN; END;
+    IF (C = 61) THEN DO; SP = SP + 1; TT = TK_EQ; RETURN; END;
+    IF (C = 43) THEN DO; SP = SP + 1; TT = TK_PLUS; RETURN; END;
+    IF (C = 45) THEN DO; SP = SP + 1; TT = TK_MINUS; RETURN; END;
+    IF (C = 39 OR C = 34) THEN DO;
+        Q = C;
+        SP = SP + 1;
+        I = 0;
+        C = SRC(SP);
+        DO WHILE (C != Q AND C != 0 AND C != 10);
+            IF (I < 31) THEN DO; TB(I) = C; I = I + 1; END;
+            SP = SP + 1;
+            C = SRC(SP);
+        END;
+        IF (C = Q) THEN SP = SP + 1;
+        TB(I) = 0;
+        TN = I;
+        TT = TK_STR;
+        RETURN;
+    END;
+    IF (IS_D(C) != 0) THEN DO;
+        TV = 0;
+        DO WHILE (IS_D(SRC(SP)) != 0);
+            C = SRC(SP);
+            SP = SP + 1;
+            TV = TV * 10 + (C - 48);
+        END;
+        TT = TK_INT;
+        RETURN;
+    END;
+    IF (IS_A(C) != 0) THEN DO;
+        I = 0;
+        DO WHILE (IS_AN(SRC(SP)) != 0);
+            C = SRC(SP);
+            SP = SP + 1;
+            IF (C >= 97) THEN IF (C <= 122) THEN C = C - 32;
+            IF (I < 31) THEN DO; TB(I) = C; I = I + 1; END;
+        END;
+        TB(I) = 0;
+        TN = I;
+        TT = TK_IDENT;
+        RETURN;
+    END;
+    SP = SP + 1;
+    TT = TK_EOF;
+END;
+
+/* ---- Minimal statement table (max 8) ---- */
+
+DCL ST(8) INT;
+DCL SS(8) INT;
+DCL SO(8) INT;
+DCL SV(8) INT;
+DCL SB(128) BYTE;
+DCL SBPOS INT STATIC INIT(0);
+DCL SPTR(8) INT;
+DCL SC INT STATIC INIT(0);
+
+IS_OUT: PROC RETURNS(INT);
+    IF (TB(0) = 79) THEN IF (TB(1) = 85) THEN IF (TB(2) = 84) THEN
+        IF (TB(3) = 80) THEN IF (TB(4) = 85) THEN IF (TB(5) = 84) THEN
+            IF (TB(6) = 0) THEN RETURN(1);
+    RETURN(0);
+END;
+
+IS_END: PROC RETURNS(INT);
+    IF (TB(0) = 69) THEN IF (TB(1) = 78) THEN IF (TB(2) = 68) THEN
+        IF (TB(3) = 0) THEN RETURN(1);
+    RETURN(0);
+END;
+
+/* SCOPY into SB buffer, return offset */
+SVSAVE: PROC RETURNS(INT);
+    DCL OFF INT;
+    DCL I INT;
+    DCL C INT;
+    OFF = SBPOS;
+    I = 0;
+    C = TB(0);
+    DO WHILE (C != 0 AND I < 31);
+        DCL DP PTR;
+        DP = ADDR(SB) + SBPOS;
+        DP->DTAG = C;
+        SBPOS = SBPOS + 1;
+        I = I + 1;
+        C = TB(I);
+    END;
+    DCL EP PTR;
+    EP = ADDR(SB) + SBPOS;
+    EP->DTAG = 0;
+    SBPOS = SBPOS + 1;
+    RETURN(OFF);
+END;
+
+PARSE: PROC;
+    DCL S INT;
+    SC = 0;
+    SBPOS = 0;
+    SP = 0;
+    CALL LEX;
+    DO WHILE (TT != TK_EOF AND SC < 8);
+        S = SC;
+        ST(S) = ST_EMPTY;
+        SS(S) = 0;
+        SO(S) = OE_NONE;
+        SV(S) = 0;
+        SPTR(S) = 0;
+
+        IF (TT = TK_EOL) THEN DO;
+            CALL LEX;
+            SC = SC + 1;
+        END;
+        ELSE IF (TT = TK_IDENT) THEN DO;
+            IF (IS_END() != 0) THEN DO;
+                ST(S) = ST_END;
+                CALL LEX;
+                IF (TT = TK_EOL) THEN CALL LEX;
+                SC = SC + 1;
+            END;
+            ELSE DO;
+                /* Subject (OUTPUT or variable) */
+                SS(S) = IS_OUT();
+                CALL LEX;
+                IF (TT = TK_EQ) THEN DO;
+                    ST(S) = ST_ASSIGN;
+                    CALL LEX;
+                    IF (TT = TK_INT) THEN DO;
+                        SO(S) = OE_INT;
+                        SV(S) = TV;
+                        CALL LEX;
+                    END;
+                    ELSE IF (TT = TK_STR) THEN DO;
+                        SO(S) = OE_STR;
+                        SPTR(S) = SVSAVE();
+                        CALL LEX;
+                    END;
+                END;
+                /* Skip to EOL */
+                DO WHILE (TT != TK_EOL AND TT != TK_EOF);
+                    CALL LEX;
+                END;
+                IF (TT = TK_EOL) THEN CALL LEX;
+                SC = SC + 1;
+            END;
+        END;
+        ELSE DO;
+            CALL LEX;
+        END;
+    END;
+END;
+
+/* ---- Executor ---- */
+
+DCL NL(3) CHAR INIT('
+');
+
+PUT_DEC: PROC(V INT);
+    DCL BUF(12) BYTE;
+    DCL POS INT;
+    DCL N INT;
+    DCL D INT;
+    N = V;
+    IF (N = 0) THEN DO;
+        CALL UART_PUTCHAR(48);
+        RETURN;
+    END;
+    POS = 0;
+    DO WHILE (N > 0);
+        D = N;
+        DO WHILE (D >= 10);
+            D = D - 10;
+        END;
+        BUF(POS) = 48 + D;
+        POS = POS + 1;
+        D = 0;
+        DO WHILE (N >= 10);
+            N = N - 10;
+            D = D + 1;
+        END;
+        N = D;
+    END;
+    DO WHILE (POS > 0);
+        POS = POS - 1;
+        CALL UART_PUTCHAR(BUF(POS));
+    END;
+END;
+
+RUN: PROC;
+    DCL PC INT;
+    DCL S INT;
+    PC = 0;
+    DO WHILE (PC < SC);
+        S = PC;
+        IF (ST(S) = ST_END) THEN RETURN;
+        IF (ST(S) = ST_ASSIGN) THEN DO;
+            /* If subject is OUTPUT, print */
+            IF (SS(S) = 1) THEN DO;
+                IF (SO(S) = OE_STR) THEN
+                    CALL UART_PUTS(ADDR(SB) + SPTR(S));
+                ELSE IF (SO(S) = OE_INT) THEN
+                    CALL PUT_DEC(SV(S));
+                CALL UART_PUTS(ADDR(NL));
+            END;
+        END;
+        PC = PC + 1;
+    END;
+END;
+
+/* ---- Main ---- */
+
+MAIN: PROC;
+    SL = 37;
+    CALL PARSE;
+    CALL RUN;
+END;
