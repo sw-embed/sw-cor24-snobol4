@@ -1,0 +1,257 @@
+/* test_dump.plsw -- Test descriptor dumper, heap walker, heap checker */
+
+%INCLUDE descr;
+%INCLUDE heap;
+
+/* Note: BYTE arrays use INT STATIC INIT(0) workaround for .comm bug (plsw#12)
+ * We declare them as small CHAR INIT arrays to get .data placement. */
+
+/* ---- Minimal snolib subset ---- */
+
+DCL TN_NULL(8) CHAR INIT('null');
+DCL TN_INT(8) CHAR INIT('int');
+DCL TN_UNK(8) CHAR INIT('???');
+
+TAG_NAME: PROC(T INT) RETURNS(INT);
+    IF (T = TAG_NULL) THEN RETURN(ADDR(TN_NULL));
+    IF (T = TAG_INT) THEN RETURN(ADDR(TN_INT));
+    RETURN(ADDR(TN_UNK));
+END;
+
+DCL KN_FREE(8) CHAR INIT('free');
+DCL KN_STRING(8) CHAR INIT('string');
+DCL KN_SYMCELL(8) CHAR INIT('symcell');
+DCL KN_UNK(8) CHAR INIT('???');
+
+KIND_NAME: PROC(K INT) RETURNS(INT);
+    IF (K = OBK_FREE) THEN RETURN(ADDR(KN_FREE));
+    IF (K = OBK_STRING) THEN RETURN(ADDR(KN_STRING));
+    IF (K = OBK_SYMCELL) THEN RETURN(ADDR(KN_SYMCELL));
+    RETURN(ADDR(KN_UNK));
+END;
+
+DCL HEXCHARS(16) CHAR INIT('0123456789ABCDEF');
+
+PUT_HEX_BYTE: PROC(V INT);
+    DCL HI INT;
+    DCL LO INT;
+    HI = V;
+    LO = 0;
+    DO WHILE (HI > 15);
+        HI = HI - 16;
+        LO = LO + 1;
+    END;
+    CALL UART_PUTCHAR(HEXCHARS(LO));
+    CALL UART_PUTCHAR(HEXCHARS(HI));
+END;
+
+PUT_HEX24: PROC(V INT);
+    DCL B2 INT;
+    DCL B1 INT;
+    DCL B0 INT;
+    DCL REM INT;
+    REM = V;
+    B2 = 0;
+    DO WHILE (REM > 65535);
+        REM = REM - 65536;
+        B2 = B2 + 1;
+    END;
+    B1 = 0;
+    DO WHILE (REM > 255);
+        REM = REM - 256;
+        B1 = B1 + 1;
+    END;
+    B0 = REM;
+    CALL PUT_HEX_BYTE(B2);
+    CALL PUT_HEX_BYTE(B1);
+    CALL PUT_HEX_BYTE(B0);
+END;
+
+DCL M_NL(3) CHAR INIT('
+');
+
+/* ---- Descriptor dump ---- */
+
+DCL DD_PFX(8) CHAR INIT('DESC @');
+DCL DD_TAG(8) CHAR INIT(' tag=');
+DCL DD_SUB(8) CHAR INIT(' sub=');
+DCL DD_PAY(8) CHAR INIT(' pay=');
+
+DUMP_DESC: PROC(P PTR);
+    DCL DP PTR;
+    DP = P;
+    CALL UART_PUTS(ADDR(DD_PFX));
+    CALL PUT_HEX24(P);
+    CALL UART_PUTS(ADDR(DD_TAG));
+    CALL UART_PUTS(TAG_NAME(DP->DTAG));
+    CALL UART_PUTS(ADDR(DD_SUB));
+    CALL PUT_HEX_BYTE(DP->DSUB);
+    CALL UART_PUTS(ADDR(DD_PAY));
+    CALL PUT_HEX24(DP->DPAY);
+    CALL UART_PUTS(ADDR(M_NL));
+END;
+
+/* ---- Heap header dump ---- */
+
+DCL HD_PFX(8) CHAR INIT('OBJ @');
+DCL HD_KIND(8) CHAR INIT(' kind=');
+DCL HD_SIZE(8) CHAR INIT(' size=');
+DCL HD_FLAG(8) CHAR INIT(' fl=');
+
+DUMP_HDR: PROC(P PTR);
+    DCL HP PTR;
+    HP = P;
+    CALL UART_PUTS(ADDR(HD_PFX));
+    CALL PUT_HEX24(P);
+    CALL UART_PUTS(ADDR(HD_KIND));
+    CALL UART_PUTS(KIND_NAME(HP->OKIND));
+    CALL UART_PUTS(ADDR(HD_SIZE));
+    CALL PUT_HEX24(HP->OSIZE);
+    CALL UART_PUTS(ADDR(HD_FLAG));
+    CALL PUT_HEX_BYTE(HP->OFLAGS);
+    CALL UART_PUTS(ADDR(M_NL));
+END;
+
+/* ---- Heap walker ---- */
+
+DCL HW_HDR(16) CHAR INIT('--- heap walk');
+DCL HW_BLK(8) CHAR INIT(' blks=');
+DCL HW_END(8) CHAR INIT('--- end');
+
+HEAP_WALK: PROC(BASE PTR, TOP PTR) RETURNS(INT);
+    DCL P PTR;
+    DCL HP PTR;
+    DCL SZ INT;
+    DCL N INT;
+    CALL UART_PUTS(ADDR(HW_HDR));
+    CALL UART_PUTS(ADDR(M_NL));
+    P = BASE;
+    N = 0;
+    DO WHILE (P < TOP);
+        HP = P;
+        SZ = HP->OSIZE;
+        IF (SZ < HDR_BYTES) THEN
+            RETURN(N);
+        CALL DUMP_HDR(P);
+        N = N + 1;
+        P = P + SZ;
+    END;
+    CALL UART_PUTS(ADDR(HW_END));
+    CALL UART_PUTS(ADDR(HW_BLK));
+    CALL PUT_HEX24(N);
+    CALL UART_PUTS(ADDR(M_NL));
+    RETURN(N);
+END;
+
+/* ---- Heap checker ---- */
+
+DCL HC_OK(8) CHAR INIT('HEAP OK');
+
+HEAP_CHECK: PROC(BASE PTR, TOP PTR) RETURNS(INT);
+    DCL P PTR;
+    DCL HP PTR;
+    DCL SZ INT;
+    DCL K INT;
+    DCL E INT;
+    P = BASE;
+    E = 0;
+    DO WHILE (P < TOP);
+        HP = P;
+        SZ = HP->OSIZE;
+        K = HP->OKIND;
+        IF (SZ < HDR_BYTES) THEN DO;
+            E = E + 1;
+            RETURN(E);
+        END;
+        IF (K >= OBK_COUNT) THEN
+            E = E + 1;
+        IF (P + SZ > TOP) THEN DO;
+            E = E + 1;
+            RETURN(E);
+        END;
+        P = P + SZ;
+    END;
+    IF (E = 0) THEN DO;
+        CALL UART_PUTS(ADDR(HC_OK));
+        CALL UART_PUTS(ADDR(M_NL));
+    END;
+    RETURN(E);
+END;
+
+/* ---- Test data ---- */
+/* Use stack-allocated arrays to avoid .comm overlap issue */
+
+DCL M_P(4) CHAR INIT('P ');
+DCL M_F(4) CHAR INIT('F ');
+DCL M_DONE(20) CHAR INIT('All tests done');
+
+CHK: PROC(OK INT, N INT);
+    IF (OK != 0) THEN
+        CALL UART_PUTS(ADDR(M_P));
+    ELSE
+        CALL UART_PUTS(ADDR(M_F));
+    CALL UART_PUTCHAR(48 + N);
+    CALL UART_PUTS(ADDR(M_NL));
+END;
+
+MAIN: PROC;
+    /* Use local (stack) arrays to avoid .comm overlap */
+    DCL D1(6) BYTE;
+    DCL D2(6) BYTE;
+    DCL ARENA(128) BYTE;
+    DCL DP PTR;
+    DCL HP PTR;
+    DCL OK INT;
+    DCL V INT;
+
+    /* Build descriptors */
+    DP = ADDR(D1);
+    DP->DTAG = TAG_NULL;
+    DP->DSUB = 0;
+    DP->DRSV = 0;
+    DP->DPAY = 0;
+
+    DP = ADDR(D2);
+    DP->DTAG = TAG_INT;
+    DP->DSUB = 0;
+    DP->DRSV = 0;
+    DP->DPAY = 42;
+
+    /* 1: dump null descriptor (visual) */
+    CALL DUMP_DESC(ADDR(D1));
+
+    /* 2: dump int descriptor (visual) */
+    CALL DUMP_DESC(ADDR(D2));
+
+    /* Build 3 heap objects in ARENA */
+    HP = ADDR(ARENA);
+    HP->OKIND = OBK_STRING;
+    HP->OFLAGS = 0;
+    HP->ORSV = 0;
+    HP->OSIZE = 24;
+
+    HP = ADDR(ARENA) + 24;
+    HP->OKIND = OBK_SYMCELL;
+    HP->OFLAGS = 0;
+    HP->ORSV = 0;
+    HP->OSIZE = 15;
+
+    HP = ADDR(ARENA) + 39;
+    HP->OKIND = OBK_FREE;
+    HP->OFLAGS = 0;
+    HP->ORSV = 0;
+    HP->OSIZE = 30;
+
+    /* 3: heap walk (expect 3 blocks) */
+    V = HEAP_WALK(ADDR(ARENA), ADDR(ARENA) + 69);
+    OK = (V = 3);
+    CALL CHK(OK, 3);
+
+    /* 4: heap check (expect 0 errors) */
+    V = HEAP_CHECK(ADDR(ARENA), ADDR(ARENA) + 69);
+    OK = (V = 0);
+    CALL CHK(OK, 4);
+
+    CALL UART_PUTS(ADDR(M_DONE));
+    CALL UART_PUTS(ADDR(M_NL));
+END;

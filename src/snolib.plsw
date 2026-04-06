@@ -346,6 +346,18 @@ PUT_HEX_BYTE: PROC(V INT);
     CALL UART_PUTCHAR(HEXCHARS(HI));
 END;
 
+/* PUT_SP: print a space */
+PUT_SP: PROC;
+    CALL UART_PUTCHAR(32);
+END;
+
+/* PUT_NL: print a newline */
+DCL NL_STR(3) CHAR INIT('
+');
+PUT_NL: PROC;
+    CALL UART_PUTS(ADDR(NL_STR));
+END;
+
 /* PUT_HEX24: print 6 hex digits for a 24-bit value */
 PUT_HEX24: PROC(V INT);
     DCL B2 INT;
@@ -368,4 +380,172 @@ PUT_HEX24: PROC(V INT);
     CALL PUT_HEX_BYTE(B2);
     CALL PUT_HEX_BYTE(B1);
     CALL PUT_HEX_BYTE(B0);
+END;
+
+/* ================================================================
+ * Descriptor dumper
+ *
+ * Output format: DESC @AAAAAA tag=name sub=HH pay=PPPPPP
+ * Example:       DESC @001234 tag=int  sub=00 pay=00002A
+ * ================================================================ */
+
+DCL DD_PFX(8) CHAR INIT('DESC @');
+DCL DD_TAG(8) CHAR INIT(' tag=');
+DCL DD_SUB(8) CHAR INIT(' sub=');
+DCL DD_PAY(8) CHAR INIT(' pay=');
+
+/* DUMP_DESC: print a one-line descriptor dump */
+DUMP_DESC: PROC(P PTR);
+    DCL DP PTR;
+    DP = P;
+    CALL UART_PUTS(ADDR(DD_PFX));
+    CALL PUT_HEX24(P);
+    CALL UART_PUTS(ADDR(DD_TAG));
+    CALL UART_PUTS(TAG_NAME(DP->DTAG));
+    CALL UART_PUTS(ADDR(DD_SUB));
+    CALL PUT_HEX_BYTE(DP->DSUB);
+    CALL UART_PUTS(ADDR(DD_PAY));
+    CALL PUT_HEX24(DP->DPAY);
+    CALL PUT_NL;
+END;
+
+/* ================================================================
+ * Heap object header dumper
+ *
+ * Output format: OBJ @AAAAAA kind=name size=SSSSSS flags=HH
+ * Example:       OBJ @002000 kind=string size=000018 flags=00
+ * ================================================================ */
+
+DCL HD_PFX(8) CHAR INIT('OBJ @');
+DCL HD_KIND(8) CHAR INIT(' kind=');
+DCL HD_SIZE(8) CHAR INIT(' size=');
+DCL HD_FLAG(8) CHAR INIT(' fl=');
+
+/* DUMP_HDR: print a one-line heap header dump */
+DUMP_HDR: PROC(P PTR);
+    DCL HP PTR;
+    HP = P;
+    CALL UART_PUTS(ADDR(HD_PFX));
+    CALL PUT_HEX24(P);
+    CALL UART_PUTS(ADDR(HD_KIND));
+    CALL UART_PUTS(KIND_NAME(HP->OKIND));
+    CALL UART_PUTS(ADDR(HD_SIZE));
+    CALL PUT_HEX24(HP->OSIZE);
+    CALL UART_PUTS(ADDR(HD_FLAG));
+    CALL PUT_HEX_BYTE(HP->OFLAGS);
+    CALL PUT_NL;
+END;
+
+/* ================================================================
+ * Heap walker
+ *
+ * Walks contiguous heap blocks from BASE to TOP, dumping each.
+ * Returns number of blocks visited.
+ * ================================================================ */
+
+DCL HW_PFX(16) CHAR INIT('--- heap walk');
+DCL HW_BLK(8) CHAR INIT(' blks=');
+DCL HW_END(8) CHAR INIT('--- end');
+
+HEAP_WALK: PROC(BASE PTR, TOP PTR) RETURNS(INT);
+    DCL P PTR;
+    DCL HP PTR;
+    DCL SZ INT;
+    DCL COUNT INT;
+
+    CALL UART_PUTS(ADDR(HW_PFX));
+    CALL PUT_NL;
+
+    P = BASE;
+    COUNT = 0;
+    DO WHILE (P < TOP);
+        HP = P;
+        SZ = HP->OSIZE;
+        /* Safety: if size is 0 or negative, stop to avoid infinite loop */
+        IF (SZ < HDR_BYTES) THEN DO;
+            DCL HW_ERR(20) CHAR INIT('ERR: bad size @');
+            CALL UART_PUTS(ADDR(HW_ERR));
+            CALL PUT_HEX24(P);
+            CALL PUT_NL;
+            RETURN(COUNT);
+        END;
+        CALL DUMP_HDR(P);
+        COUNT = COUNT + 1;
+        P = P + SZ;
+    END;
+
+    CALL UART_PUTS(ADDR(HW_END));
+    CALL UART_PUTS(ADDR(HW_BLK));
+    CALL PUT_HEX24(COUNT);
+    CALL PUT_NL;
+    RETURN(COUNT);
+END;
+
+/* ================================================================
+ * Heap consistency checker
+ *
+ * Walks heap and checks:
+ * 1. Each block size >= HDR_BYTES
+ * 2. Each block kind is valid (< OBK_COUNT)
+ * 3. Blocks don't overlap past TOP
+ * Returns 0 if OK, error count if problems found.
+ * ================================================================ */
+
+DCL HC_OK(8) CHAR INIT('HEAP OK');
+DCL HC_ERR(16) CHAR INIT('HEAP ERR: ');
+DCL HC_BADSZ(16) CHAR INIT('bad size @');
+DCL HC_BADKND(16) CHAR INIT('bad kind @');
+DCL HC_OVER(16) CHAR INIT('overflow @');
+
+HEAP_CHECK: PROC(BASE PTR, TOP PTR) RETURNS(INT);
+    DCL P PTR;
+    DCL HP PTR;
+    DCL SZ INT;
+    DCL K INT;
+    DCL ERRS INT;
+
+    P = BASE;
+    ERRS = 0;
+    DO WHILE (P < TOP);
+        HP = P;
+        SZ = HP->OSIZE;
+        K = HP->OKIND;
+
+        /* Check size */
+        IF (SZ < HDR_BYTES) THEN DO;
+            CALL UART_PUTS(ADDR(HC_ERR));
+            CALL UART_PUTS(ADDR(HC_BADSZ));
+            CALL PUT_HEX24(P);
+            CALL PUT_NL;
+            ERRS = ERRS + 1;
+            RETURN(ERRS);
+        END;
+
+        /* Check kind */
+        IF (K >= OBK_COUNT) THEN DO;
+            CALL UART_PUTS(ADDR(HC_ERR));
+            CALL UART_PUTS(ADDR(HC_BADKND));
+            CALL PUT_HEX24(P);
+            CALL PUT_NL;
+            ERRS = ERRS + 1;
+        END;
+
+        /* Check overflow */
+        IF (P + SZ > TOP) THEN DO;
+            CALL UART_PUTS(ADDR(HC_ERR));
+            CALL UART_PUTS(ADDR(HC_OVER));
+            CALL PUT_HEX24(P);
+            CALL PUT_NL;
+            ERRS = ERRS + 1;
+            RETURN(ERRS);
+        END;
+
+        P = P + SZ;
+    END;
+
+    IF (ERRS = 0) THEN DO;
+        CALL UART_PUTS(ADDR(HC_OK));
+        CALL PUT_NL;
+    END;
+    RETURN(ERRS);
 END;

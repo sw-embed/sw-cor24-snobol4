@@ -1,6 +1,6 @@
 number = 4
 slug = "m0-descriptor-dumper"
-status = "pending"
+status = "in-progress"
 description = "Descriptor dump tool for debugging"
 role = "legacy"
 context_files = []
