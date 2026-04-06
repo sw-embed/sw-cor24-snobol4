@@ -46,8 +46,12 @@ concat:
 break:
     ./scripts/run-snobol4.sh examples/break.sno
 
+# INPUT reading from data file
+input:
+    ./scripts/run-snobol4.sh examples/input.sno examples/input.dat
+
 # Run all demos
-demos: hello hello-goto count span span-fail multiply concat break
+demos: hello hello-goto count span span-fail multiply concat break input
 
 # --- Tests ---
 

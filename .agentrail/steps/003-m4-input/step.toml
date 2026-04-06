@@ -1,6 +1,6 @@
 number = 3
 slug = "m4-input"
-status = "pending"
+status = "in-progress"
 description = "INPUT variable (read lines, EOF detection)"
 role = "legacy"
 context_files = []

@@ -52,6 +52,10 @@ DCL SRC(256) BYTE;
 /* Source is loaded at 0x080000 by the emulator via --load-binary */
 %DEFINE SRC_LOAD_ADDR 524288;
 
+/* INPUT data loaded at 0x090000 */
+%DEFINE INP_LOAD_ADDR 589824;
+DCL INP_POS INT STATIC INIT(0);
+
 /* READ_SRC: copy source from load address into SRC buffer */
 READ_SRC: PROC;
     DCL P INT;
@@ -67,6 +71,36 @@ READ_SRC: PROC;
         CH = RP->DTAG;
     END;
     SRC(P) = 0;
+END;
+
+/* READ_INPUT: read one line from INPUT data into SB.
+ * Returns string offset in SB, or -1 on EOF.
+ * Advances INP_POS past the newline. */
+READ_INPUT: PROC RETURNS(INT);
+    DCL OFF INT;
+    DCL RP PTR;
+    DCL DP PTR;
+    DCL CH INT;
+    RP = INP_LOAD_ADDR + INP_POS;
+    CH = RP->DTAG;
+    IF (CH = 0) THEN RETURN(0 - 1);
+    OFF = SBPOS;
+    DO WHILE (CH != 10 AND CH != 0);
+        DP = ADDR(SB) + SBPOS;
+        DP->DTAG = CH;
+        SBPOS = SBPOS + 1;
+        INP_POS = INP_POS + 1;
+        RP = INP_LOAD_ADDR + INP_POS;
+        CH = RP->DTAG;
+    END;
+    /* Null-terminate */
+    DP = ADDR(SB) + SBPOS;
+    DP->DTAG = 0;
+    SBPOS = SBPOS + 1;
+    /* Skip newline */
+    IF (CH = 10) THEN
+        INP_POS = INP_POS + 1;
+    RETURN(OFF);
 END;
 
 /* ================================================================
@@ -697,20 +731,23 @@ END;
  * ================================================================ */
 
 DCL N_OUT(8) CHAR INIT('OUTPUT');
+DCL N_INP(8) CHAR INIT('INPUT');
 DCL OUT_SYM INT STATIC INIT(0);
+DCL INP_SYM INT STATIC INIT(0);
 
-/* Find OUTPUT symbol index */
-FIND_OUTPUT: PROC;
+/* Find OUTPUT and INPUT symbol indices */
+FIND_SPECIAL: PROC;
     DCL I INT;
     DCL NP PTR;
     OUT_SYM = 0 - 1;
+    INP_SYM = 0 - 1;
     I = 0;
     DO WHILE (I < SYMC);
         NP = ADDR(SYMN) + I * 8;
-        IF (SCEQ(NP, ADDR(N_OUT)) != 0) THEN DO;
+        IF (SCEQ(NP, ADDR(N_OUT)) != 0) THEN
             OUT_SYM = I;
-            RETURN;
-        END;
+        IF (SCEQ(NP, ADDR(N_INP)) != 0) THEN
+            INP_SYM = I;
         I = I + 1;
     END;
 END;
@@ -771,8 +808,12 @@ LOWER_STMT: PROC(S INT);
             CALL AM_EMIT_WORD(S_SPTR(S));
         END;
         ELSE IF (S_OETY(S) = OE_IDENT) THEN DO;
-            CALL AM_EMIT_OP(OP_LOAD_VAR);
-            CALL AM_EMIT_BYTE(S_OEV1(S));
+            IF (S_OEV1(S) = INP_SYM AND INP_SYM >= 0) THEN
+                CALL AM_EMIT_OP(OP_READ_INPUT);
+            ELSE DO;
+                CALL AM_EMIT_OP(OP_LOAD_VAR);
+                CALL AM_EMIT_BYTE(S_OEV1(S));
+            END;
         END;
         ELSE IF (S_OETY(S) = OE_BINOP) THEN DO;
             /* Emit first operand */
@@ -974,7 +1015,7 @@ END;
 LOWER_ALL: PROC;
     DCL I INT;
     CALL AM_INIT;
-    CALL FIND_OUTPUT;
+    CALL FIND_SPECIAL;
     I = 0;
     DO WHILE (I < STCNT);
         CALL LOWER_STMT(I);
@@ -1498,6 +1539,23 @@ AM_EXEC: PROC;
 
             PSTOP = 0;
             LAST_RESULT = MATCHED2;
+        END;
+        ELSE IF (OP = OP_READ_INPUT) THEN DO;
+            /* Read one line from input data into SB */
+            V = READ_INPUT();
+            IF (V >= 0) THEN DO;
+                ESTK(ESP) = V;
+                ESP = ESP + 1;
+                LAST_PUSH_TYP = VTYP_STR;
+                LAST_RESULT = 1;
+            END;
+            ELSE DO;
+                /* EOF -- push empty, set failure */
+                ESTK(ESP) = 0;
+                ESP = ESP + 1;
+                LAST_PUSH_TYP = VTYP_STR;
+                LAST_RESULT = 0;
+            END;
         END;
         ELSE IF (OP = OP_HALT) THEN DO;
             RETURN;
