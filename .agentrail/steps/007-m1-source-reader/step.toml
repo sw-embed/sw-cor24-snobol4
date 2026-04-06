@@ -1,6 +1,6 @@
 number = 7
 slug = "m1-source-reader"
-status = "pending"
+status = "in-progress"
 description = "Source reader and lexer for minimal subset"
 role = "legacy"
 context_files = []

@@ -1,0 +1,222 @@
+/* test_lexer.plsw -- SNOBOL4 lexer */
+
+%INCLUDE descr;
+%INCLUDE heap;
+
+/* Token types */
+%DEFINE TK_IDENT 1;
+%DEFINE TK_INT 2;
+%DEFINE TK_STR 3;
+%DEFINE TK_EQ 4;
+%DEFINE TK_LPAREN 5;
+%DEFINE TK_RPAREN 6;
+%DEFINE TK_COLON 7;
+%DEFINE TK_COMMA 8;
+%DEFINE TK_PLUS 9;
+%DEFINE TK_MINUS 10;
+%DEFINE TK_EOL 11;
+%DEFINE TK_EOF 12;
+%DEFINE TK_ERR 13;
+
+/* Source buffer */
+DCL SRC_BUF(64) CHAR INIT('OUTPUT = 42
+LOOP   X = X + 1
+       OUTPUT = 3
+END
+');
+DCL SRC_POS INT STATIC INIT(0);
+DCL SRC_LEN INT STATIC INIT(0);
+
+/* Current token */
+DCL TOK_TYPE INT STATIC INIT(0);
+DCL TOK_IVAL INT STATIC INIT(0);
+DCL TOK_BUF(32) CHAR INIT('                                ');
+DCL TOK_BLEN INT STATIC INIT(0);
+
+/* Char helpers */
+IS_ALPHA: PROC(C INT) RETURNS(INT);
+    IF (C >= 65) THEN IF (C <= 90) THEN RETURN(1);
+    IF (C >= 97) THEN IF (C <= 122) THEN RETURN(1);
+    RETURN(0);
+END;
+
+IS_DIGIT: PROC(C INT) RETURNS(INT);
+    IF (C >= 48) THEN IF (C <= 57) THEN RETURN(1);
+    RETURN(0);
+END;
+
+IS_ALNUM: PROC(C INT) RETURNS(INT);
+    IF (IS_ALPHA(C) != 0) THEN RETURN(1);
+    IF (IS_DIGIT(C) != 0) THEN RETURN(1);
+    RETURN(0);
+END;
+
+/* Source reader */
+SRC_INIT: PROC(LEN INT);
+    SRC_POS = 0;
+    SRC_LEN = LEN;
+END;
+
+SRC_PEEK: PROC RETURNS(INT);
+    IF (SRC_POS >= SRC_LEN) THEN RETURN(0);
+    RETURN(SRC_BUF(SRC_POS));
+END;
+
+SRC_NEXT: PROC RETURNS(INT);
+    DCL C INT;
+    IF (SRC_POS >= SRC_LEN) THEN RETURN(0);
+    C = SRC_BUF(SRC_POS);
+    SRC_POS = SRC_POS + 1;
+    RETURN(C);
+END;
+
+/* Lexer */
+LEX_NEXT: PROC;
+    DCL C INT;
+    DCL I INT;
+    /* Skip spaces/tabs */
+    C = SRC_PEEK();
+    DO WHILE (C = 32 OR C = 9);
+        SRC_POS = SRC_POS + 1;
+        C = SRC_PEEK();
+    END;
+    IF (C = 0) THEN DO; TOK_TYPE = TK_EOF; RETURN; END;
+    IF (C = 10) THEN DO; SRC_POS = SRC_POS + 1; TOK_TYPE = TK_EOL; RETURN; END;
+    IF (C = 61) THEN DO; SRC_POS = SRC_POS + 1; TOK_TYPE = TK_EQ; RETURN; END;
+    IF (C = 40) THEN DO; SRC_POS = SRC_POS + 1; TOK_TYPE = TK_LPAREN; RETURN; END;
+    IF (C = 41) THEN DO; SRC_POS = SRC_POS + 1; TOK_TYPE = TK_RPAREN; RETURN; END;
+    IF (C = 58) THEN DO; SRC_POS = SRC_POS + 1; TOK_TYPE = TK_COLON; RETURN; END;
+    IF (C = 44) THEN DO; SRC_POS = SRC_POS + 1; TOK_TYPE = TK_COMMA; RETURN; END;
+    IF (C = 43) THEN DO; SRC_POS = SRC_POS + 1; TOK_TYPE = TK_PLUS; RETURN; END;
+    IF (C = 45) THEN DO; SRC_POS = SRC_POS + 1; TOK_TYPE = TK_MINUS; RETURN; END;
+    /* String literal */
+    IF (C = 39) THEN DO;
+        SRC_POS = SRC_POS + 1;
+        I = 0;
+        C = SRC_PEEK();
+        DO WHILE (C != 39 AND C != 0 AND C != 10);
+            IF (I < 31) THEN DO; TOK_BUF(I) = C; I = I + 1; END;
+            SRC_POS = SRC_POS + 1;
+            C = SRC_PEEK();
+        END;
+        IF (C = 39) THEN SRC_POS = SRC_POS + 1;
+        TOK_BUF(I) = 0;
+        TOK_BLEN = I;
+        TOK_TYPE = TK_STR;
+        RETURN;
+    END;
+    /* Integer */
+    IF (IS_DIGIT(C) != 0) THEN DO;
+        TOK_IVAL = 0;
+        DO WHILE (IS_DIGIT(SRC_PEEK()) != 0);
+            C = SRC_NEXT();
+            TOK_IVAL = TOK_IVAL * 10 + (C - 48);
+        END;
+        TOK_TYPE = TK_INT;
+        RETURN;
+    END;
+    /* Identifier */
+    IF (IS_ALPHA(C) != 0) THEN DO;
+        I = 0;
+        DO WHILE (IS_ALNUM(SRC_PEEK()) != 0);
+            C = SRC_NEXT();
+            IF (C >= 97) THEN IF (C <= 122) THEN C = C - 32;
+            IF (I < 31) THEN DO; TOK_BUF(I) = C; I = I + 1; END;
+        END;
+        TOK_BUF(I) = 0;
+        TOK_BLEN = I;
+        TOK_TYPE = TK_IDENT;
+        RETURN;
+    END;
+    SRC_POS = SRC_POS + 1;
+    TOK_TYPE = TK_ERR;
+END;
+
+/* Token names */
+DCL TKN_ID(8) CHAR INIT('IDENT');
+DCL TKN_INT(4) CHAR INIT('INT');
+DCL TKN_STR(4) CHAR INIT('STR');
+DCL TKN_EQ(4) CHAR INIT('EQ');
+DCL TKN_LP(4) CHAR INIT('LP');
+DCL TKN_RP(4) CHAR INIT('RP');
+DCL TKN_COL(4) CHAR INIT('COL');
+DCL TKN_ADD(4) CHAR INIT('ADD');
+DCL TKN_EOL(4) CHAR INIT('EOL');
+DCL TKN_EOF(4) CHAR INIT('EOF');
+
+TOK_NAME: PROC(T INT) RETURNS(INT);
+    IF (T = TK_IDENT) THEN RETURN(ADDR(TKN_ID));
+    IF (T = TK_INT) THEN RETURN(ADDR(TKN_INT));
+    IF (T = TK_STR) THEN RETURN(ADDR(TKN_STR));
+    IF (T = TK_EQ) THEN RETURN(ADDR(TKN_EQ));
+    IF (T = TK_LPAREN) THEN RETURN(ADDR(TKN_LP));
+    IF (T = TK_RPAREN) THEN RETURN(ADDR(TKN_RP));
+    IF (T = TK_COLON) THEN RETURN(ADDR(TKN_COL));
+    IF (T = TK_PLUS) THEN RETURN(ADDR(TKN_ADD));
+    IF (T = TK_EOL) THEN RETURN(ADDR(TKN_EOL));
+    IF (T = TK_EOF) THEN RETURN(ADDR(TKN_EOF));
+    RETURN(ADDR(TKN_EOF));
+END;
+
+/* Test infra */
+DCL M_NL(3) CHAR INIT('
+');
+DCL M_SP(4) CHAR INIT(' ');
+DCL M_EQ(4) CHAR INIT('=');
+DCL M_P(4) CHAR INIT('P ');
+DCL M_F(4) CHAR INIT('F ');
+DCL M_DONE(20) CHAR INIT('All tests done');
+DCL HEXCHARS(16) CHAR INIT('0123456789ABCDEF');
+
+PUT_HEX_BYTE: PROC(V INT);
+    DCL HI INT;
+    DCL LO INT;
+    HI = V;
+    LO = 0;
+    DO WHILE (HI > 15);
+        HI = HI - 16;
+        LO = LO + 1;
+    END;
+    CALL UART_PUTCHAR(HEXCHARS(LO));
+    CALL UART_PUTCHAR(HEXCHARS(HI));
+END;
+
+CHK: PROC(OK INT, N INT);
+    IF (OK != 0) THEN
+        CALL UART_PUTS(ADDR(M_P));
+    ELSE
+        CALL UART_PUTS(ADDR(M_F));
+    CALL UART_PUTCHAR(48 + N);
+    CALL UART_PUTS(ADDR(M_NL));
+END;
+
+MAIN: PROC;
+    DCL OK INT;
+    DCL N INT;
+
+    CALL SRC_INIT(52);
+    N = 0;
+    CALL LEX_NEXT;
+    DO WHILE (TOK_TYPE != TK_EOF);
+        CALL UART_PUTS(TOK_NAME(TOK_TYPE));
+        IF (TOK_TYPE = TK_IDENT) THEN DO;
+            CALL UART_PUTS(ADDR(M_EQ));
+            CALL UART_PUTS(ADDR(TOK_BUF));
+        END;
+        IF (TOK_TYPE = TK_INT) THEN DO;
+            CALL UART_PUTS(ADDR(M_EQ));
+            CALL PUT_HEX_BYTE(TOK_IVAL);
+        END;
+        CALL UART_PUTS(ADDR(M_SP));
+        N = N + 1;
+        CALL LEX_NEXT;
+    END;
+    CALL UART_PUTS(ADDR(M_NL));
+
+    /* Expect 17 tokens */
+    OK = (N = 17);
+    CALL CHK(OK, 1);
+
+    CALL UART_PUTS(ADDR(M_DONE));
+    CALL UART_PUTS(ADDR(M_NL));
+END;
