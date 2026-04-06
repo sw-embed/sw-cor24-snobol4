@@ -1,6 +1,6 @@
 number = 3
 slug = "m3-lit-match"
-status = "pending"
+status = "in-progress"
 description = "Literal pattern matching with cursor"
 role = "legacy"
 context_files = []

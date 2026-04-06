@@ -55,8 +55,12 @@ test-pat:
 test-cursor:
     ./scripts/build.sh include/descr.msw include/heap.msw src/test_cursor.plsw
 
+# Run pattern match test (literal, SPAN, capture)
+test-pmatch:
+    ./scripts/build.sh include/descr.msw include/heap.msw include/pat.msw src/test_pmatch.plsw
+
 # Run all tests
-test: test-am test-lower test-exec test-amdump test-pat test-cursor
+test: test-am test-lower test-exec test-amdump test-pat test-cursor test-pmatch
     ./scripts/build.sh include/descr.msw include/heap.msw include/trace.msw src/test_descr.plsw
     ./scripts/build.sh include/descr.msw include/heap.msw src/test_snolib.plsw
     ./scripts/build.sh include/descr.msw include/heap.msw src/test_snolib2.plsw

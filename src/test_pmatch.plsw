@@ -1,0 +1,335 @@
+/* test_pmatch.plsw -- Pattern matching engine
+ *
+ * Tests: literal match, SPAN, capture, unanchored scanning
+ */
+
+%INCLUDE descr;
+%INCLUDE heap;
+%INCLUDE pat;
+
+/* ---- Heap allocator ---- */
+
+DCL ARENA(512) BYTE;
+DCL HEAP_BASE PTR STATIC;
+DCL HEAP_LIM PTR STATIC;
+DCL HEAP_TOP PTR STATIC;
+DCL FREE_HD PTR STATIC INIT(0);
+DCL ALLOC_N INT STATIC INIT(0);
+DCL FREE_N INT STATIC INIT(0);
+
+HEAP_INIT: PROC;
+    HEAP_BASE = ADDR(ARENA);
+    HEAP_LIM = ADDR(ARENA) + 512;
+    HEAP_TOP = HEAP_BASE;
+    FREE_HD = 0;
+    ALLOC_N = 0;
+END;
+
+HEAP_ALLOC: PROC(SZ INT) RETURNS(INT);
+    DCL P PTR;
+    IF (HEAP_TOP + SZ > HEAP_LIM) THEN RETURN(0);
+    P = HEAP_TOP;
+    HEAP_TOP = HEAP_TOP + SZ;
+    ALLOC_N = ALLOC_N + 1;
+    RETURN(P);
+END;
+
+/* ---- Pattern constructors ---- */
+
+PAT_ALLOC: PROC(KIND INT) RETURNS(INT);
+    DCL P PTR;
+    DCL NP PTR;
+    P = HEAP_ALLOC(PATNODE_SZ);
+    IF (P = 0) THEN RETURN(0);
+    NP = P;
+    NP->PK = KIND;
+    NP->PF = 0;
+    NP->PNEXT = 0;
+    NP->PALT = 0;
+    NP->POPER = 0;
+    NP->PLEN = 0;
+    RETURN(P);
+END;
+
+PAT_MAKE_LIT: PROC(STRPTR PTR, SLEN INT) RETURNS(INT);
+    DCL P PTR;
+    DCL NP PTR;
+    P = PAT_ALLOC(PK_LIT);
+    IF (P = 0) THEN RETURN(0);
+    NP = P;
+    NP->POPER = STRPTR;
+    NP->PLEN = SLEN;
+    RETURN(P);
+END;
+
+PAT_MAKE_SPAN: PROC(CLASSPTR PTR) RETURNS(INT);
+    DCL P PTR;
+    DCL NP PTR;
+    P = PAT_ALLOC(PK_SPAN);
+    IF (P = 0) THEN RETURN(0);
+    NP = P;
+    NP->POPER = CLASSPTR;
+    RETURN(P);
+END;
+
+PAT_MAKE_CAP: PROC(INNER PTR, VARIDX INT) RETURNS(INT);
+    DCL P PTR;
+    DCL NP PTR;
+    P = PAT_ALLOC(PK_CAP);
+    IF (P = 0) THEN RETURN(0);
+    NP = P;
+    NP->POPER = INNER;
+    NP->PLEN = VARIDX;
+    RETURN(P);
+END;
+
+/* ---- Cursor ---- */
+
+DCL CUR_STR PTR STATIC INIT(0);
+DCL CUR_LEN INT STATIC INIT(0);
+DCL CUR_POS INT STATIC INIT(0);
+
+CUR_INIT: PROC(STR PTR, LEN INT);
+    CUR_STR = STR;
+    CUR_LEN = LEN;
+    CUR_POS = 0;
+END;
+
+CUR_PEEK: PROC RETURNS(INT);
+    DCL P PTR;
+    IF (CUR_POS >= CUR_LEN) THEN RETURN(0);
+    P = CUR_STR + CUR_POS;
+    RETURN(P->DTAG);
+END;
+
+SLEN: PROC(S PTR) RETURNS(INT);
+    DCL I INT;
+    DCL P PTR;
+    I = 0;
+    P = S;
+    DO WHILE (P->DTAG != 0);
+        I = I + 1;
+        P = S + I;
+    END;
+    RETURN(I);
+END;
+
+IN_CLASS: PROC(C INT, CLASS PTR) RETURNS(INT);
+    DCL I INT;
+    DCL P PTR;
+    DCL CH INT;
+    I = 0;
+    P = CLASS;
+    CH = P->DTAG;
+    DO WHILE (CH != 0);
+        IF (CH = C) THEN RETURN(1);
+        I = I + 1;
+        P = CLASS + I;
+        CH = P->DTAG;
+    END;
+    RETURN(0);
+END;
+
+/* ---- Capture result ---- */
+
+DCL CAP_START INT STATIC INIT(0);
+DCL CAP_END INT STATIC INIT(0);
+DCL CAP_VALID INT STATIC INIT(0);
+
+/* ---- Pattern execution engine ----
+ *
+ * PAT_EXEC_NODE: try to match a single node at CUR_POS.
+ * Returns 1 on success (CUR_POS advanced), 0 on failure.
+ * On success, follows PNEXT chain.
+ */
+
+PAT_EXEC_NODE: PROC(ND PTR) RETURNS(INT);
+    DCL NP PTR;
+    DCL K INT;
+    DCL N INT;
+    DCL C INT;
+    DCL I INT;
+    DCL CP PTR;
+    DCL LP PTR;
+    DCL START INT;
+
+    NP = ND;
+    K = NP->PK;
+
+    IF (K = PK_LIT) THEN DO;
+        /* Match literal: compare N chars */
+        N = NP->PLEN;
+        IF (CUR_POS + N > CUR_LEN) THEN RETURN(0);
+        LP = NP->POPER;
+        I = 0;
+        DO WHILE (I < N);
+            CP = CUR_STR + CUR_POS + I;
+            DCL LP2 PTR;
+            LP2 = LP + I;
+            IF (CP->DTAG != LP2->DTAG) THEN RETURN(0);
+            I = I + 1;
+        END;
+        CUR_POS = CUR_POS + N;
+        /* Follow next */
+        IF (NP->PNEXT != 0) THEN
+            RETURN(PAT_EXEC_NODE(NP->PNEXT));
+        RETURN(1);
+    END;
+
+    IF (K = PK_SPAN) THEN DO;
+        /* SPAN: consume 1+ chars in class */
+        START = CUR_POS;
+        C = CUR_PEEK();
+        DO WHILE (C != 0 AND IN_CLASS(C, NP->POPER) != 0);
+            CUR_POS = CUR_POS + 1;
+            IF (CUR_POS < CUR_LEN) THEN DO;
+                CP = CUR_STR + CUR_POS;
+                C = CP->DTAG;
+            END;
+            ELSE
+                C = 0;
+        END;
+        N = CUR_POS - START;
+        IF (N = 0) THEN RETURN(0);
+        /* Follow next */
+        IF (NP->PNEXT != 0) THEN
+            RETURN(PAT_EXEC_NODE(NP->PNEXT));
+        RETURN(1);
+    END;
+
+    IF (K = PK_CAP) THEN DO;
+        /* Capture: execute inner pattern, record matched region */
+        START = CUR_POS;
+        IF (NP->POPER != 0) THEN DO;
+            IF (PAT_EXEC_NODE(NP->POPER) = 0) THEN RETURN(0);
+        END;
+        CAP_START = START;
+        CAP_END = CUR_POS;
+        CAP_VALID = 1;
+        /* Follow next */
+        IF (NP->PNEXT != 0) THEN
+            RETURN(PAT_EXEC_NODE(NP->PNEXT));
+        RETURN(1);
+    END;
+
+    IF (K = PK_LEN) THEN DO;
+        N = NP->PLEN;
+        IF (CUR_POS + N > CUR_LEN) THEN RETURN(0);
+        CUR_POS = CUR_POS + N;
+        IF (NP->PNEXT != 0) THEN
+            RETURN(PAT_EXEC_NODE(NP->PNEXT));
+        RETURN(1);
+    END;
+
+    /* Unknown node kind -- fail */
+    RETURN(0);
+END;
+
+/* PAT_MATCH: try pattern at all positions (unanchored).
+ * Returns 1 on success, 0 on failure.
+ * Sets CAP_START/CAP_END if capture occurred. */
+PAT_MATCH: PROC(PAT PTR, SUBJ PTR, SUBJLEN INT) RETURNS(INT);
+    DCL START INT;
+    DCL SAVE INT;
+
+    CALL CUR_INIT(SUBJ, SUBJLEN);
+    CAP_VALID = 0;
+
+    START = 0;
+    DO WHILE (START <= SUBJLEN);
+        CUR_POS = START;
+        IF (PAT_EXEC_NODE(PAT) != 0) THEN
+            RETURN(1);
+        START = START + 1;
+    END;
+    RETURN(0);
+END;
+
+/* ---- Test ---- */
+
+DCL S1(20) CHAR INIT('abc 123 xyz');
+DCL DCLASS(12) CHAR INIT('0123456789');
+DCL LIT_123(4) CHAR INIT('123');
+DCL LIT_ABC(4) CHAR INIT('abc');
+DCL LIT_QQQ(4) CHAR INIT('qqq');
+
+DCL M_NL(3) CHAR INIT('
+');
+DCL M_P(4) CHAR INIT('P ');
+DCL M_F(4) CHAR INIT('F ');
+DCL M_DONE(20) CHAR INIT('All tests done');
+
+CHK: PROC(OK INT, N INT);
+    IF (OK != 0) THEN
+        CALL UART_PUTS(ADDR(M_P));
+    ELSE
+        CALL UART_PUTS(ADDR(M_F));
+    CALL UART_PUTCHAR(48 + N);
+    CALL UART_PUTS(ADDR(M_NL));
+END;
+
+MAIN: PROC;
+    DCL P1 PTR;
+    DCL P2 PTR;
+    DCL P3 PTR;
+    DCL NP PTR;
+    DCL OK INT;
+    DCL V INT;
+    DCL SL INT;
+
+    CALL HEAP_INIT;
+    SL = SLEN(ADDR(S1));
+
+    /* 1: literal "123" matches in "abc 123 xyz" (unanchored) */
+    P1 = PAT_MAKE_LIT(ADDR(LIT_123), 3);
+    V = PAT_MATCH(P1, ADDR(S1), SL);
+    OK = (V = 1);
+    CALL CHK(OK, 1);
+
+    /* 2: literal "abc" matches at start */
+    P1 = PAT_MAKE_LIT(ADDR(LIT_ABC), 3);
+    V = PAT_MATCH(P1, ADDR(S1), SL);
+    OK = (V = 1);
+    CALL CHK(OK, 2);
+
+    /* 3: literal "qqq" does not match */
+    P1 = PAT_MAKE_LIT(ADDR(LIT_QQQ), 3);
+    V = PAT_MATCH(P1, ADDR(S1), SL);
+    OK = (V = 0);
+    CALL CHK(OK, 3);
+
+    /* 4: SPAN(digits) matches in "abc 123 xyz" */
+    P1 = PAT_MAKE_SPAN(ADDR(DCLASS));
+    V = PAT_MATCH(P1, ADDR(S1), SL);
+    OK = (V = 1);
+    CALL CHK(OK, 4);
+
+    /* 5: SPAN(digits) with capture */
+    P1 = PAT_MAKE_SPAN(ADDR(DCLASS));
+    P2 = PAT_MAKE_CAP(P1, 0);
+    V = PAT_MATCH(P2, ADDR(S1), SL);
+    OK = (V = 1) AND (CAP_VALID = 1);
+    CALL CHK(OK, 5);
+
+    /* 6: capture region is 4..7 ("123" starts at index 4) */
+    OK = (CAP_START = 4) AND (CAP_END = 7);
+    CALL CHK(OK, 6);
+
+    /* 7: print captured substring */
+    IF (CAP_VALID = 1) THEN DO;
+        DCL I INT;
+        DCL CP PTR;
+        I = CAP_START;
+        DO WHILE (I < CAP_END);
+            CP = ADDR(S1) + I;
+            CALL UART_PUTCHAR(CP->DTAG);
+            I = I + 1;
+        END;
+        CALL UART_PUTS(ADDR(M_NL));
+    END;
+    /* Visual: should print "123" */
+    CALL CHK(1, 7);
+
+    CALL UART_PUTS(ADDR(M_DONE));
+    CALL UART_PUTS(ADDR(M_NL));
+END;
