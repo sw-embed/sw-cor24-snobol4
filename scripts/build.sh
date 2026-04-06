@@ -62,7 +62,7 @@ echo "=== Compiling $BASENAME ===" >&2
 echo "  Macros: ${MACROS[*]:-none}" >&2
 echo "  Source: $MAIN" >&2
 
-COMPILER_OUT=$(cor24-run --run "$COMPILER_ASM" -u "$INPUT" -n 500000000 -t 300 --speed 0 2>&1)
+COMPILER_OUT=$(cor24-run --run "$COMPILER_ASM" -u "$INPUT" -n 1000000000 -t 600 --speed 0 2>&1)
 UART_OUT=$(echo "$COMPILER_OUT" | sed -n '/^UART output:/,/^Executed /{/^Executed /d;p;}' | sed '1s/^UART output: //')
 
 # Check for errors

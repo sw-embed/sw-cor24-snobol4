@@ -1,6 +1,6 @@
 number = 2
 slug = "m4-break-rem"
-status = "pending"
+status = "in-progress"
 description = "BREAK and REM pattern primitives"
 role = "legacy"
 context_files = []

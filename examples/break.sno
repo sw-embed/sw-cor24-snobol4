@@ -1,0 +1,7 @@
+       LINE = 'Alice|F|English'
+       LINE BREAK('|') . NAME '|' BREAK('|') . SEX '|' REM . MAJOR :F(NO)
+       OUTPUT = NAME
+       OUTPUT = SEX
+       OUTPUT = MAJOR :(END)
+NO     OUTPUT = 'parse failed'
+END

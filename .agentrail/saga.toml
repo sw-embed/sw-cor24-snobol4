@@ -1,5 +1,5 @@
 name = "snobol4-m4-richer-runtime"
 status = "active"
-current_step = 1
+current_step = 2
 created_at = "2026-04-06T11:23:08"
 plan_file = ".agentrail/plan.md"

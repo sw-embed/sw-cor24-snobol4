@@ -2,7 +2,7 @@
 
 # Build the SNOBOL4 interpreter
 build:
-    ./scripts/build.sh include/descr.msw include/heap.msw include/am.msw src/snobol4.plsw
+    ./scripts/build.sh include/descr.msw include/heap.msw include/am.msw include/pat.msw src/snobol4.plsw
 
 # Run a SNOBOL4 program
 run file:
@@ -42,8 +42,12 @@ multiply:
 concat:
     ./scripts/run-snobol4.sh examples/concat.sno
 
+# BREAK/REM record parsing
+break:
+    ./scripts/run-snobol4.sh examples/break.sno
+
 # Run all demos
-demos: hello hello-goto count span span-fail multiply concat
+demos: hello hello-goto count span span-fail multiply concat break
 
 # --- Tests ---
 

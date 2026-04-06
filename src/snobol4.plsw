@@ -10,6 +10,7 @@
 %INCLUDE descr;
 %INCLUDE heap;
 %INCLUDE am;
+%INCLUDE pat;
 
 /* Token types */
 %DEFINE TK_IDENT 1;
@@ -360,6 +361,17 @@ DCL S_EPCNT(16) INT;
 DCL EP_TYP(64) INT;
 DCL EP_VAL(64) INT;
 
+/* Pattern parts for compound match statements.
+ * PP_TYP: OE_IDENT=var, OE_STR=literal, OE_SPAN, OE_BREAK, OE_REM, OE_CAP.
+ * PP_VAL: sym idx, str offset, or class offset.
+ * PP_VAL2: for OE_CAP = capture var idx. */
+%DEFINE OE_BREAK 6;
+%DEFINE OE_REM 7;
+%DEFINE OE_CAP 8;
+DCL S_PPCNT(16) INT;
+DCL PP_TYP(128) INT;
+DCL PP_VAL(128) INT;
+
 /* ================================================================
  * Parser
  * ================================================================ */
@@ -387,6 +399,7 @@ PARSE: PROC;
         S_GLBL(S) = 0 - 1;
         S_SPTR(S) = 0 - 1;
         S_EPCNT(S) = 0;
+        S_PPCNT(S) = 0;
 
         IF (TT = TK_EOL) THEN DO;
             CALL LEX;
@@ -413,23 +426,83 @@ PARSE: PROC;
                 CALL LEX;
             END;
 
-            /* Check: is this a pattern match? (SUBJ PAT . CAP)
-             * If next token is IDENT and not '=', it's a match stmt */
-            IF (TT = TK_IDENT AND S_SUBJ(S) >= 0) THEN DO;
-                /* Pattern match: SUBJECT PATTERN [. CAPTURE] */
+            /* Check: is this a pattern match? (SUBJ parts... :goto)
+             * If next token is IDENT (not =) or STR, it's a match stmt */
+            IF ((TT = TK_IDENT OR TT = TK_STR) AND S_SUBJ(S) >= 0) THEN DO;
+                DCL PPB INT;
+                DCL PPI INT;
                 S_TYP(S) = ST_MATCH;
-                NOFF = SBSAVE();
-                S_OEV1(S) = SYM_LOOKUP(NOFF);
-                CALL LEX;
-                /* Check for . CAPTURE */
-                IF (TT = TK_DOT) THEN DO;
-                    CALL LEX;
-                    IF (TT = TK_IDENT) THEN DO;
+                PPB = S * 8;
+                PPI = 0;
+
+                /* Collect pattern parts until : or EOL */
+                DO WHILE (TT != TK_COLON AND TT != TK_EOL AND TT != TK_EOF AND PPI < 8);
+                    IF (TT = TK_DOT) THEN DO;
+                        /* . CAPTURE */
+                        CALL LEX;
+                        IF (TT = TK_IDENT) THEN DO;
+                            NOFF = SBSAVE();
+                            PP_TYP(PPB + PPI) = OE_CAP;
+                            PP_VAL(PPB + PPI) = SYM_LOOKUP(NOFF);
+                            PPI = PPI + 1;
+                            CALL LEX;
+                        END;
+                    END;
+                    ELSE IF (TT = TK_STR) THEN DO;
+                        PP_TYP(PPB + PPI) = OE_STR;
+                        PP_VAL(PPB + PPI) = SBSAVE();
+                        PPI = PPI + 1;
+                        CALL LEX;
+                    END;
+                    ELSE IF (TT = TK_IDENT) THEN DO;
                         NOFF = SBSAVE();
-                        S_OEV2(S) = SYM_LOOKUP(NOFF);
+                        /* Check for SPAN/BREAK/REM function */
+                        IF (TB(0) = 83 AND TB(1) = 80 AND TB(2) = 65 AND TB(3) = 78 AND TB(4) = 0) THEN DO;
+                            CALL LEX;
+                            IF (TT = TK_LPAREN) THEN DO;
+                                CALL LEX;
+                                IF (TT = TK_STR) THEN DO;
+                                    PP_TYP(PPB + PPI) = OE_SPAN;
+                                    PP_VAL(PPB + PPI) = SBSAVE();
+                                    PPI = PPI + 1;
+                                    CALL LEX;
+                                END;
+                                IF (TT = TK_RPAREN) THEN CALL LEX;
+                            END;
+                        END;
+                        ELSE IF (TB(0) = 66 AND TB(1) = 82 AND TB(2) = 69 AND TB(3) = 65 AND TB(4) = 75 AND TB(5) = 0) THEN DO;
+                            CALL LEX;
+                            IF (TT = TK_LPAREN) THEN DO;
+                                CALL LEX;
+                                IF (TT = TK_STR) THEN DO;
+                                    PP_TYP(PPB + PPI) = OE_BREAK;
+                                    PP_VAL(PPB + PPI) = SBSAVE();
+                                    PPI = PPI + 1;
+                                    CALL LEX;
+                                END;
+                                IF (TT = TK_RPAREN) THEN CALL LEX;
+                            END;
+                        END;
+                        ELSE IF (TB(0) = 82 AND TB(1) = 69 AND TB(2) = 77 AND TB(3) = 0) THEN DO;
+                            PP_TYP(PPB + PPI) = OE_REM;
+                            PP_VAL(PPB + PPI) = 0;
+                            PPI = PPI + 1;
+                            CALL LEX;
+                        END;
+                        ELSE DO;
+                            /* Pattern variable reference */
+                            PP_TYP(PPB + PPI) = OE_IDENT;
+                            PP_VAL(PPB + PPI) = SYM_LOOKUP(NOFF);
+                            PPI = PPI + 1;
+                            CALL LEX;
+                        END;
+                    END;
+                    ELSE DO;
                         CALL LEX;
                     END;
                 END;
+
+                S_PPCNT(S) = PPI;
             END;
             ELSE IF (TT = TK_EQ) THEN DO;
                 DCL EPI INT;
@@ -784,12 +857,56 @@ LOWER_STMT: PROC(S INT);
     END;
 
     IF (S_TYP(S) = ST_MATCH) THEN DO;
-        /* PAT_MATCH <subj_var> <pat_var> <cap_var>
-         * subj = S_SUBJ, pat = S_OEV1, cap = S_OEV2 */
-        CALL AM_EMIT_OP(OP_PAT_MATCH);
-        CALL AM_EMIT_BYTE(S_SUBJ(S));
-        CALL AM_EMIT_BYTE(S_OEV1(S));
-        CALL AM_EMIT_BYTE(S_OEV2(S));
+        IF (S_PPCNT(S) > 0) THEN DO;
+            /* Compound pattern: emit build ops for each part,
+             * then PAT_MATCH2 <subj_var> */
+            DCL PPI2 INT;
+            DCL PPB2 INT;
+            DCL PPT INT;
+            DCL PPV INT;
+            PPB2 = S * 8;
+            PPI2 = 0;
+            DO WHILE (PPI2 < S_PPCNT(S));
+                PPT = PP_TYP(PPB2 + PPI2);
+                PPV = PP_VAL(PPB2 + PPI2);
+                IF (PPT = OE_SPAN) THEN DO;
+                    CALL AM_EMIT_OP(OP_MAKE_SPAN);
+                    CALL AM_EMIT_WORD(PPV);
+                END;
+                ELSE IF (PPT = OE_BREAK) THEN DO;
+                    CALL AM_EMIT_OP(OP_MAKE_BREAK);
+                    CALL AM_EMIT_WORD(PPV);
+                END;
+                ELSE IF (PPT = OE_REM) THEN DO;
+                    CALL AM_EMIT_OP(OP_MAKE_REM);
+                END;
+                ELSE IF (PPT = OE_STR) THEN DO;
+                    CALL AM_EMIT_OP(OP_MAKE_LIT_PAT);
+                    CALL AM_EMIT_WORD(PPV);
+                END;
+                ELSE IF (PPT = OE_IDENT) THEN DO;
+                    /* Load pattern var value */
+                    CALL AM_EMIT_OP(OP_LOAD_VAR);
+                    CALL AM_EMIT_BYTE(PPV);
+                END;
+                ELSE IF (PPT = OE_CAP) THEN DO;
+                    CALL AM_EMIT_OP(OP_PAT_CAP);
+                    CALL AM_EMIT_BYTE(PPV);
+                END;
+                IF (PPI2 > 0 AND PPT != OE_CAP) THEN
+                    CALL AM_EMIT_OP(OP_PAT_CONCAT);
+                PPI2 = PPI2 + 1;
+            END;
+            CALL AM_EMIT_OP(OP_PAT_MATCH2);
+            CALL AM_EMIT_BYTE(S_SUBJ(S));
+        END;
+        ELSE DO;
+            /* Legacy simple match */
+            CALL AM_EMIT_OP(OP_PAT_MATCH);
+            CALL AM_EMIT_BYTE(S_SUBJ(S));
+            CALL AM_EMIT_BYTE(S_OEV1(S));
+            CALL AM_EMIT_BYTE(S_OEV2(S));
+        END;
 
         /* Goto after match */
         IF (S_GTYP(S) = GT_UNCOND) THEN DO;
@@ -842,10 +959,10 @@ FIXUP_GOTOS: PROC;
             END;
             PC = PC + 3;
         END;
-        ELSE IF (OP = OP_LOAD_INT OR OP = OP_LOAD_STR OR OP = OP_PRINT_STR OR OP = OP_MAKE_SPAN) THEN DO;
+        ELSE IF (OP = OP_LOAD_INT OR OP = OP_LOAD_STR OR OP = OP_PRINT_STR OR OP = OP_MAKE_SPAN OR OP = OP_MAKE_BREAK OR OP = OP_MAKE_LIT_PAT) THEN DO;
             PC = PC + 3;
         END;
-        ELSE IF (OP = OP_LOAD_VAR OR OP = OP_STORE_VAR) THEN DO;
+        ELSE IF (OP = OP_LOAD_VAR OR OP = OP_STORE_VAR OR OP = OP_PRINT_VAR OR OP = OP_PAT_CAP OR OP = OP_PAT_MATCH2) THEN DO;
             PC = PC + 1;
         END;
         ELSE IF (OP = OP_PAT_MATCH) THEN DO;
@@ -971,6 +1088,30 @@ EXEC_SPAN: PROC(SUBJ PTR, SLEN2 INT, START INT, CLASS PTR) RETURNS(INT);
     END;
     RETURN(POS - START);
 END;
+
+/* EXEC_BREAK: match up to (not including) first char in class.
+ * Returns number of chars consumed (0 is valid for BREAK). Fails if no class char found. */
+EXEC_BREAK: PROC(SUBJ PTR, SLEN2 INT, START INT, CLASS PTR) RETURNS(INT);
+    DCL POS INT;
+    DCL C INT;
+    DCL P PTR;
+    POS = START;
+    DO WHILE (POS < SLEN2);
+        P = SUBJ + POS;
+        C = P->DTAG;
+        IF (IN_CLASS(C, CLASS) != 0) THEN
+            RETURN(POS - START);
+        POS = POS + 1;
+    END;
+    /* No class char found = failure */
+    RETURN(0 - 1);
+END;
+
+/* Pattern stack for building compound patterns at runtime.
+ * Each entry is an (kind, oper, next) triple stored as offsets. */
+DCL PSTK(16) INT;
+DCL PSTYP(16) INT;
+DCL PSTOP INT STATIC INIT(0);
 
 /* Last match result for :S/:F */
 DCL LAST_RESULT INT STATIC INIT(1);
@@ -1138,9 +1279,14 @@ AM_EXEC: PROC;
         ELSE IF (OP = OP_MAKE_SPAN) THEN DO;
             V = AM_CODE(PC + 2) * 65536 + AM_CODE(PC + 1) * 256 + AM_CODE(PC);
             PC = PC + 3;
+            /* Push to eval stack (for DIGITS = SPAN assignment) */
             ESTK(ESP) = V;
             ESP = ESP + 1;
             LAST_PUSH_TYP = VTYP_PAT;
+            /* Also push to pattern stack (for compound match) */
+            PSTK(PSTOP) = V;
+            PSTYP(PSTOP) = PK_SPAN;
+            PSTOP = PSTOP + 1;
         END;
         ELSE IF (OP = OP_PAT_MATCH) THEN DO;
             /* PAT_MATCH <subj_var> <pat_var> <cap_var> */
@@ -1202,6 +1348,156 @@ AM_EXEC: PROC;
             END;
 
             LAST_RESULT = MATCHED;
+        END;
+        ELSE IF (OP = OP_MAKE_BREAK) THEN DO;
+            V = AM_CODE(PC + 2) * 65536 + AM_CODE(PC + 1) * 256 + AM_CODE(PC);
+            PC = PC + 3;
+            /* Push (kind=BREAK, class_offset=V) onto pattern stack */
+            PSTK(PSTOP) = V;
+            PSTYP(PSTOP) = PK_BREAK;
+            PSTOP = PSTOP + 1;
+            LAST_PUSH_TYP = VTYP_PAT;
+        END;
+        ELSE IF (OP = OP_MAKE_REM) THEN DO;
+            PSTK(PSTOP) = 0;
+            PSTYP(PSTOP) = PK_REM;
+            PSTOP = PSTOP + 1;
+        END;
+        ELSE IF (OP = OP_MAKE_LIT_PAT) THEN DO;
+            V = AM_CODE(PC + 2) * 65536 + AM_CODE(PC + 1) * 256 + AM_CODE(PC);
+            PC = PC + 3;
+            PSTK(PSTOP) = V;
+            PSTYP(PSTOP) = PK_LIT;
+            PSTOP = PSTOP + 1;
+        END;
+        ELSE IF (OP = OP_PAT_CONCAT) THEN DO;
+            /* Just a marker -- parts stay on pattern stack */
+        END;
+        ELSE IF (OP = OP_PAT_CAP) THEN DO;
+            /* Mark previous pattern stack entry for capture */
+            IDX = AM_CODE(PC);
+            PC = PC + 1;
+            /* Store capture var index with the previous part */
+            IF (PSTOP > 0) THEN DO;
+                /* Use high bit trick: val = val | (capvar << 16) -- too complex.
+                 * Instead, add a capture entry to pattern stack */
+                PSTK(PSTOP) = IDX;
+                PSTYP(PSTOP) = PK_CAP;
+                PSTOP = PSTOP + 1;
+            END;
+        END;
+        ELSE IF (OP = OP_PAT_MATCH2) THEN DO;
+            /* Execute compound pattern from pattern stack */
+            DCL SIDX2 INT;
+            DCL SUBJ_OFF2 INT;
+            DCL SUBJ_LEN2 INT;
+            DCL TRYPOS2 INT;
+            DCL MATCHED2 INT;
+            DCL CPOS INT;
+            DCL PI INT;
+            DCL PT INT;
+            DCL PV INT;
+            DCL MLEN2 INT;
+            DCL CAPVAR INT;
+            DCL CAPSTART INT;
+
+            SIDX2 = AM_CODE(PC);
+            PC = PC + 1;
+            SUBJ_OFF2 = VARS(SIDX2);
+            SUBJ_LEN2 = SLEN(ADDR(SB) + SUBJ_OFF2);
+
+            MATCHED2 = 0;
+            TRYPOS2 = 0;
+
+            /* Try at each starting position (unanchored) */
+            DO WHILE (TRYPOS2 <= SUBJ_LEN2 AND MATCHED2 = 0);
+                CPOS = TRYPOS2;
+                PI = 0;
+                MATCHED2 = 1;
+                CAPVAR = 0 - 1;
+
+                DO WHILE (PI < PSTOP AND MATCHED2 = 1);
+                    PT = PSTYP(PI);
+                    PV = PSTK(PI);
+
+                    IF (PT = PK_CAP) THEN DO;
+                        /* Capture: store current substring into capture var */
+                        IF (PV >= 0 AND PV < 16) THEN DO;
+                            DCL DST2 INT;
+                            DCL J INT;
+                            DCL SP3 PTR;
+                            DCL DP2 PTR;
+                            DST2 = SBPOS;
+                            J = CAPSTART;
+                            DO WHILE (J < CPOS);
+                                SP3 = ADDR(SB) + SUBJ_OFF2 + J;
+                                DP2 = ADDR(SB) + SBPOS;
+                                DP2->DTAG = SP3->DTAG;
+                                SBPOS = SBPOS + 1;
+                                J = J + 1;
+                            END;
+                            DP2 = ADDR(SB) + SBPOS;
+                            DP2->DTAG = 0;
+                            SBPOS = SBPOS + 1;
+                            VARS(PV) = DST2;
+                            VTYP(PV) = VTYP_STR;
+                        END;
+                    END;
+                    ELSE IF (PT = PK_SPAN) THEN DO;
+                        CAPSTART = CPOS;
+                        MLEN2 = EXEC_SPAN(ADDR(SB) + SUBJ_OFF2, SUBJ_LEN2, CPOS, ADDR(SB) + PV);
+                        IF (MLEN2 > 0) THEN
+                            CPOS = CPOS + MLEN2;
+                        ELSE
+                            MATCHED2 = 0;
+                    END;
+                    ELSE IF (PT = PK_BREAK) THEN DO;
+                        CAPSTART = CPOS;
+                        MLEN2 = EXEC_BREAK(ADDR(SB) + SUBJ_OFF2, SUBJ_LEN2, CPOS, ADDR(SB) + PV);
+                        IF (MLEN2 >= 0) THEN
+                            CPOS = CPOS + MLEN2;
+                        ELSE
+                            MATCHED2 = 0;
+                    END;
+                    ELSE IF (PT = PK_REM) THEN DO;
+                        CAPSTART = CPOS;
+                        CPOS = SUBJ_LEN2;
+                    END;
+                    ELSE IF (PT = PK_LIT) THEN DO;
+                        /* Literal match */
+                        DCL LLEN INT;
+                        DCL LK INT;
+                        DCL LP2 PTR;
+                        DCL CP2 PTR;
+                        LLEN = SLEN(ADDR(SB) + PV);
+                        IF (CPOS + LLEN > SUBJ_LEN2) THEN DO;
+                            MATCHED2 = 0;
+                        END;
+                        ELSE DO;
+                            LK = 0;
+                            DO WHILE (LK < LLEN);
+                                LP2 = ADDR(SB) + PV + LK;
+                                CP2 = ADDR(SB) + SUBJ_OFF2 + CPOS + LK;
+                                IF (LP2->DTAG != CP2->DTAG) THEN DO;
+                                    MATCHED2 = 0;
+                                    LK = LLEN;
+                                END;
+                                LK = LK + 1;
+                            END;
+                            IF (MATCHED2 = 1) THEN
+                                CPOS = CPOS + LLEN;
+                        END;
+                    END;
+
+                    PI = PI + 1;
+                END;
+
+                IF (MATCHED2 = 0) THEN
+                    TRYPOS2 = TRYPOS2 + 1;
+            END;
+
+            PSTOP = 0;
+            LAST_RESULT = MATCHED2;
         END;
         ELSE IF (OP = OP_HALT) THEN DO;
             RETURN;
