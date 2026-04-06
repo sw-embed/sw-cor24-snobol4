@@ -1,0 +1,301 @@
+/* test_lower.plsw -- Test AM lowering pass */
+
+%INCLUDE descr;
+%INCLUDE heap;
+%INCLUDE am;
+
+/* ================================================================
+ * AM code buffer (from test_am)
+ * ================================================================ */
+
+DCL AM_CODE(512) BYTE;
+DCL AM_PC INT STATIC INIT(0);
+
+AM_INIT: PROC;
+    AM_PC = 0;
+END;
+
+AM_EMIT_OP: PROC(OP INT);
+    AM_CODE(AM_PC) = OP;
+    AM_PC = AM_PC + 1;
+END;
+
+AM_EMIT_BYTE: PROC(V INT);
+    AM_CODE(AM_PC) = V;
+    AM_PC = AM_PC + 1;
+END;
+
+AM_EMIT_WORD: PROC(V INT);
+    DCL B0 INT;
+    DCL B1 INT;
+    DCL B2 INT;
+    DCL REM INT;
+    REM = V;
+    B2 = 0;
+    DO WHILE (REM > 65535);
+        REM = REM - 65536;
+        B2 = B2 + 1;
+    END;
+    B1 = 0;
+    DO WHILE (REM > 255);
+        REM = REM - 256;
+        B1 = B1 + 1;
+    END;
+    B0 = REM;
+    AM_CODE(AM_PC) = B0;
+    AM_PC = AM_PC + 1;
+    AM_CODE(AM_PC) = B1;
+    AM_PC = AM_PC + 1;
+    AM_CODE(AM_PC) = B2;
+    AM_PC = AM_PC + 1;
+END;
+
+AM_READ_BYTE: PROC(OFF INT) RETURNS(INT);
+    RETURN(AM_CODE(OFF));
+END;
+
+AM_READ_WORD: PROC(OFF INT) RETURNS(INT);
+    DCL V INT;
+    V = AM_CODE(OFF + 2) * 65536 + AM_CODE(OFF + 1) * 256 + AM_CODE(OFF);
+    RETURN(V);
+END;
+
+/* Patch a word at offset (for fixups) */
+AM_PATCH_WORD: PROC(OFF INT, V INT);
+    DCL B0 INT;
+    DCL B1 INT;
+    DCL B2 INT;
+    DCL REM INT;
+    REM = V;
+    B2 = 0;
+    DO WHILE (REM > 65535);
+        REM = REM - 65536;
+        B2 = B2 + 1;
+    END;
+    B1 = 0;
+    DO WHILE (REM > 255);
+        REM = REM - 256;
+        B1 = B1 + 1;
+    END;
+    B0 = REM;
+    AM_CODE(OFF) = B0;
+    AM_CODE(OFF + 1) = B1;
+    AM_CODE(OFF + 2) = B2;
+END;
+
+/* ================================================================
+ * Statement table (simplified for test)
+ * ================================================================ */
+
+%DEFINE ST_EMPTY 0;
+%DEFINE ST_ASSIGN 1;
+%DEFINE ST_END 2;
+%DEFINE OE_NONE 0;
+%DEFINE OE_IDENT 1;
+%DEFINE OE_INT 2;
+%DEFINE OE_STR 3;
+%DEFINE OE_BINOP 4;
+%DEFINE GT_NONE 0;
+%DEFINE GT_UNCOND 1;
+
+%DEFINE TK_PLUS 9;
+%DEFINE TK_MINUS 10;
+
+%DEFINE STMAX 16;
+
+DCL S_TYP(16) INT;
+DCL S_SUBJ(16) INT;
+DCL S_OETY(16) INT;
+DCL S_OEV1(16) INT;
+DCL S_OEOP(16) INT;
+DCL S_OEV2(16) INT;
+DCL S_GTYP(16) INT;
+DCL S_GLBL(16) INT;
+DCL S_SPTR(16) INT;
+DCL STCNT INT STATIC INIT(0);
+
+/* Statement-to-AM-address map (for goto fixup) */
+DCL STMT_ADDR(16) INT;
+
+/* Which sym index is OUTPUT (-1 = unknown) */
+DCL OUT_SYM INT STATIC INIT(0);
+
+/* ================================================================
+ * Lowering pass
+ * ================================================================ */
+
+LOWER_STMT: PROC(S INT);
+    /* Record AM address for this statement */
+    STMT_ADDR(S) = AM_PC;
+
+    IF (S_TYP(S) = ST_END) THEN DO;
+        CALL AM_EMIT_OP(OP_HALT);
+        RETURN;
+    END;
+
+    IF (S_TYP(S) = ST_EMPTY) THEN DO;
+        CALL AM_EMIT_OP(OP_NOP);
+        RETURN;
+    END;
+
+    IF (S_TYP(S) = ST_ASSIGN) THEN DO;
+        /* Evaluate object expression */
+        IF (S_OETY(S) = OE_INT) THEN DO;
+            CALL AM_EMIT_OP(OP_LOAD_INT);
+            CALL AM_EMIT_WORD(S_OEV1(S));
+        END;
+        ELSE IF (S_OETY(S) = OE_STR) THEN DO;
+            CALL AM_EMIT_OP(OP_LOAD_STR);
+            CALL AM_EMIT_WORD(S_SPTR(S));
+        END;
+        ELSE IF (S_OETY(S) = OE_IDENT) THEN DO;
+            CALL AM_EMIT_OP(OP_LOAD_VAR);
+            CALL AM_EMIT_BYTE(S_OEV1(S));
+        END;
+        ELSE IF (S_OETY(S) = OE_BINOP) THEN DO;
+            CALL AM_EMIT_OP(OP_LOAD_VAR);
+            CALL AM_EMIT_BYTE(S_OEV1(S));
+            CALL AM_EMIT_OP(OP_LOAD_INT);
+            CALL AM_EMIT_WORD(S_OEV2(S));
+            IF (S_OEOP(S) = TK_PLUS) THEN
+                CALL AM_EMIT_OP(OP_ADD);
+            ELSE
+                CALL AM_EMIT_OP(OP_SUB);
+        END;
+
+        /* Store */
+        IF (S_SUBJ(S) >= 0) THEN DO;
+            CALL AM_EMIT_OP(OP_STORE_VAR);
+            CALL AM_EMIT_BYTE(S_SUBJ(S));
+        END;
+
+        /* If OUTPUT, emit print */
+        IF (S_SUBJ(S) = OUT_SYM) THEN DO;
+            IF (S_OETY(S) = OE_STR) THEN DO;
+                CALL AM_EMIT_OP(OP_PRINT_STR);
+                CALL AM_EMIT_WORD(S_SPTR(S));
+            END;
+            ELSE DO;
+                CALL AM_EMIT_OP(OP_LOAD_VAR);
+                CALL AM_EMIT_BYTE(S_SUBJ(S));
+                CALL AM_EMIT_OP(OP_PRINT_INT);
+            END;
+            CALL AM_EMIT_OP(OP_PRINT_NL);
+        END;
+
+        /* Goto: emit branch with placeholder, fixup later */
+        IF (S_GTYP(S) = GT_UNCOND) THEN DO;
+            CALL AM_EMIT_OP(OP_BR);
+            CALL AM_EMIT_WORD(0);
+        END;
+    END;
+END;
+
+LOWER_ALL: PROC;
+    DCL I INT;
+    CALL AM_INIT;
+    I = 0;
+    DO WHILE (I < STCNT);
+        CALL LOWER_STMT(I);
+        I = I + 1;
+    END;
+END;
+
+/* ================================================================
+ * Test
+ * ================================================================ */
+
+DCL M_NL(3) CHAR INIT('
+');
+DCL M_P(4) CHAR INIT('P ');
+DCL M_F(4) CHAR INIT('F ');
+DCL M_DONE(20) CHAR INIT('All tests done');
+
+CHK: PROC(OK INT, N INT);
+    IF (OK != 0) THEN
+        CALL UART_PUTS(ADDR(M_P));
+    ELSE
+        CALL UART_PUTS(ADDR(M_F));
+    CALL UART_PUTCHAR(48 + N);
+    CALL UART_PUTS(ADDR(M_NL));
+END;
+
+MAIN: PROC;
+    DCL OK INT;
+
+    /* Build a simple statement table:
+     * stmt 0: OUTPUT = 42  (subject=0 is OUTPUT)
+     * stmt 1: END
+     */
+    OUT_SYM = 0;
+    STCNT = 2;
+
+    S_TYP(0) = ST_ASSIGN;
+    S_SUBJ(0) = 0;
+    S_OETY(0) = OE_INT;
+    S_OEV1(0) = 42;
+    S_OEOP(0) = 0;
+    S_OEV2(0) = 0;
+    S_GTYP(0) = GT_NONE;
+    S_GLBL(0) = 0;
+    S_SPTR(0) = 0;
+
+    S_TYP(1) = ST_END;
+    S_SUBJ(1) = 0;
+    S_OETY(1) = OE_NONE;
+    S_OEV1(1) = 0;
+    S_OEOP(1) = 0;
+    S_OEV2(1) = 0;
+    S_GTYP(1) = GT_NONE;
+    S_GLBL(1) = 0;
+    S_SPTR(1) = 0;
+
+    CALL LOWER_ALL;
+
+    /* 1: AM code was emitted */
+    OK = (AM_PC > 0);
+    CALL CHK(OK, 1);
+
+    /* 2: first opcode is LOAD_INT */
+    OK = (AM_READ_BYTE(0) = OP_LOAD_INT);
+    CALL CHK(OK, 2);
+
+    /* 3: LOAD_INT operand is 42 */
+    OK = (AM_READ_WORD(1) = 42);
+    CALL CHK(OK, 3);
+
+    /* 4: STORE_VAR follows at offset 4 */
+    OK = (AM_READ_BYTE(4) = OP_STORE_VAR);
+    CALL CHK(OK, 4);
+
+    /* 5: STORE_VAR operand is 0 (sym idx for OUTPUT) */
+    OK = (AM_READ_BYTE(5) = 0);
+    CALL CHK(OK, 5);
+
+    /* 6: LOAD_VAR for print follows (reload for PRINT_INT) */
+    OK = (AM_READ_BYTE(6) = OP_LOAD_VAR);
+    CALL CHK(OK, 6);
+
+    /* 7: PRINT_INT follows */
+    OK = (AM_READ_BYTE(8) = OP_PRINT_INT);
+    CALL CHK(OK, 7);
+
+    /* 8: PRINT_NL follows */
+    OK = (AM_READ_BYTE(9) = OP_PRINT_NL);
+    CALL CHK(OK, 8);
+
+    /* 9: HALT for stmt 1 */
+    OK = (AM_READ_BYTE(10) = OP_HALT);
+    CALL CHK(OK, 9);
+
+    /* 10: stmt 0 address is 0 */
+    OK = (STMT_ADDR(0) = 0);
+    CALL CHK(OK, 10);
+
+    /* 11: stmt 1 address is 10 */
+    OK = (STMT_ADDR(1) = 10);
+    CALL CHK(OK, 11);
+
+    CALL UART_PUTS(ADDR(M_DONE));
+    CALL UART_PUTS(ADDR(M_NL));
+END;

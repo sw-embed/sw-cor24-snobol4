@@ -1,6 +1,6 @@
 number = 2
 slug = "m2-am-lower"
-status = "pending"
+status = "in-progress"
 description = "Lowering pass from statement table to AM bytecode"
 role = "legacy"
 context_files = []

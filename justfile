@@ -35,8 +35,12 @@ demos: hello hello-goto count
 test-am:
     ./scripts/build.sh include/descr.msw include/heap.msw include/am.msw src/test_am.plsw
 
+# Run AM lowering test
+test-lower:
+    ./scripts/build.sh include/descr.msw include/heap.msw include/am.msw src/test_lower.plsw
+
 # Run all tests
-test: test-am
+test: test-am test-lower
     ./scripts/build.sh include/descr.msw include/heap.msw include/trace.msw src/test_descr.plsw
     ./scripts/build.sh include/descr.msw include/heap.msw src/test_snolib.plsw
     ./scripts/build.sh include/descr.msw include/heap.msw src/test_snolib2.plsw
