@@ -34,8 +34,16 @@ span-fail:
 pattern:
     ./scripts/run-snobol4.sh examples/pattern.sno
 
+# Multiplication
+multiply:
+    ./scripts/run-snobol4.sh examples/multiply.sno
+
+# String concatenation
+concat:
+    ./scripts/run-snobol4.sh examples/concat.sno
+
 # Run all demos
-demos: hello hello-goto count span span-fail
+demos: hello hello-goto count span span-fail multiply concat
 
 # --- Tests ---
 

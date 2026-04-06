@@ -1,0 +1,4 @@
+       X = 7
+       Y = X * 6
+       OUTPUT = Y
+END

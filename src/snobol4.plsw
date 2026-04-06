@@ -24,6 +24,7 @@
 %DEFINE TK_EOL 11;
 %DEFINE TK_EOF 12;
 %DEFINE TK_DOT 13;
+%DEFINE TK_STAR 14;
 
 /* Statement / expression / goto types */
 %DEFINE ST_EMPTY 0;
@@ -121,6 +122,7 @@ LEX: PROC;
     IF (C = 58) THEN DO; SPOS = SPOS + 1; TT = TK_COLON; RETURN; END;
     IF (C = 43) THEN DO; SPOS = SPOS + 1; TT = TK_PLUS; RETURN; END;
     IF (C = 45) THEN DO; SPOS = SPOS + 1; TT = TK_MINUS; RETURN; END;
+    IF (C = 42) THEN DO; SPOS = SPOS + 1; TT = TK_STAR; RETURN; END;
     IF (C = 39 OR C = 34) THEN DO;
         Q = C;
         SPOS = SPOS + 1;
@@ -350,6 +352,14 @@ DCL S_GLBL(16) INT;
 DCL S_SPTR(16) INT;
 DCL STCNT INT STATIC INIT(0);
 
+/* Expression parts for concatenation: up to 4 parts per statement.
+ * S_EPCNT(s) = number of parts (0 = use S_OETY/S_OEV1 as before).
+ * EP_TYP(s*4+i) = part type (OE_INT, OE_STR, OE_IDENT).
+ * EP_VAL(s*4+i) = part value (int, str offset, sym idx). */
+DCL S_EPCNT(16) INT;
+DCL EP_TYP(64) INT;
+DCL EP_VAL(64) INT;
+
 /* ================================================================
  * Parser
  * ================================================================ */
@@ -376,6 +386,7 @@ PARSE: PROC;
         S_GTYP(S) = GT_NONE;
         S_GLBL(S) = 0 - 1;
         S_SPTR(S) = 0 - 1;
+        S_EPCNT(S) = 0;
 
         IF (TT = TK_EOL) THEN DO;
             CALL LEX;
@@ -421,53 +432,84 @@ PARSE: PROC;
                 END;
             END;
             ELSE IF (TT = TK_EQ) THEN DO;
+                DCL EPI INT;
+                DCL EPB INT;
                 S_TYP(S) = ST_ASSIGN;
                 CALL LEX;
-                IF (TT = TK_INT) THEN DO;
-                    S_OETY(S) = OE_INT;
-                    S_OEV1(S) = TV;
-                    CALL LEX;
-                END;
-                ELSE IF (TT = TK_STR) THEN DO;
-                    S_OETY(S) = OE_STR;
-                    S_SPTR(S) = SBSAVE();
-                    CALL LEX;
-                END;
-                ELSE IF (TT = TK_IDENT) THEN DO;
-                    NOFF = SBSAVE();
-                    /* Check for SPAN(...) function call */
-                    IF (TB(0) = 83 AND TB(1) = 80 AND TB(2) = 65 AND TB(3) = 78 AND TB(4) = 0) THEN DO;
-                        CALL LEX;
-                        IF (TT = TK_LPAREN) THEN DO;
-                            CALL LEX;
-                            IF (TT = TK_STR) THEN DO;
-                                S_OETY(S) = OE_SPAN;
-                                S_SPTR(S) = SBSAVE();
-                                CALL LEX;
-                            END;
-                            IF (TT = TK_RPAREN) THEN CALL LEX;
-                        END;
-                    END;
-                    ELSE DO;
-                        S_OETY(S) = OE_IDENT;
-                        S_OEV1(S) = SYM_LOOKUP(NOFF);
-                        CALL LEX;
-                    END;
-                END;
+                EPB = S * 4;
+                EPI = 0;
 
-                IF (TT = TK_PLUS OR TT = TK_MINUS) THEN DO;
-                    S_OEOP(S) = TT;
-                    S_OETY(S) = OE_BINOP;
-                    CALL LEX;
+                /* Collect expression parts */
+                DO WHILE (TT = TK_INT OR TT = TK_STR OR TT = TK_IDENT);
                     IF (TT = TK_INT) THEN DO;
-                        S_OEV2(S) = TV;
+                        IF (EPI < 4) THEN DO;
+                            EP_TYP(EPB + EPI) = OE_INT;
+                            EP_VAL(EPB + EPI) = TV;
+                            EPI = EPI + 1;
+                        END;
+                        CALL LEX;
+                    END;
+                    ELSE IF (TT = TK_STR) THEN DO;
+                        IF (EPI < 4) THEN DO;
+                            EP_TYP(EPB + EPI) = OE_STR;
+                            EP_VAL(EPB + EPI) = SBSAVE();
+                            EPI = EPI + 1;
+                        END;
                         CALL LEX;
                     END;
                     ELSE IF (TT = TK_IDENT) THEN DO;
                         NOFF = SBSAVE();
-                        S_OEV2(S) = SYM_LOOKUP(NOFF);
+                        /* Check for SPAN(...) */
+                        IF (TB(0) = 83 AND TB(1) = 80 AND TB(2) = 65 AND TB(3) = 78 AND TB(4) = 0) THEN DO;
+                            CALL LEX;
+                            IF (TT = TK_LPAREN) THEN DO;
+                                CALL LEX;
+                                IF (TT = TK_STR) THEN DO;
+                                    IF (EPI < 4) THEN DO;
+                                        EP_TYP(EPB + EPI) = OE_SPAN;
+                                        EP_VAL(EPB + EPI) = SBSAVE();
+                                        EPI = EPI + 1;
+                                    END;
+                                    CALL LEX;
+                                END;
+                                IF (TT = TK_RPAREN) THEN CALL LEX;
+                            END;
+                        END;
+                        ELSE DO;
+                            IF (EPI < 4) THEN DO;
+                                EP_TYP(EPB + EPI) = OE_IDENT;
+                                EP_VAL(EPB + EPI) = SYM_LOOKUP(NOFF);
+                                EPI = EPI + 1;
+                            END;
+                            CALL LEX;
+                        END;
+                    END;
+
+                    /* Check for binary operator */
+                    IF (TT = TK_PLUS OR TT = TK_MINUS OR TT = TK_STAR) THEN DO;
+                        /* Store op, then parse second operand on next loop */
+                        S_OEOP(S) = TT;
                         CALL LEX;
                     END;
+                END;
+
+                S_EPCNT(S) = EPI;
+                /* For backward compat: if 1 part, set S_OETY/S_OEV1 */
+                IF (EPI = 1) THEN DO;
+                    S_OETY(S) = EP_TYP(EPB);
+                    S_OEV1(S) = EP_VAL(EPB);
+                    IF (S_OETY(S) = OE_STR OR S_OETY(S) = OE_SPAN) THEN
+                        S_SPTR(S) = EP_VAL(EPB);
+                END;
+                ELSE IF (EPI = 2 AND S_OEOP(S) != 0) THEN DO;
+                    /* Binary op: part0 OP part1 */
+                    S_OETY(S) = OE_BINOP;
+                    S_OEV1(S) = EP_VAL(EPB);
+                    S_OEV2(S) = EP_VAL(EPB + 1);
+                END;
+                ELSE IF (EPI >= 2) THEN DO;
+                    /* Concatenation */
+                    S_OETY(S) = OE_NONE;
                 END;
             END;
 
@@ -617,8 +659,37 @@ LOWER_STMT: PROC(S INT);
     END;
 
     IF (S_TYP(S) = ST_ASSIGN) THEN DO;
-        /* Evaluate object */
-        IF (S_OETY(S) = OE_INT) THEN DO;
+        DCL EPI INT;
+        DCL EPB INT;
+        DCL EPT INT;
+        DCL EPV INT;
+
+        /* Evaluate object expression */
+        IF (S_EPCNT(S) >= 2 AND S_OEOP(S) = 0) THEN DO;
+            /* Concatenation: emit parts with CONCAT between them */
+            EPB = S * 4;
+            EPI = 0;
+            DO WHILE (EPI < S_EPCNT(S));
+                EPT = EP_TYP(EPB + EPI);
+                EPV = EP_VAL(EPB + EPI);
+                IF (EPT = OE_INT) THEN DO;
+                    CALL AM_EMIT_OP(OP_LOAD_INT);
+                    CALL AM_EMIT_WORD(EPV);
+                END;
+                ELSE IF (EPT = OE_STR) THEN DO;
+                    CALL AM_EMIT_OP(OP_LOAD_STR);
+                    CALL AM_EMIT_WORD(EPV);
+                END;
+                ELSE IF (EPT = OE_IDENT) THEN DO;
+                    CALL AM_EMIT_OP(OP_LOAD_VAR);
+                    CALL AM_EMIT_BYTE(EPV);
+                END;
+                IF (EPI > 0) THEN
+                    CALL AM_EMIT_OP(OP_CONCAT);
+                EPI = EPI + 1;
+            END;
+        END;
+        ELSE IF (S_OETY(S) = OE_INT) THEN DO;
             CALL AM_EMIT_OP(OP_LOAD_INT);
             CALL AM_EMIT_WORD(S_OEV1(S));
         END;
@@ -631,19 +702,50 @@ LOWER_STMT: PROC(S INT);
             CALL AM_EMIT_BYTE(S_OEV1(S));
         END;
         ELSE IF (S_OETY(S) = OE_BINOP) THEN DO;
-            CALL AM_EMIT_OP(OP_LOAD_VAR);
-            CALL AM_EMIT_BYTE(S_OEV1(S));
-            CALL AM_EMIT_OP(OP_LOAD_INT);
-            CALL AM_EMIT_WORD(S_OEV2(S));
+            /* Emit first operand */
+            EPB = S * 4;
+            EPT = EP_TYP(EPB);
+            EPV = EP_VAL(EPB);
+            IF (EPT = OE_IDENT) THEN DO;
+                CALL AM_EMIT_OP(OP_LOAD_VAR);
+                CALL AM_EMIT_BYTE(EPV);
+            END;
+            ELSE DO;
+                CALL AM_EMIT_OP(OP_LOAD_INT);
+                CALL AM_EMIT_WORD(EPV);
+            END;
+            /* Emit second operand */
+            EPT = EP_TYP(EPB + 1);
+            EPV = EP_VAL(EPB + 1);
+            IF (EPT = OE_IDENT) THEN DO;
+                CALL AM_EMIT_OP(OP_LOAD_VAR);
+                CALL AM_EMIT_BYTE(EPV);
+            END;
+            ELSE DO;
+                CALL AM_EMIT_OP(OP_LOAD_INT);
+                CALL AM_EMIT_WORD(EPV);
+            END;
+            /* Emit operator */
             IF (S_OEOP(S) = TK_PLUS) THEN
                 CALL AM_EMIT_OP(OP_ADD);
+            ELSE IF (S_OEOP(S) = TK_STAR) THEN
+                CALL AM_EMIT_OP(OP_MUL);
             ELSE
                 CALL AM_EMIT_OP(OP_SUB);
         END;
         ELSE IF (S_OETY(S) = OE_SPAN) THEN DO;
-            /* MAKE_SPAN <class_string_offset> -> pushes pattern ptr */
             CALL AM_EMIT_OP(OP_MAKE_SPAN);
             CALL AM_EMIT_WORD(S_SPTR(S));
+        END;
+        ELSE IF (S_EPCNT(S) = 1) THEN DO;
+            /* Single-part fallback via EP */
+            EPB = S * 4;
+            EPT = EP_TYP(EPB);
+            EPV = EP_VAL(EPB);
+            IF (EPT = OE_SPAN) THEN DO;
+                CALL AM_EMIT_OP(OP_MAKE_SPAN);
+                CALL AM_EMIT_WORD(EPV);
+            END;
         END;
 
         /* Store */
@@ -654,19 +756,14 @@ LOWER_STMT: PROC(S INT);
 
         /* OUTPUT print */
         IF (S_SUBJ(S) = OUT_SYM AND OUT_SYM >= 0) THEN DO;
-            IF (S_OETY(S) = OE_STR) THEN DO;
+            IF (S_OETY(S) = OE_STR AND S_EPCNT(S) < 2) THEN DO;
                 CALL AM_EMIT_OP(OP_PRINT_STR);
                 CALL AM_EMIT_WORD(S_SPTR(S));
             END;
-            ELSE IF (S_OETY(S) = OE_IDENT) THEN DO;
-                /* Variable -- might be int or string, use PRINT_VAR */
+            ELSE DO;
+                /* Use PRINT_VAR for everything else (int, concat, ident) */
                 CALL AM_EMIT_OP(OP_PRINT_VAR);
                 CALL AM_EMIT_BYTE(S_SUBJ(S));
-            END;
-            ELSE DO;
-                CALL AM_EMIT_OP(OP_LOAD_VAR);
-                CALL AM_EMIT_BYTE(S_SUBJ(S));
-                CALL AM_EMIT_OP(OP_PRINT_INT);
             END;
             CALL AM_EMIT_OP(OP_PRINT_NL);
         END;
@@ -933,6 +1030,71 @@ AM_EXEC: PROC;
             ESP = ESP - 1;
             ESTK(ESP) = ESTK(ESP) - V2;
             ESP = ESP + 1;
+        END;
+        ELSE IF (OP = OP_MUL) THEN DO;
+            ESP = ESP - 1;
+            V2 = ESTK(ESP);
+            ESP = ESP - 1;
+            ESTK(ESP) = ESTK(ESP) * V2;
+            ESP = ESP + 1;
+        END;
+        ELSE IF (OP = OP_CONCAT) THEN DO;
+            /* Pop two values, concat as strings into SB */
+            DCL DST INT;
+            DCL A_OFF INT;
+            DCL B_OFF INT;
+            DCL A_TYP INT;
+            DCL B_TYP INT;
+            DCL CP PTR;
+            DCL DP PTR;
+            DCL I INT;
+            DCL CH INT;
+
+            ESP = ESP - 1;
+            B_OFF = ESTK(ESP);
+            B_TYP = LAST_PUSH_TYP;
+            ESP = ESP - 1;
+            A_OFF = ESTK(ESP);
+            A_TYP = VTYP_STR;
+
+            DST = SBPOS;
+
+            /* Copy first value (A) as string */
+            IF (A_TYP = VTYP_STR OR A_TYP = VTYP_INT) THEN DO;
+                CP = ADDR(SB) + A_OFF;
+                CH = CP->DTAG;
+                I = 0;
+                DO WHILE (CH != 0 AND I < 60);
+                    DP = ADDR(SB) + SBPOS;
+                    DP->DTAG = CH;
+                    SBPOS = SBPOS + 1;
+                    I = I + 1;
+                    CP = ADDR(SB) + A_OFF + I;
+                    CH = CP->DTAG;
+                END;
+            END;
+
+            /* Copy second value (B) as string */
+            CP = ADDR(SB) + B_OFF;
+            CH = CP->DTAG;
+            I = 0;
+            DO WHILE (CH != 0 AND I < 60);
+                DP = ADDR(SB) + SBPOS;
+                DP->DTAG = CH;
+                SBPOS = SBPOS + 1;
+                I = I + 1;
+                CP = ADDR(SB) + B_OFF + I;
+                CH = CP->DTAG;
+            END;
+
+            /* Null terminate */
+            DP = ADDR(SB) + SBPOS;
+            DP->DTAG = 0;
+            SBPOS = SBPOS + 1;
+
+            ESTK(ESP) = DST;
+            ESP = ESP + 1;
+            LAST_PUSH_TYP = VTYP_STR;
         END;
         ELSE IF (OP = OP_PRINT_INT) THEN DO;
             ESP = ESP - 1;

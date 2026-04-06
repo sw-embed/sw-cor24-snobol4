@@ -1,6 +1,6 @@
 number = 1
 slug = "m4-str-concat-mul"
-status = "pending"
+status = "in-progress"
 description = """
 Add string concatenation and multiplication to the interpreter.
 
