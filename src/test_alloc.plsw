@@ -1,0 +1,201 @@
+/* test_alloc.plsw -- Heap allocator and tests
+ *
+ * Design: bump allocator with free-list recycling
+ * - Bump allocates from a contiguous arena
+ * - Freed blocks go on a singly-linked free list
+ * - Alloc checks free list first (first-fit)
+ * - All blocks have 6-byte OBJHDR header
+ * - Free blocks store next-pointer in first 3 payload bytes
+ */
+
+%INCLUDE descr;
+%INCLUDE heap;
+
+/* Free block: header + next pointer in payload */
+DCL 1 FREEBLK BASED,
+    3 FK BYTE,
+    3 FF BYTE,
+    3 FR BYTE,
+    3 FS PTR,
+    3 FNEXT PTR;
+
+/* Heap state */
+DCL ARENA(1024) BYTE;
+DCL HEAP_BASE PTR STATIC;
+DCL HEAP_LIM PTR STATIC;
+DCL HEAP_TOP PTR STATIC;
+DCL FREE_HD PTR STATIC INIT(0);
+DCL ALLOC_N INT STATIC INIT(0);
+DCL FREE_N INT STATIC INIT(0);
+
+%DEFINE MIN_BLK 9;
+
+/* HEAP_INIT: set up the heap region */
+HEAP_INIT: PROC;
+    HEAP_BASE = ADDR(ARENA);
+    HEAP_LIM = ADDR(ARENA) + 1024;
+    HEAP_TOP = HEAP_BASE;
+    FREE_HD = 0;
+    ALLOC_N = 0;
+    FREE_N = 0;
+END;
+
+/* HEAP_ALLOC: allocate a block of SZ bytes (including header).
+ * Returns pointer to block header, or 0 if exhausted.
+ */
+HEAP_ALLOC: PROC(SZ INT) RETURNS(INT);
+    DCL P PTR;
+    DCL PREV PTR;
+    DCL FP PTR;
+    DCL PV PTR;
+    DCL BS INT;
+
+    /* Enforce minimum */
+    IF (SZ < MIN_BLK) THEN
+        SZ = MIN_BLK;
+
+    /* Search free list (first-fit) */
+    P = FREE_HD;
+    PREV = 0;
+    DO WHILE (P != 0);
+        FP = P;
+        BS = FP->FS;
+        IF (BS >= SZ) THEN DO;
+            /* Unlink from free list */
+            IF (PREV = 0) THEN
+                FREE_HD = FP->FNEXT;
+            ELSE DO;
+                PV = PREV;
+                PV->FNEXT = FP->FNEXT;
+            END;
+            ALLOC_N = ALLOC_N + 1;
+            RETURN(P);
+        END;
+        PREV = P;
+        FP = P;
+        P = FP->FNEXT;
+    END;
+
+    /* Bump allocate */
+    IF (HEAP_TOP + SZ > HEAP_LIM) THEN
+        RETURN(0);
+
+    P = HEAP_TOP;
+    FP = P;
+    FP->FK = 0;
+    FP->FF = 0;
+    FP->FR = 0;
+    FP->FS = SZ;
+    HEAP_TOP = HEAP_TOP + SZ;
+    ALLOC_N = ALLOC_N + 1;
+    RETURN(P);
+END;
+
+/* HEAP_FREE: return block P to free list */
+HEAP_FREE: PROC(P PTR);
+    DCL FP PTR;
+    FP = P;
+    FP->FK = OBK_FREE;
+    FP->FF = 0;
+    FP->FNEXT = FREE_HD;
+    FREE_HD = P;
+    FREE_N = FREE_N + 1;
+END;
+
+/* HEAP_USED: bytes consumed by bump pointer */
+HEAP_USED: PROC RETURNS(INT);
+    RETURN(HEAP_TOP - HEAP_BASE);
+END;
+
+/* HEAP_AVAIL: bytes remaining for bump allocation */
+HEAP_AVAIL: PROC RETURNS(INT);
+    RETURN(HEAP_LIM - HEAP_TOP);
+END;
+
+/* ---- Helpers from snolib ---- */
+
+HDR_SET: PROC(P PTR, K BYTE, SZ INT);
+    DCL HP PTR;
+    HP = P;
+    HP->OKIND = K;
+    HP->OFLAGS = 0;
+    HP->ORSV = 0;
+    HP->OSIZE = SZ;
+END;
+
+/* ---- Test infrastructure ---- */
+
+DCL M_P(4) CHAR INIT('P ');
+DCL M_F(4) CHAR INIT('F ');
+DCL M_NL(3) CHAR INIT('
+');
+DCL M_DONE(20) CHAR INIT('All tests done');
+
+CHK: PROC(OK INT, N INT);
+    IF (OK != 0) THEN
+        CALL UART_PUTS(ADDR(M_P));
+    ELSE
+        CALL UART_PUTS(ADDR(M_F));
+    CALL UART_PUTCHAR(48 + N);
+    CALL UART_PUTS(ADDR(M_NL));
+END;
+
+/* ---- Main ---- */
+
+MAIN: PROC;
+    DCL P1 PTR;
+    DCL P2 PTR;
+    DCL P3 PTR;
+    DCL P4 PTR;
+    DCL HP PTR;
+    DCL OK INT;
+    DCL V INT;
+
+    CALL HEAP_INIT;
+
+    /* 1: heap_init sets correct pointers */
+    OK = (HEAP_BASE = ADDR(ARENA)) AND (HEAP_TOP = HEAP_BASE);
+    CALL CHK(OK, 1);
+
+    /* 2: allocate 24-byte block */
+    P1 = HEAP_ALLOC(24);
+    OK = (P1 != 0);
+    CALL CHK(OK, 2);
+
+    /* 3: block has correct size */
+    HP = P1;
+    OK = (HP->OSIZE = 24);
+    CALL CHK(OK, 3);
+
+    /* 4: heap_top advanced */
+    OK = (HEAP_TOP = HEAP_BASE + 24);
+    CALL CHK(OK, 4);
+
+    /* 5: second alloc is contiguous */
+    P2 = HEAP_ALLOC(18);
+    OK = (P2 = P1 + 24);
+    CALL CHK(OK, 5);
+
+    /* 6: heap_used correct */
+    V = HEAP_USED();
+    OK = (V = 42);
+    CALL CHK(OK, 6);
+
+    /* 7: free puts block on free list */
+    CALL HEAP_FREE(P1);
+    OK = (FREE_HD = P1);
+    CALL CHK(OK, 7);
+
+    /* 8: freed block has OBK_FREE kind */
+    HP = P1;
+    OK = (HP->OKIND = OBK_FREE);
+    CALL CHK(OK, 8);
+
+    /* 9: re-alloc same size reuses freed block */
+    P3 = HEAP_ALLOC(24);
+    OK = (P3 = P1);
+    CALL CHK(OK, 9);
+
+    CALL UART_PUTS(ADDR(M_DONE));
+    CALL UART_PUTS(ADDR(M_NL));
+END;

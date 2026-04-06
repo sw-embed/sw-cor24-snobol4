@@ -46,6 +46,17 @@ DCL 1 SYMOBJ BASED,
     3 YVAL_TAG BYTE, 3 YVAL_SUB BYTE, 3 YVAL_RSV BYTE,
     3 YVAL_PAY PTR;
 
+/* Free block: header + next pointer in payload */
+DCL 1 FREEBLK BASED,
+    3 FK BYTE,
+    3 FF BYTE,
+    3 FR BYTE,
+    3 FS PTR,
+    3 FNEXT PTR;
+
+/* Minimum block size: header + 3 bytes for next pointer */
+%DEFINE MIN_BLK 9;
+
 /* BUILD_HDR: init header. Clobbers r0,r2 */
 MACRODEF BUILD_HDR;
     REQUIRED PTR(expr); REQUIRED KIND(expr); REQUIRED SIZE(expr);

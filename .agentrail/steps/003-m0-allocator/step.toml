@@ -1,6 +1,6 @@
 number = 3
 slug = "m0-allocator"
-status = "pending"
+status = "in-progress"
 description = "Heap allocator interface and free-list management"
 role = "legacy"
 context_files = []

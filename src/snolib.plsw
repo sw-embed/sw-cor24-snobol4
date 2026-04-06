@@ -180,6 +180,102 @@ HDR_NEXT: PROC(P PTR) RETURNS(INT);
 END;
 
 /* ================================================================
+ * Heap allocator
+ *
+ * Bump allocator with free-list recycling.
+ * Free blocks store next-pointer in payload (FREEBLK BASED).
+ * First-fit search on free list before bump allocation.
+ * ================================================================ */
+
+/* Heap state -- set by caller before first HEAP_ALLOC */
+DCL HEAP_BASE PTR STATIC;
+DCL HEAP_LIM PTR STATIC;
+DCL HEAP_TOP PTR STATIC;
+DCL FREE_HD PTR STATIC INIT(0);
+DCL ALLOC_N INT STATIC INIT(0);
+DCL FREE_N INT STATIC INIT(0);
+
+/* HEAP_INIT: initialize heap over a caller-provided arena.
+ * BASE = start address, SIZE = total bytes available. */
+HEAP_INIT: PROC(BASE PTR, SIZE INT);
+    HEAP_BASE = BASE;
+    HEAP_LIM = BASE + SIZE;
+    HEAP_TOP = BASE;
+    FREE_HD = 0;
+    ALLOC_N = 0;
+    FREE_N = 0;
+END;
+
+/* HEAP_ALLOC: allocate SZ bytes (including header).
+ * Returns pointer to block header, or 0 if exhausted. */
+HEAP_ALLOC: PROC(SZ INT) RETURNS(INT);
+    DCL P PTR;
+    DCL PREV PTR;
+    DCL FP PTR;
+    DCL PV PTR;
+    DCL BS INT;
+
+    IF (SZ < MIN_BLK) THEN
+        SZ = MIN_BLK;
+
+    /* Search free list (first-fit) */
+    P = FREE_HD;
+    PREV = 0;
+    DO WHILE (P != 0);
+        FP = P;
+        BS = FP->FS;
+        IF (BS >= SZ) THEN DO;
+            IF (PREV = 0) THEN
+                FREE_HD = FP->FNEXT;
+            ELSE DO;
+                PV = PREV;
+                PV->FNEXT = FP->FNEXT;
+            END;
+            ALLOC_N = ALLOC_N + 1;
+            RETURN(P);
+        END;
+        PREV = P;
+        FP = P;
+        P = FP->FNEXT;
+    END;
+
+    /* Bump allocate */
+    IF (HEAP_TOP + SZ > HEAP_LIM) THEN
+        RETURN(0);
+
+    P = HEAP_TOP;
+    FP = P;
+    FP->FK = 0;
+    FP->FF = 0;
+    FP->FR = 0;
+    FP->FS = SZ;
+    HEAP_TOP = HEAP_TOP + SZ;
+    ALLOC_N = ALLOC_N + 1;
+    RETURN(P);
+END;
+
+/* HEAP_FREE: return block P to free list */
+HEAP_FREE: PROC(P PTR);
+    DCL FP PTR;
+    FP = P;
+    FP->FK = OBK_FREE;
+    FP->FF = 0;
+    FP->FNEXT = FREE_HD;
+    FREE_HD = P;
+    FREE_N = FREE_N + 1;
+END;
+
+/* HEAP_USED: bytes consumed by bump pointer */
+HEAP_USED: PROC RETURNS(INT);
+    RETURN(HEAP_TOP - HEAP_BASE);
+END;
+
+/* HEAP_AVAIL: bytes remaining for bump allocation */
+HEAP_AVAIL: PROC RETURNS(INT);
+    RETURN(HEAP_LIM - HEAP_TOP);
+END;
+
+/* ================================================================
  * Tag name for diagnostics -- returns pointer to static string
  * ================================================================ */
 
