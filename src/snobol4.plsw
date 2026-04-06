@@ -38,43 +38,9 @@
  * Source + Lexer
  * ================================================================ */
 
-DCL SRC(256) BYTE;
-DCL SRCLEN INT STATIC INIT(0);
-
-/* Load SNOBOL4 source into SRC buffer */
-LOAD_SRC: PROC;
-    DCL P INT;
-    /* Line 1:        OUTPUT = "Hello, World!" :(END) */
-    /*         7 spaces + OUTPUT = + "Hello, World!" + :(END) + newline */
-    P = 0;
-    SRC(P) = 32; P=P+1; SRC(P) = 32; P=P+1; SRC(P) = 32; P=P+1;
-    SRC(P) = 32; P=P+1; SRC(P) = 32; P=P+1; SRC(P) = 32; P=P+1;
-    SRC(P) = 32; P=P+1;
-    /* OUTPUT */
-    SRC(P) = 79; P=P+1; SRC(P) = 85; P=P+1; SRC(P) = 84; P=P+1;
-    SRC(P) = 80; P=P+1; SRC(P) = 85; P=P+1; SRC(P) = 84; P=P+1;
-    /* = */
-    SRC(P) = 32; P=P+1; SRC(P) = 61; P=P+1; SRC(P) = 32; P=P+1;
-    /* "Hello, World!" -- using double quote (34) */
-    SRC(P) = 34; P=P+1;
-    SRC(P) = 72; P=P+1; SRC(P) = 101; P=P+1; SRC(P) = 108; P=P+1;
-    SRC(P) = 108; P=P+1; SRC(P) = 111; P=P+1; SRC(P) = 44; P=P+1;
-    SRC(P) = 32; P=P+1; SRC(P) = 87; P=P+1; SRC(P) = 111; P=P+1;
-    SRC(P) = 114; P=P+1; SRC(P) = 108; P=P+1; SRC(P) = 100; P=P+1;
-    SRC(P) = 33; P=P+1;
-    SRC(P) = 34; P=P+1;
-    /* space :(END) newline */
-    SRC(P) = 32; P=P+1;
-    SRC(P) = 58; P=P+1; SRC(P) = 40; P=P+1;
-    SRC(P) = 69; P=P+1; SRC(P) = 78; P=P+1; SRC(P) = 68; P=P+1;
-    SRC(P) = 41; P=P+1;
-    SRC(P) = 10; P=P+1;
-    /* Line 2: END */
-    SRC(P) = 69; P=P+1; SRC(P) = 78; P=P+1; SRC(P) = 68; P=P+1;
-    SRC(P) = 10; P=P+1;
-    SRC(P) = 0;
-    SRCLEN = P;
-END;
+DCL SRC(128) CHAR INIT("       OUTPUT = 'Hello, World!' :(END)
+END
+");
 DCL SPOS INT STATIC INIT(0);
 DCL TT INT STATIC INIT(0);
 DCL TV INT STATIC INIT(0);
@@ -604,7 +570,6 @@ END;
  * ================================================================ */
 
 MAIN: PROC;
-    CALL LOAD_SRC;
     CALL PARSE;
     CALL RUN;
 END;
