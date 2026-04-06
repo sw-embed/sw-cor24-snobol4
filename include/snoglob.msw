@@ -1,0 +1,134 @@
+/* snoglob.msw -- Shared global state for SNOBOL4 interpreter modules
+ *
+ * All modules include this to share variable declarations.
+ * The main module provides the actual storage; library modules
+ * get duplicate labels that the assembler resolves to the first.
+ */
+
+/* Token types */
+%DEFINE TK_IDENT 1;
+%DEFINE TK_INT 2;
+%DEFINE TK_STR 3;
+%DEFINE TK_EQ 4;
+%DEFINE TK_LPAREN 5;
+%DEFINE TK_RPAREN 6;
+%DEFINE TK_COLON 7;
+%DEFINE TK_PLUS 9;
+%DEFINE TK_MINUS 10;
+%DEFINE TK_EOL 11;
+%DEFINE TK_EOF 12;
+%DEFINE TK_DOT 13;
+%DEFINE TK_STAR 14;
+%DEFINE TK_LT 15;
+%DEFINE TK_GT 16;
+
+/* Statement / expression / goto types */
+%DEFINE ST_EMPTY 0;
+%DEFINE ST_ASSIGN 1;
+%DEFINE ST_END 2;
+%DEFINE ST_MATCH 3;
+%DEFINE OE_NONE 0;
+%DEFINE OE_IDENT 1;
+%DEFINE OE_INT 2;
+%DEFINE OE_STR 3;
+%DEFINE OE_BINOP 4;
+%DEFINE OE_SPAN 5;
+%DEFINE OE_BREAK 6;
+%DEFINE OE_REM 7;
+%DEFINE OE_CAP 8;
+%DEFINE OE_ARRAY 9;
+%DEFINE OE_ARRREF 10;
+%DEFINE GT_NONE 0;
+%DEFINE GT_UNCOND 1;
+%DEFINE GT_SUCC 2;
+%DEFINE GT_FAIL 3;
+
+/* Variable type tags */
+%DEFINE VTYP_INT 0;
+%DEFINE VTYP_STR 1;
+%DEFINE VTYP_PAT 2;
+%DEFINE VTYP_ARR 3;
+
+/* Source buffer + load addresses */
+%DEFINE SRC_LOAD_ADDR 524288;
+%DEFINE INP_LOAD_ADDR 589824;
+
+/* Symbol table size */
+%DEFINE SYMMAX 16;
+
+/* Statement table size */
+%DEFINE STMAX 16;
+
+/* Shared globals -- declared in every module.
+ * Assembler uses first definition (from main module). */
+
+DCL SRC(256) BYTE;
+DCL INP_POS INT STATIC INIT(0);
+DCL SPOS INT STATIC INIT(0);
+DCL TT INT STATIC INIT(0);
+DCL TV INT STATIC INIT(0);
+DCL TB(32) CHAR INIT('                                ');
+DCL TN INT STATIC INIT(0);
+DCL LHAS_LBL INT STATIC INIT(0);
+DCL AT_SOL INT STATIC INIT(1);
+
+/* String buffer */
+DCL SB(256) BYTE;
+DCL SBPOS INT STATIC INIT(0);
+
+/* Symbol table */
+DCL SYMN(128) BYTE;
+DCL SYMV(16) INT;
+DCL SYMC INT STATIC INIT(0);
+DCL VTYP(16) INT;
+
+/* Label table */
+DCL LBLN(64) BYTE;
+DCL LBLS(8) INT;
+DCL LBLC INT STATIC INIT(0);
+
+/* Statement table */
+DCL S_TYP(16) INT;
+DCL S_SUBJ(16) INT;
+DCL S_SIDX(16) INT;
+DCL S_OETY(16) INT;
+DCL S_OEV1(16) INT;
+DCL S_OEOP(16) INT;
+DCL S_OEV2(16) INT;
+DCL S_GTYP(16) INT;
+DCL S_GLBL(16) INT;
+DCL S_SPTR(16) INT;
+DCL STCNT INT STATIC INIT(0);
+DCL S_EPCNT(16) INT;
+DCL EP_TYP(64) INT;
+DCL EP_VAL(64) INT;
+DCL S_PPCNT(16) INT;
+DCL PP_TYP(128) INT;
+DCL PP_VAL(128) INT;
+
+/* AM code buffer */
+DCL AM_CODE(512) BYTE;
+DCL AM_PC INT STATIC INIT(0);
+DCL STMT_ADDR(16) INT;
+
+/* Eval stack + variables */
+DCL ESTK(32) INT;
+DCL ESP INT STATIC INIT(0);
+DCL VARS(16) INT;
+DCL LAST_PUSH_TYP INT STATIC INIT(0);
+
+/* Array pool */
+DCL ARR_DATA(200) INT;
+DCL ARR_CNT INT STATIC INIT(0);
+
+/* Pattern stack */
+DCL PSTK(16) INT;
+DCL PSTYP(16) INT;
+DCL PSTOP INT STATIC INIT(0);
+
+/* Result + special symbols */
+DCL LAST_RESULT INT STATIC INIT(1);
+DCL OUT_SYM INT STATIC INIT(0);
+DCL INP_SYM INT STATIC INIT(0);
+DCL NL(3) CHAR INIT('
+');

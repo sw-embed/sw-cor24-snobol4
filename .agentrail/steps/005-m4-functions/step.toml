@@ -1,6 +1,6 @@
 number = 5
 slug = "m4-functions"
-status = "pending"
+status = "in-progress"
 description = "DEFINE, RETURN, FRETURN, local variables"
 role = "legacy"
 context_files = []

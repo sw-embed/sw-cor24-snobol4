@@ -1,0 +1,187 @@
+/* sno_util.plsw -- Layer 1: shared utilities
+ * String helpers, I/O, character classification.
+ * No dependencies on other SNOBOL4 modules.
+ */
+%DEFINE NOLISTING;
+%INCLUDE descr;
+%INCLUDE heap;
+%INCLUDE am;
+%INCLUDE pat;
+%INCLUDE snoglob;
+
+/* ---- Source/Input readers ---- */
+
+READ_SRC: PROC;
+    DCL P INT;
+    DCL RP PTR;
+    DCL CH INT;
+    P = 0;
+    RP = SRC_LOAD_ADDR;
+    CH = RP->DTAG;
+    DO WHILE (CH != 0 AND P < 254);
+        SRC(P) = CH;
+        P = P + 1;
+        RP = SRC_LOAD_ADDR + P;
+        CH = RP->DTAG;
+    END;
+    SRC(P) = 0;
+END;
+
+READ_INPUT: PROC RETURNS(INT);
+    DCL OFF INT;
+    DCL RP PTR;
+    DCL DP PTR;
+    DCL CH INT;
+    RP = INP_LOAD_ADDR + INP_POS;
+    CH = RP->DTAG;
+    IF (CH = 0) THEN RETURN(0 - 1);
+    OFF = SBPOS;
+    DO WHILE (CH != 10 AND CH != 0);
+        DP = ADDR(SB) + SBPOS;
+        DP->DTAG = CH;
+        SBPOS = SBPOS + 1;
+        INP_POS = INP_POS + 1;
+        RP = INP_LOAD_ADDR + INP_POS;
+        CH = RP->DTAG;
+    END;
+    DP = ADDR(SB) + SBPOS;
+    DP->DTAG = 0;
+    SBPOS = SBPOS + 1;
+    IF (CH = 10) THEN
+        INP_POS = INP_POS + 1;
+    RETURN(OFF);
+END;
+
+/* ---- String helpers ---- */
+
+SLEN: PROC(S PTR) RETURNS(INT);
+    DCL I INT;
+    DCL P PTR;
+    I = 0;
+    P = S;
+    DO WHILE (P->DTAG != 0);
+        I = I + 1;
+        P = S + I;
+    END;
+    RETURN(I);
+END;
+
+SCEQ: PROC(A PTR, B PTR) RETURNS(INT);
+    DCL I INT;
+    DCL AP PTR;
+    DCL BP PTR;
+    DCL CA INT;
+    DCL CB INT;
+    I = 0;
+    DO WHILE (1 = 1);
+        AP = A + I;
+        BP = B + I;
+        CA = AP->DTAG;
+        CB = BP->DTAG;
+        IF (CA != CB) THEN RETURN(0);
+        IF (CA = 0) THEN RETURN(1);
+        I = I + 1;
+    END;
+    RETURN(1);
+END;
+
+IN_CLASS: PROC(C INT, CLASS PTR) RETURNS(INT);
+    DCL I INT;
+    DCL P PTR;
+    DCL CH INT;
+    I = 0;
+    P = CLASS;
+    CH = P->DTAG;
+    DO WHILE (CH != 0);
+        IF (CH = C) THEN RETURN(1);
+        I = I + 1;
+        P = CLASS + I;
+        CH = P->DTAG;
+    END;
+    RETURN(0);
+END;
+
+IS_END: PROC RETURNS(INT);
+    IF (TB(0) = 69) THEN IF (TB(1) = 78) THEN IF (TB(2) = 68) THEN
+        IF (TB(3) = 0) THEN RETURN(1);
+    RETURN(0);
+END;
+
+SBSAVE: PROC RETURNS(INT);
+    DCL OFF INT;
+    DCL I INT;
+    DCL C INT;
+    DCL DP PTR;
+    OFF = SBPOS;
+    I = 0;
+    C = TB(0);
+    DO WHILE (C != 0 AND I < 31);
+        DP = ADDR(SB) + SBPOS;
+        DP->DTAG = C;
+        SBPOS = SBPOS + 1;
+        I = I + 1;
+        C = TB(I);
+    END;
+    DP = ADDR(SB) + SBPOS;
+    DP->DTAG = 0;
+    SBPOS = SBPOS + 1;
+    RETURN(OFF);
+END;
+
+/* ---- Output ---- */
+
+PUT_DEC: PROC(V INT);
+    DCL BUF(12) BYTE;
+    DCL POS INT;
+    DCL N INT;
+    DCL D INT;
+    N = V;
+    IF (N = 0) THEN DO;
+        CALL UART_PUTCHAR(48);
+        RETURN;
+    END;
+    POS = 0;
+    DO WHILE (N > 0);
+        D = N;
+        DO WHILE (D >= 10);
+            D = D - 10;
+        END;
+        BUF(POS) = 48 + D;
+        POS = POS + 1;
+        D = 0;
+        DO WHILE (N >= 10);
+            N = N - 10;
+            D = D + 1;
+        END;
+        N = D;
+    END;
+    DO WHILE (POS > 0);
+        POS = POS - 1;
+        CALL UART_PUTCHAR(BUF(POS));
+    END;
+END;
+
+/* ---- Special symbol detection (moved here from main to avoid circular deps) ---- */
+
+DCL N_OUT(8) CHAR INIT('OUTPUT');
+DCL N_INP(8) CHAR INIT('INPUT');
+
+FIND_SPECIAL: PROC;
+    DCL I INT;
+    DCL NP PTR;
+    OUT_SYM = 0 - 1;
+    INP_SYM = 0 - 1;
+    I = 0;
+    DO WHILE (I < SYMC);
+        NP = ADDR(SYMN) + I * 8;
+        IF (SCEQ(NP, ADDR(N_OUT)) != 0) THEN
+            OUT_SYM = I;
+        IF (SCEQ(NP, ADDR(N_INP)) != 0) THEN
+            INP_SYM = I;
+        I = I + 1;
+    END;
+END;
+
+/* Dummy MAIN for library compilation */
+MAIN: PROC;
+END;

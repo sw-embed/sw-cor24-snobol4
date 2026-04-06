@@ -1,0 +1,17 @@
+/* sno_main.plsw -- Layer 4: MAIN entry point
+ * Compiled first -- provides _start, UART runtime, all globals.
+ * Depends on: sno_util (L1), sno_lex (L2), sno_exec (L3)
+ */
+%DEFINE NOLISTING;
+%INCLUDE descr;
+%INCLUDE heap;
+%INCLUDE am;
+%INCLUDE pat;
+%INCLUDE snoglob;
+
+MAIN: PROC;
+    CALL READ_SRC;
+    CALL PARSE;
+    CALL LOWER_ALL;
+    CALL AM_EXEC;
+END;
