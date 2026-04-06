@@ -1,6 +1,6 @@
 number = 1
 slug = "m2-am-opcodes"
-status = "pending"
+status = "in-progress"
 description = """
 Define AM opcode constants and the AM code buffer.
 

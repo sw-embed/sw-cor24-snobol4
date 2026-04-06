@@ -1,0 +1,37 @@
+/* am.msw -- SNOBOL4 Abstract Machine opcode definitions
+ *
+ * Bytecode format: opcode (1 byte) + operands (0-3 bytes).
+ * Words are 3 bytes little-endian (COR24 native).
+ *
+ * Opcode encoding:
+ *   LOAD_INT  <word>    -- push integer onto eval stack
+ *   LOAD_STR  <word>    -- push string (offset into SB) onto eval stack
+ *   LOAD_VAR  <byte>    -- push variable value (sym index) onto eval stack
+ *   STORE_VAR <byte>    -- pop eval stack into variable (sym index)
+ *   ADD                 -- pop two, push sum
+ *   SUB                 -- pop two, push difference
+ *   PRINT_INT           -- pop and print as decimal
+ *   PRINT_STR           -- pop and print as string (offset into SB)
+ *   PRINT_NL            -- print newline
+ *   BR        <word>    -- unconditional branch to AM address
+ *   BR_SUCC   <word>    -- branch if last result = success
+ *   BR_FAIL   <word>    -- branch if last result = failure
+ *   HALT                -- stop execution
+ *   NOP                 -- no operation
+ */
+
+%DEFINE OP_LOAD_INT 1;
+%DEFINE OP_LOAD_STR 2;
+%DEFINE OP_LOAD_VAR 3;
+%DEFINE OP_STORE_VAR 4;
+%DEFINE OP_ADD 5;
+%DEFINE OP_SUB 6;
+%DEFINE OP_PRINT_INT 7;
+%DEFINE OP_PRINT_STR 8;
+%DEFINE OP_PRINT_NL 9;
+%DEFINE OP_BR 10;
+%DEFINE OP_BR_SUCC 11;
+%DEFINE OP_BR_FAIL 12;
+%DEFINE OP_HALT 13;
+%DEFINE OP_NOP 14;
+%DEFINE OP_COUNT 15;

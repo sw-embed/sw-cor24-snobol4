@@ -1,0 +1,164 @@
+/* test_am.plsw -- Test AM opcode definitions and code buffer */
+
+%INCLUDE descr;
+%INCLUDE heap;
+%INCLUDE am;
+
+/* ================================================================
+ * AM code buffer
+ * ================================================================ */
+
+DCL AM_CODE(512) BYTE;
+DCL AM_PC INT STATIC INIT(0);
+
+/* AM_INIT: reset code buffer */
+AM_INIT: PROC;
+    AM_PC = 0;
+END;
+
+/* AM_EMIT_OP: emit one opcode byte */
+AM_EMIT_OP: PROC(OP INT);
+    AM_CODE(AM_PC) = OP;
+    AM_PC = AM_PC + 1;
+END;
+
+/* AM_EMIT_BYTE: emit one data byte */
+AM_EMIT_BYTE: PROC(V INT);
+    AM_CODE(AM_PC) = V;
+    AM_PC = AM_PC + 1;
+END;
+
+/* AM_EMIT_WORD: emit 24-bit word (3 bytes, little-endian) */
+AM_EMIT_WORD: PROC(V INT);
+    DCL B0 INT;
+    DCL B1 INT;
+    DCL B2 INT;
+    DCL REM INT;
+    /* Extract bytes: low, mid, high */
+    REM = V;
+    B2 = 0;
+    DO WHILE (REM > 65535);
+        REM = REM - 65536;
+        B2 = B2 + 1;
+    END;
+    B1 = 0;
+    DO WHILE (REM > 255);
+        REM = REM - 256;
+        B1 = B1 + 1;
+    END;
+    B0 = REM;
+    AM_CODE(AM_PC) = B0;
+    AM_PC = AM_PC + 1;
+    AM_CODE(AM_PC) = B1;
+    AM_PC = AM_PC + 1;
+    AM_CODE(AM_PC) = B2;
+    AM_PC = AM_PC + 1;
+END;
+
+/* AM_READ_BYTE: read byte at offset */
+AM_READ_BYTE: PROC(OFF INT) RETURNS(INT);
+    RETURN(AM_CODE(OFF));
+END;
+
+/* AM_READ_WORD: read 24-bit word at offset (little-endian) */
+AM_READ_WORD: PROC(OFF INT) RETURNS(INT);
+    DCL V INT;
+    V = AM_CODE(OFF + 2) * 65536 + AM_CODE(OFF + 1) * 256 + AM_CODE(OFF);
+    RETURN(V);
+END;
+
+/* ================================================================
+ * Test
+ * ================================================================ */
+
+DCL M_NL(3) CHAR INIT('
+');
+DCL M_P(4) CHAR INIT('P ');
+DCL M_F(4) CHAR INIT('F ');
+DCL M_DONE(20) CHAR INIT('All tests done');
+
+CHK: PROC(OK INT, N INT);
+    IF (OK != 0) THEN
+        CALL UART_PUTS(ADDR(M_P));
+    ELSE
+        CALL UART_PUTS(ADDR(M_F));
+    CALL UART_PUTCHAR(48 + N);
+    CALL UART_PUTS(ADDR(M_NL));
+END;
+
+MAIN: PROC;
+    DCL OK INT;
+    DCL V INT;
+
+    CALL AM_INIT;
+
+    /* 1: buffer starts empty */
+    OK = (AM_PC = 0);
+    CALL CHK(OK, 1);
+
+    /* Emit: LOAD_INT 42 */
+    CALL AM_EMIT_OP(OP_LOAD_INT);
+    CALL AM_EMIT_WORD(42);
+
+    /* 2: PC advanced by 4 (1 op + 3 word) */
+    OK = (AM_PC = 4);
+    CALL CHK(OK, 2);
+
+    /* 3: opcode byte is OP_LOAD_INT */
+    OK = (AM_READ_BYTE(0) = OP_LOAD_INT);
+    CALL CHK(OK, 3);
+
+    /* 4: word is 42 */
+    V = AM_READ_WORD(1);
+    OK = (V = 42);
+    CALL CHK(OK, 4);
+
+    /* Emit: PRINT_INT */
+    CALL AM_EMIT_OP(OP_PRINT_INT);
+
+    /* 5: PC at 5 */
+    OK = (AM_PC = 5);
+    CALL CHK(OK, 5);
+
+    /* 6: opcode at offset 4 is PRINT_INT */
+    OK = (AM_READ_BYTE(4) = OP_PRINT_INT);
+    CALL CHK(OK, 6);
+
+    /* Emit: HALT */
+    CALL AM_EMIT_OP(OP_HALT);
+
+    /* 7: PC at 6 */
+    OK = (AM_PC = 6);
+    CALL CHK(OK, 7);
+
+    /* Emit: LOAD_VAR 3 */
+    CALL AM_EMIT_OP(OP_LOAD_VAR);
+    CALL AM_EMIT_BYTE(3);
+
+    /* 8: LOAD_VAR opcode at offset 6 */
+    OK = (AM_READ_BYTE(6) = OP_LOAD_VAR);
+    CALL CHK(OK, 8);
+
+    /* 9: operand byte is 3 */
+    OK = (AM_READ_BYTE(7) = 3);
+    CALL CHK(OK, 9);
+
+    /* Emit: BR 100 (branch target as word) */
+    CALL AM_EMIT_OP(OP_BR);
+    CALL AM_EMIT_WORD(100);
+
+    /* 10: word at offset 9 is 100 */
+    V = AM_READ_WORD(9);
+    OK = (V = 100);
+    CALL CHK(OK, 10);
+
+    /* 11: large word test -- LOAD_INT 100000 */
+    CALL AM_EMIT_OP(OP_LOAD_INT);
+    CALL AM_EMIT_WORD(100000);
+    V = AM_READ_WORD(13);
+    OK = (V = 100000);
+    CALL CHK(OK, 11);
+
+    CALL UART_PUTS(ADDR(M_DONE));
+    CALL UART_PUTS(ADDR(M_NL));
+END;
