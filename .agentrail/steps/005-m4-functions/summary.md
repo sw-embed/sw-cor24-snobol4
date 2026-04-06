@@ -1,0 +1,1 @@
+Split monolith into 4 modules (sno_main, sno_util, sno_lex, sno_exec). All compile individually. Assembly concatenation works but has duplicate .data issue. Designed proper linker approach (see linker-design.md). Filed plsw#28 for compiler module support. Build scripts created. Pausing functions to resolve modular build first.

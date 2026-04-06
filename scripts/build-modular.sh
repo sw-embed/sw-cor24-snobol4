@@ -1,8 +1,15 @@
 #!/bin/bash
 # build-modular.sh -- Build SNOBOL4 interpreter from modular sources
 #
-# Compiles 4 modules separately, strips runtime from libraries,
-# concatenates assembly, produces build/snobol4.s
+# Target architecture (docs/linker-design.md):
+#   PL/SW -m flag -> prefixed labels + .meta -> link24 -> combined .bin
+#
+# Current approach (until PL/SW gets module support):
+#   Compile each module -> strip runtime -> prefix labels -> concat .s
+#   Then assemble the combined .s with cor24-run
+#
+# Future approach (when link24 + PL/SW -m exist):
+#   Compile each module with -m <name> -> assemble -> link24 -> .bin
 
 set -euo pipefail
 
@@ -15,36 +22,35 @@ STRIP="$PROJECT_DIR/scripts/strip-runtime.sh"
 
 INCLUDES="$INC/descr.msw $INC/heap.msw $INC/am.msw $INC/pat.msw $INC/snoglob.msw"
 
+# Module order: main first (has _start), then libraries by layer
+MODULES="sno_main sno_util sno_lex sno_exec"
+
 mkdir -p "$BUILD"
 
-compile_module() {
-    local NAME="$1"
-    local PLSW="$2"
-    echo "  Compiling $NAME..." >&2
-    "$PROJECT_DIR/scripts/build.sh" $INCLUDES "$PLSW" >/dev/null 2>&1
-    local ASM="$BUILD/$(basename "$PLSW" .plsw).s"
-    if [ ! -f "$ASM" ]; then
-        echo "  ERROR: $ASM not produced" >&2
-        return 1
+# Phase 1: Compile each module to .s
+for MOD in $MODULES; do
+    echo "  Compiling $MOD..." >&2
+    "$PROJECT_DIR/scripts/build.sh" $INCLUDES "$SRC/${MOD}.plsw" >/dev/null 2>&1
+    if [ ! -f "$BUILD/${MOD}.s" ]; then
+        echo "  ERROR: $BUILD/${MOD}.s not produced" >&2
+        exit 1
     fi
-    echo "    -> $(wc -l < "$ASM") lines" >&2
-}
+    echo "    -> $(wc -l < "$BUILD/${MOD}.s") lines" >&2
+done
 
-echo "=== Building SNOBOL4 interpreter (modular) ===" >&2
-
-# Compile each module
-compile_module "main (L4)" "$SRC/sno_main.plsw"
-compile_module "util (L1)" "$SRC/sno_util.plsw"
-compile_module "lex  (L2)" "$SRC/sno_lex.plsw"
-compile_module "exec (L3)" "$SRC/sno_exec.plsw"
-
-# Concatenate: main first (has _start + runtime), then libraries stripped
+# Phase 2: Concatenate with stripping and label prefixing
+# Main module goes first verbatim (has _start + runtime)
+# Library modules: strip runtime + preamble, prefix internal labels,
+# strip duplicate .data entries (globals from snoglob)
 echo "  Linking..." >&2
 {
+    # Main module: keep everything
     cat "$BUILD/sno_main.s"
-    "$STRIP" "$BUILD/sno_util.s" "util"
-    "$STRIP" "$BUILD/sno_lex.s" "lex"
-    "$STRIP" "$BUILD/sno_exec.s" "exec"
+
+    # Library modules: strip runtime + prefix labels + smart data strip
+    for MOD in sno_util sno_lex sno_exec; do
+        "$STRIP" "$BUILD/${MOD}.s" "$MOD"
+    done
 } > "$BUILD/snobol4.s"
 
 LINES=$(wc -l < "$BUILD/snobol4.s")
