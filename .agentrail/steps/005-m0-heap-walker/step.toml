@@ -1,6 +1,6 @@
 number = 5
 slug = "m0-heap-walker"
-status = "pending"
+status = "in-progress"
 description = "Heap walker and consistency checker"
 role = "legacy"
 context_files = []
