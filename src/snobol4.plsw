@@ -1,5 +1,7 @@
-/* snobol4.plsw -- Minimal SNOBOL4 interpreter
- * Runs: OUTPUT = 'Hello, World!'  then END
+/* snobol4.plsw -- SNOBOL4 interpreter for COR24
+ *
+ * Supports: labels, variables, OUTPUT, integer/string literals,
+ * binary +/- expressions, goto :(L) :S(L) :F(L), END.
  */
 
 %INCLUDE descr;
@@ -10,33 +12,76 @@
 %DEFINE TK_INT 2;
 %DEFINE TK_STR 3;
 %DEFINE TK_EQ 4;
+%DEFINE TK_LPAREN 5;
+%DEFINE TK_RPAREN 6;
+%DEFINE TK_COLON 7;
 %DEFINE TK_PLUS 9;
 %DEFINE TK_MINUS 10;
 %DEFINE TK_EOL 11;
 %DEFINE TK_EOF 12;
 
-/* Statement types */
+/* Statement / expression / goto types */
 %DEFINE ST_EMPTY 0;
 %DEFINE ST_ASSIGN 1;
 %DEFINE ST_END 2;
-
-/* Object expression types */
 %DEFINE OE_NONE 0;
+%DEFINE OE_IDENT 1;
 %DEFINE OE_INT 2;
 %DEFINE OE_STR 3;
+%DEFINE OE_BINOP 4;
+%DEFINE GT_NONE 0;
+%DEFINE GT_UNCOND 1;
+%DEFINE GT_SUCC 2;
+%DEFINE GT_FAIL 3;
 
-/* ---- Source + Lexer ---- */
+/* ================================================================
+ * Source + Lexer
+ * ================================================================ */
 
-DCL SRC(128) CHAR INIT('       OUTPUT = "Hello, World!"
-END
-');
-DCL SP INT STATIC INIT(0);
-DCL SL INT STATIC INIT(0);
+DCL SRC(256) BYTE;
+DCL SRCLEN INT STATIC INIT(0);
+
+/* Load SNOBOL4 source into SRC buffer */
+LOAD_SRC: PROC;
+    DCL P INT;
+    /* Line 1:        OUTPUT = "Hello, World!" :(END) */
+    /*         7 spaces + OUTPUT = + "Hello, World!" + :(END) + newline */
+    P = 0;
+    SRC(P) = 32; P=P+1; SRC(P) = 32; P=P+1; SRC(P) = 32; P=P+1;
+    SRC(P) = 32; P=P+1; SRC(P) = 32; P=P+1; SRC(P) = 32; P=P+1;
+    SRC(P) = 32; P=P+1;
+    /* OUTPUT */
+    SRC(P) = 79; P=P+1; SRC(P) = 85; P=P+1; SRC(P) = 84; P=P+1;
+    SRC(P) = 80; P=P+1; SRC(P) = 85; P=P+1; SRC(P) = 84; P=P+1;
+    /* = */
+    SRC(P) = 32; P=P+1; SRC(P) = 61; P=P+1; SRC(P) = 32; P=P+1;
+    /* "Hello, World!" -- using double quote (34) */
+    SRC(P) = 34; P=P+1;
+    SRC(P) = 72; P=P+1; SRC(P) = 101; P=P+1; SRC(P) = 108; P=P+1;
+    SRC(P) = 108; P=P+1; SRC(P) = 111; P=P+1; SRC(P) = 44; P=P+1;
+    SRC(P) = 32; P=P+1; SRC(P) = 87; P=P+1; SRC(P) = 111; P=P+1;
+    SRC(P) = 114; P=P+1; SRC(P) = 108; P=P+1; SRC(P) = 100; P=P+1;
+    SRC(P) = 33; P=P+1;
+    SRC(P) = 34; P=P+1;
+    /* space :(END) newline */
+    SRC(P) = 32; P=P+1;
+    SRC(P) = 58; P=P+1; SRC(P) = 40; P=P+1;
+    SRC(P) = 69; P=P+1; SRC(P) = 78; P=P+1; SRC(P) = 68; P=P+1;
+    SRC(P) = 41; P=P+1;
+    SRC(P) = 10; P=P+1;
+    /* Line 2: END */
+    SRC(P) = 69; P=P+1; SRC(P) = 78; P=P+1; SRC(P) = 68; P=P+1;
+    SRC(P) = 10; P=P+1;
+    SRC(P) = 0;
+    SRCLEN = P;
+END;
+DCL SPOS INT STATIC INIT(0);
 DCL TT INT STATIC INIT(0);
 DCL TV INT STATIC INIT(0);
 DCL TB(32) CHAR INIT('                                ');
 DCL TN INT STATIC INIT(0);
-DCL ALS INT STATIC INIT(1);
+DCL LHAS_LBL INT STATIC INIT(0);
+DCL AT_SOL INT STATIC INIT(1);
 
 IS_A: PROC(C INT) RETURNS(INT);
     IF (C >= 65) THEN IF (C <= 90) THEN RETURN(1);
@@ -59,27 +104,37 @@ LEX: PROC;
     DCL C INT;
     DCL I INT;
     DCL Q INT;
-    C = SRC(SP);
+    C = SRC(SPOS);
+    IF (AT_SOL = 1) THEN DO;
+        AT_SOL = 0;
+        IF (C != 32 AND C != 9 AND C != 10 AND C != 0) THEN
+            LHAS_LBL = 1;
+        ELSE
+            LHAS_LBL = 0;
+    END;
     DO WHILE (C = 32 OR C = 9);
-        SP = SP + 1;
-        C = SRC(SP);
+        SPOS = SPOS + 1;
+        C = SRC(SPOS);
     END;
     IF (C = 0) THEN DO; TT = TK_EOF; RETURN; END;
-    IF (C = 10) THEN DO; SP = SP + 1; TT = TK_EOL; RETURN; END;
-    IF (C = 61) THEN DO; SP = SP + 1; TT = TK_EQ; RETURN; END;
-    IF (C = 43) THEN DO; SP = SP + 1; TT = TK_PLUS; RETURN; END;
-    IF (C = 45) THEN DO; SP = SP + 1; TT = TK_MINUS; RETURN; END;
+    IF (C = 10) THEN DO; SPOS = SPOS + 1; TT = TK_EOL; AT_SOL = 1; RETURN; END;
+    IF (C = 61) THEN DO; SPOS = SPOS + 1; TT = TK_EQ; RETURN; END;
+    IF (C = 40) THEN DO; SPOS = SPOS + 1; TT = TK_LPAREN; RETURN; END;
+    IF (C = 41) THEN DO; SPOS = SPOS + 1; TT = TK_RPAREN; RETURN; END;
+    IF (C = 58) THEN DO; SPOS = SPOS + 1; TT = TK_COLON; RETURN; END;
+    IF (C = 43) THEN DO; SPOS = SPOS + 1; TT = TK_PLUS; RETURN; END;
+    IF (C = 45) THEN DO; SPOS = SPOS + 1; TT = TK_MINUS; RETURN; END;
     IF (C = 39 OR C = 34) THEN DO;
         Q = C;
-        SP = SP + 1;
+        SPOS = SPOS + 1;
         I = 0;
-        C = SRC(SP);
+        C = SRC(SPOS);
         DO WHILE (C != Q AND C != 0 AND C != 10);
             IF (I < 31) THEN DO; TB(I) = C; I = I + 1; END;
-            SP = SP + 1;
-            C = SRC(SP);
+            SPOS = SPOS + 1;
+            C = SRC(SPOS);
         END;
-        IF (C = Q) THEN SP = SP + 1;
+        IF (C = Q) THEN SPOS = SPOS + 1;
         TB(I) = 0;
         TN = I;
         TT = TK_STR;
@@ -87,9 +142,9 @@ LEX: PROC;
     END;
     IF (IS_D(C) != 0) THEN DO;
         TV = 0;
-        DO WHILE (IS_D(SRC(SP)) != 0);
-            C = SRC(SP);
-            SP = SP + 1;
+        DO WHILE (IS_D(SRC(SPOS)) != 0);
+            C = SRC(SPOS);
+            SPOS = SPOS + 1;
             TV = TV * 10 + (C - 48);
         END;
         TT = TK_INT;
@@ -97,9 +152,9 @@ LEX: PROC;
     END;
     IF (IS_A(C) != 0) THEN DO;
         I = 0;
-        DO WHILE (IS_AN(SRC(SP)) != 0);
-            C = SRC(SP);
-            SP = SP + 1;
+        DO WHILE (IS_AN(SRC(SPOS)) != 0);
+            C = SRC(SPOS);
+            SPOS = SPOS + 1;
             IF (C >= 97) THEN IF (C <= 122) THEN C = C - 32;
             IF (I < 31) THEN DO; TB(I) = C; I = I + 1; END;
         END;
@@ -108,26 +163,58 @@ LEX: PROC;
         TT = TK_IDENT;
         RETURN;
     END;
-    SP = SP + 1;
+    SPOS = SPOS + 1;
     TT = TK_EOF;
 END;
 
-/* ---- Minimal statement table (max 8) ---- */
+/* ================================================================
+ * String helpers
+ * ================================================================ */
 
-DCL ST(8) INT;
-DCL SS(8) INT;
-DCL SO(8) INT;
-DCL SV(8) INT;
-DCL SB(128) BYTE;
+/* String buffer for storing names and string literals */
+DCL SB(256) BYTE;
 DCL SBPOS INT STATIC INIT(0);
-DCL SPTR(8) INT;
-DCL SC INT STATIC INIT(0);
 
-IS_OUT: PROC RETURNS(INT);
-    IF (TB(0) = 79) THEN IF (TB(1) = 85) THEN IF (TB(2) = 84) THEN
-        IF (TB(3) = 80) THEN IF (TB(4) = 85) THEN IF (TB(5) = 84) THEN
-            IF (TB(6) = 0) THEN RETURN(1);
-    RETURN(0);
+/* Save TB into SB, return offset */
+SBSAVE: PROC RETURNS(INT);
+    DCL OFF INT;
+    DCL I INT;
+    DCL C INT;
+    DCL DP PTR;
+    OFF = SBPOS;
+    I = 0;
+    C = TB(0);
+    DO WHILE (C != 0 AND I < 31);
+        DP = ADDR(SB) + SBPOS;
+        DP->DTAG = C;
+        SBPOS = SBPOS + 1;
+        I = I + 1;
+        C = TB(I);
+    END;
+    DP = ADDR(SB) + SBPOS;
+    DP->DTAG = 0;
+    SBPOS = SBPOS + 1;
+    RETURN(OFF);
+END;
+
+/* Compare two null-terminated strings */
+SCEQ: PROC(A PTR, B PTR) RETURNS(INT);
+    DCL I INT;
+    DCL AP PTR;
+    DCL BP PTR;
+    DCL CA INT;
+    DCL CB INT;
+    I = 0;
+    DO WHILE (1 = 1);
+        AP = A + I;
+        BP = B + I;
+        CA = AP->DTAG;
+        CB = BP->DTAG;
+        IF (CA != CB) THEN RETURN(0);
+        IF (CA = 0) THEN RETURN(1);
+        I = I + 1;
+    END;
+    RETURN(1);
 END;
 
 IS_END: PROC RETURNS(INT);
@@ -136,79 +223,259 @@ IS_END: PROC RETURNS(INT);
     RETURN(0);
 END;
 
-/* SCOPY into SB buffer, return offset */
-SVSAVE: PROC RETURNS(INT);
-    DCL OFF INT;
+/* ================================================================
+ * Symbol table (variables)
+ * ================================================================ */
+
+%DEFINE SYMMAX 16;
+
+DCL SYMN(128) BYTE;
+DCL SYMV(16) INT;
+DCL SYMC INT STATIC INIT(0);
+
+/* SYM_FIND: find symbol by name offset, return index or -1 */
+SYM_FIND: PROC(NOFF INT) RETURNS(INT);
+    DCL I INT;
+    DCL NP PTR;
+    I = 0;
+    DO WHILE (I < SYMC);
+        NP = ADDR(SYMN) + I * 8;
+        IF (SCEQ(NP, ADDR(SB) + NOFF) != 0) THEN RETURN(I);
+        I = I + 1;
+    END;
+    RETURN(0 - 1);
+END;
+
+/* SYM_ADD: add symbol, return index */
+SYM_ADD: PROC(NOFF INT) RETURNS(INT);
+    DCL IDX INT;
+    DCL NP PTR;
+    DCL SRP PTR;
     DCL I INT;
     DCL C INT;
-    OFF = SBPOS;
+    IF (SYMC >= SYMMAX) THEN RETURN(0 - 1);
+    IDX = SYMC;
+    NP = ADDR(SYMN) + IDX * 8;
+    SRP = ADDR(SB) + NOFF;
     I = 0;
-    C = TB(0);
-    DO WHILE (C != 0 AND I < 31);
+    C = 1;
+    DO WHILE (C != 0 AND I < 7);
         DCL DP PTR;
-        DP = ADDR(SB) + SBPOS;
+        DCL RP PTR;
+        RP = SRP + I;
+        C = RP->DTAG;
+        DP = NP + I;
         DP->DTAG = C;
-        SBPOS = SBPOS + 1;
         I = I + 1;
-        C = TB(I);
     END;
     DCL EP PTR;
-    EP = ADDR(SB) + SBPOS;
+    EP = NP + I;
     EP->DTAG = 0;
-    SBPOS = SBPOS + 1;
-    RETURN(OFF);
+    SYMV(IDX) = 0;
+    SYMC = SYMC + 1;
+    RETURN(IDX);
 END;
+
+/* SYM_LOOKUP: find or create */
+SYM_LOOKUP: PROC(NOFF INT) RETURNS(INT);
+    DCL IDX INT;
+    IDX = SYM_FIND(NOFF);
+    IF (IDX >= 0) THEN RETURN(IDX);
+    RETURN(SYM_ADD(NOFF));
+END;
+
+/* ================================================================
+ * Label table
+ * ================================================================ */
+
+%DEFINE LBLMAX 8;
+
+DCL LBLN(64) BYTE;
+DCL LBLS(8) INT;
+DCL LBLC INT STATIC INIT(0);
+
+LBL_ADD: PROC(NOFF INT, STNUM INT);
+    DCL NP PTR;
+    DCL SRP PTR;
+    DCL I INT;
+    DCL C INT;
+    IF (LBLC >= LBLMAX) THEN RETURN;
+    NP = ADDR(LBLN) + LBLC * 8;
+    SRP = ADDR(SB) + NOFF;
+    I = 0;
+    C = 1;
+    DO WHILE (C != 0 AND I < 7);
+        DCL DP PTR;
+        DCL RP PTR;
+        RP = SRP + I;
+        C = RP->DTAG;
+        DP = NP + I;
+        DP->DTAG = C;
+        I = I + 1;
+    END;
+    DCL EP PTR;
+    EP = NP + I;
+    EP->DTAG = 0;
+    LBLS(LBLC) = STNUM;
+    LBLC = LBLC + 1;
+END;
+
+LBL_FIND: PROC(NOFF INT) RETURNS(INT);
+    DCL I INT;
+    DCL NP PTR;
+    I = 0;
+    DO WHILE (I < LBLC);
+        NP = ADDR(LBLN) + I * 8;
+        IF (SCEQ(NP, ADDR(SB) + NOFF) != 0) THEN RETURN(LBLS(I));
+        I = I + 1;
+    END;
+    RETURN(0 - 1);
+END;
+
+/* ================================================================
+ * Statement table (max 16)
+ * ================================================================ */
+
+%DEFINE STMAX 16;
+
+DCL S_TYP(16) INT;
+DCL S_SUBJ(16) INT;
+DCL S_OETY(16) INT;
+DCL S_OEV1(16) INT;
+DCL S_OEOP(16) INT;
+DCL S_OEV2(16) INT;
+DCL S_GTYP(16) INT;
+DCL S_GLBL(16) INT;
+DCL S_SPTR(16) INT;
+DCL STCNT INT STATIC INIT(0);
+
+/* ================================================================
+ * Parser
+ * ================================================================ */
 
 PARSE: PROC;
     DCL S INT;
-    SC = 0;
+    DCL NOFF INT;
+    STCNT = 0;
     SBPOS = 0;
-    SP = 0;
+    SYMC = 0;
+    LBLC = 0;
+    SPOS = 0;
+    AT_SOL = 1;
     CALL LEX;
-    DO WHILE (TT != TK_EOF AND SC < 8);
-        S = SC;
-        ST(S) = ST_EMPTY;
-        SS(S) = 0;
-        SO(S) = OE_NONE;
-        SV(S) = 0;
-        SPTR(S) = 0;
 
+    DO WHILE (TT != TK_EOF AND STCNT < STMAX);
+        S = STCNT;
+        S_TYP(S) = ST_EMPTY;
+        S_SUBJ(S) = 0 - 1;
+        S_OETY(S) = OE_NONE;
+        S_OEV1(S) = 0;
+        S_OEOP(S) = 0;
+        S_OEV2(S) = 0;
+        S_GTYP(S) = GT_NONE;
+        S_GLBL(S) = 0 - 1;
+        S_SPTR(S) = 0 - 1;
+
+        /* Skip blank lines */
         IF (TT = TK_EOL) THEN DO;
             CALL LEX;
-            SC = SC + 1;
+            STCNT = STCNT + 1;
+        END;
+        /* END statement -- also register as label */
+        ELSE IF (TT = TK_IDENT AND IS_END() != 0) THEN DO;
+            S_TYP(S) = ST_END;
+            NOFF = SBSAVE();
+            CALL LBL_ADD(NOFF, S);
+            CALL LEX;
+            IF (TT = TK_EOL) THEN CALL LEX;
+            STCNT = STCNT + 1;
         END;
         ELSE IF (TT = TK_IDENT) THEN DO;
-            IF (IS_END() != 0) THEN DO;
-                ST(S) = ST_END;
+            /* Label? (column 1) */
+            IF (LHAS_LBL = 1) THEN DO;
+                NOFF = SBSAVE();
+                CALL LBL_ADD(NOFF, S);
                 CALL LEX;
-                IF (TT = TK_EOL) THEN CALL LEX;
-                SC = SC + 1;
             END;
-            ELSE DO;
-                /* Subject (OUTPUT or variable) */
-                SS(S) = IS_OUT();
+
+            /* Subject */
+            IF (TT = TK_IDENT) THEN DO;
+                NOFF = SBSAVE();
+                S_SUBJ(S) = SYM_LOOKUP(NOFF);
                 CALL LEX;
-                IF (TT = TK_EQ) THEN DO;
-                    ST(S) = ST_ASSIGN;
+            END;
+
+            /* = object */
+            IF (TT = TK_EQ) THEN DO;
+                S_TYP(S) = ST_ASSIGN;
+                CALL LEX;
+                IF (TT = TK_INT) THEN DO;
+                    S_OETY(S) = OE_INT;
+                    S_OEV1(S) = TV;
+                    CALL LEX;
+                END;
+                ELSE IF (TT = TK_STR) THEN DO;
+                    S_OETY(S) = OE_STR;
+                    S_SPTR(S) = SBSAVE();
+                    CALL LEX;
+                END;
+                ELSE IF (TT = TK_IDENT) THEN DO;
+                    NOFF = SBSAVE();
+                    S_OETY(S) = OE_IDENT;
+                    S_OEV1(S) = SYM_LOOKUP(NOFF);
+                    CALL LEX;
+                END;
+
+                /* Binary op */
+                IF (TT = TK_PLUS OR TT = TK_MINUS) THEN DO;
+                    S_OEOP(S) = TT;
+                    S_OETY(S) = OE_BINOP;
                     CALL LEX;
                     IF (TT = TK_INT) THEN DO;
-                        SO(S) = OE_INT;
-                        SV(S) = TV;
+                        S_OEV2(S) = TV;
                         CALL LEX;
                     END;
-                    ELSE IF (TT = TK_STR) THEN DO;
-                        SO(S) = OE_STR;
-                        SPTR(S) = SVSAVE();
+                    ELSE IF (TT = TK_IDENT) THEN DO;
+                        NOFF = SBSAVE();
+                        S_OEV2(S) = SYM_LOOKUP(NOFF);
                         CALL LEX;
                     END;
                 END;
-                /* Skip to EOL */
-                DO WHILE (TT != TK_EOL AND TT != TK_EOF);
-                    CALL LEX;
-                END;
-                IF (TT = TK_EOL) THEN CALL LEX;
-                SC = SC + 1;
             END;
+
+            /* Goto: :(L) :S(L) :F(L) */
+            IF (TT = TK_COLON) THEN DO;
+                CALL LEX;
+                IF (TT = TK_IDENT) THEN DO;
+                    /* S or F */
+                    IF (TB(0) = 83 AND TB(1) = 0) THEN DO;
+                        S_GTYP(S) = GT_SUCC;
+                        CALL LEX;
+                    END;
+                    ELSE IF (TB(0) = 70 AND TB(1) = 0) THEN DO;
+                        S_GTYP(S) = GT_FAIL;
+                        CALL LEX;
+                    END;
+                END;
+                ELSE IF (TT = TK_LPAREN) THEN DO;
+                    S_GTYP(S) = GT_UNCOND;
+                END;
+                IF (TT = TK_LPAREN) THEN DO;
+                    CALL LEX;
+                    IF (TT = TK_IDENT) THEN DO;
+                        S_GLBL(S) = SBSAVE();
+                        CALL LEX;
+                    END;
+                    IF (TT = TK_RPAREN) THEN CALL LEX;
+                END;
+            END;
+
+            /* Skip rest of line */
+            DO WHILE (TT != TK_EOL AND TT != TK_EOF);
+                CALL LEX;
+            END;
+            IF (TT = TK_EOL) THEN CALL LEX;
+            STCNT = STCNT + 1;
         END;
         ELSE DO;
             CALL LEX;
@@ -216,11 +483,14 @@ PARSE: PROC;
     END;
 END;
 
-/* ---- Executor ---- */
+/* ================================================================
+ * Executor
+ * ================================================================ */
 
 DCL NL(3) CHAR INIT('
 ');
 
+/* Print integer as decimal */
 PUT_DEC: PROC(V INT);
     DCL BUF(12) BYTE;
     DCL POS INT;
@@ -252,31 +522,89 @@ PUT_DEC: PROC(V INT);
     END;
 END;
 
+/* Check if symbol name is "OUTPUT" */
+DCL N_OUT(8) CHAR INIT('OUTPUT');
+IS_OUTPUT: PROC(IDX INT) RETURNS(INT);
+    DCL NP PTR;
+    NP = ADDR(SYMN) + IDX * 8;
+    RETURN(SCEQ(NP, ADDR(N_OUT)));
+END;
+
 RUN: PROC;
     DCL PC INT;
     DCL S INT;
+    DCL RESULT INT;
+    DCL V INT;
+    DCL V2 INT;
+    DCL NPC INT;
+
     PC = 0;
-    DO WHILE (PC < SC);
+    DO WHILE (PC < STCNT);
         S = PC;
-        IF (ST(S) = ST_END) THEN RETURN;
-        IF (ST(S) = ST_ASSIGN) THEN DO;
-            /* If subject is OUTPUT, print */
-            IF (SS(S) = 1) THEN DO;
-                IF (SO(S) = OE_STR) THEN
-                    CALL UART_PUTS(ADDR(SB) + SPTR(S));
-                ELSE IF (SO(S) = OE_INT) THEN
-                    CALL PUT_DEC(SV(S));
-                CALL UART_PUTS(ADDR(NL));
+        RESULT = 1;
+
+        IF (S_TYP(S) = ST_END) THEN RETURN;
+
+        IF (S_TYP(S) = ST_ASSIGN) THEN DO;
+            /* Evaluate object */
+            IF (S_OETY(S) = OE_INT) THEN DO;
+                V = S_OEV1(S);
+            END;
+            ELSE IF (S_OETY(S) = OE_IDENT) THEN DO;
+                V = SYMV(S_OEV1(S));
+            END;
+            ELSE IF (S_OETY(S) = OE_BINOP) THEN DO;
+                V = SYMV(S_OEV1(S));
+                V2 = S_OEV2(S);
+                IF (S_OEOP(S) = TK_PLUS) THEN V = V + V2;
+                ELSE IF (S_OEOP(S) = TK_MINUS) THEN V = V - V2;
+            END;
+            ELSE DO;
+                V = 0;
+            END;
+
+            /* Store in subject variable */
+            IF (S_SUBJ(S) >= 0) THEN DO;
+                SYMV(S_SUBJ(S)) = V;
+                /* OUTPUT prints */
+                IF (IS_OUTPUT(S_SUBJ(S)) != 0) THEN DO;
+                    IF (S_OETY(S) = OE_STR) THEN
+                        CALL UART_PUTS(ADDR(SB) + S_SPTR(S));
+                    ELSE
+                        CALL PUT_DEC(V);
+                    CALL UART_PUTS(ADDR(NL));
+                END;
             END;
         END;
-        PC = PC + 1;
+
+        /* Handle goto */
+        IF (S_GTYP(S) = GT_UNCOND) THEN DO;
+            NPC = LBL_FIND(S_GLBL(S));
+            IF (NPC >= 0) THEN DO; PC = NPC; END;
+            ELSE DO; PC = PC + 1; END;
+        END;
+        ELSE IF (S_GTYP(S) = GT_SUCC AND RESULT = 1) THEN DO;
+            NPC = LBL_FIND(S_GLBL(S));
+            IF (NPC >= 0) THEN DO; PC = NPC; END;
+            ELSE DO; PC = PC + 1; END;
+        END;
+        ELSE IF (S_GTYP(S) = GT_FAIL AND RESULT = 0) THEN DO;
+            NPC = LBL_FIND(S_GLBL(S));
+            IF (NPC >= 0) THEN DO; PC = NPC; END;
+            ELSE DO; PC = PC + 1; END;
+        END;
+        ELSE DO;
+            PC = PC + 1;
+        END;
     END;
 END;
 
-/* ---- Main ---- */
+/* ================================================================
+ * Main
+ * ================================================================ */
 
 MAIN: PROC;
-    SL = 37;
+    CALL LOAD_SRC;
     CALL PARSE;
     CALL RUN;
 END;
