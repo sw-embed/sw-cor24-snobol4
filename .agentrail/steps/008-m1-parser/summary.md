@@ -1,1 +1,0 @@
-Implemented SNOBOL4 statement parser. Parses labeled/unlabeled statements using column-1 detection (LINE_HAS_LABEL flag). Statement types: empty, assign, end. Object expressions: int, ident, binop (+/-). Statement table as parallel arrays (max 16). Integrated with lexer. 8 tests passing on 4-line program (OUTPUT=42, LOOP X=X+1, OUTPUT=3, END).

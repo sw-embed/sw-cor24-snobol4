@@ -1,8 +1,0 @@
-number = 9
-slug = "m1-symbol-table"
-status = "completed"
-description = "Symbol table and descriptor-based value storage"
-role = "legacy"
-context_files = []
-created_at = "2026-04-05T19:49:53"
-completed_at = "2026-04-05T22:19:07"

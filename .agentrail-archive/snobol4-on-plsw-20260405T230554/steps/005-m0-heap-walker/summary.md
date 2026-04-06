@@ -1,0 +1,1 @@
+Added integration test (test_walk.plsw) combining allocator, heap walker, and consistency checker. 7 tests: alloc 3 blocks, walk, check, free middle, walk (shows free), check, reuse freed block, bump-alloc 4th block. All pass. HEAP_WALK and HEAP_CHECK were already implemented in step 004. Filed plsw#13 (emit buffer 32KB limit).

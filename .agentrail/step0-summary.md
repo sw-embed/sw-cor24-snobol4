@@ -1,1 +1,1 @@
-Project initialized with PRD, architecture, design, and plan docs. Saga created.
+Saga initialized for Milestone 2: Abstract Machine boundary.

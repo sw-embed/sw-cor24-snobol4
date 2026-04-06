@@ -1,0 +1,1 @@
+Milestones 0-1 complete. Runtime substrate (descriptors, heap, allocator, diagnostics) and minimal execution core (lexer, parser, symbol table, executor) all working. SNOBOL4 Hello World runs on COR24. 10 steps, 50+ tests, 22 PL/SW compiler issues filed and resolved.

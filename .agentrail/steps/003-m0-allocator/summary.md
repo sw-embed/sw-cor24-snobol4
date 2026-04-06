@@ -1,1 +1,0 @@
-Implemented heap allocator with bump allocation and free-list recycling. HEAP_INIT, HEAP_ALLOC (first-fit free list + bump fallback), HEAP_FREE, HEAP_USED, HEAP_AVAIL. Added FREEBLK BASED record to heap.msw. 9 tests passing in test_alloc.plsw. Filed plsw#11 (DCL in nested blocks).
