@@ -1,0 +1,1 @@
+Backtracking implemented as part of step 006. EXEC_SPAN does greedy scan. :F() failure branching via LAST_RESULT. Unanchored matching retries at successive positions (implicit backtracking).
