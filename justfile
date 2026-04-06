@@ -43,8 +43,12 @@ test-lower:
 test-exec:
     ./scripts/build.sh include/descr.msw include/heap.msw include/am.msw src/test_exec.plsw
 
+# Run AM disassembler test
+test-amdump:
+    ./scripts/build.sh include/descr.msw include/heap.msw include/am.msw src/test_amdump.plsw
+
 # Run all tests
-test: test-am test-lower test-exec
+test: test-am test-lower test-exec test-amdump
     ./scripts/build.sh include/descr.msw include/heap.msw include/trace.msw src/test_descr.plsw
     ./scripts/build.sh include/descr.msw include/heap.msw src/test_snolib.plsw
     ./scripts/build.sh include/descr.msw include/heap.msw src/test_snolib2.plsw

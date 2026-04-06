@@ -1,6 +1,6 @@
 number = 4
 slug = "m2-am-dump"
-status = "pending"
+status = "in-progress"
 description = "AM disassembler and trace tool"
 role = "legacy"
 context_files = []

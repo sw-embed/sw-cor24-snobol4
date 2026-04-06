@@ -1,0 +1,223 @@
+/* test_amdump.plsw -- AM disassembler */
+
+%INCLUDE descr;
+%INCLUDE heap;
+%INCLUDE am;
+
+/* ---- AM code buffer + emitter ---- */
+
+DCL AM_CODE(512) BYTE;
+DCL AM_PC INT STATIC INIT(0);
+
+AM_INIT: PROC;
+    AM_PC = 0;
+END;
+
+AM_EMIT_OP: PROC(OP INT);
+    AM_CODE(AM_PC) = OP;
+    AM_PC = AM_PC + 1;
+END;
+
+AM_EMIT_BYTE: PROC(V INT);
+    AM_CODE(AM_PC) = V;
+    AM_PC = AM_PC + 1;
+END;
+
+AM_EMIT_WORD: PROC(V INT);
+    DCL B0 INT;
+    DCL B1 INT;
+    DCL B2 INT;
+    DCL REM INT;
+    REM = V;
+    B2 = 0;
+    DO WHILE (REM > 65535);
+        REM = REM - 65536;
+        B2 = B2 + 1;
+    END;
+    B1 = 0;
+    DO WHILE (REM > 255);
+        REM = REM - 256;
+        B1 = B1 + 1;
+    END;
+    B0 = REM;
+    AM_CODE(AM_PC) = B0;
+    AM_PC = AM_PC + 1;
+    AM_CODE(AM_PC) = B1;
+    AM_PC = AM_PC + 1;
+    AM_CODE(AM_PC) = B2;
+    AM_PC = AM_PC + 1;
+END;
+
+/* ---- Hex printer ---- */
+
+DCL HEXCHARS(16) CHAR INIT('0123456789ABCDEF');
+
+PUT_HEX_BYTE: PROC(V INT);
+    DCL HI INT;
+    DCL LO INT;
+    HI = V;
+    LO = 0;
+    DO WHILE (HI > 15);
+        HI = HI - 16;
+        LO = LO + 1;
+    END;
+    CALL UART_PUTCHAR(HEXCHARS(LO));
+    CALL UART_PUTCHAR(HEXCHARS(HI));
+END;
+
+PUT_HEX24: PROC(V INT);
+    DCL B2 INT;
+    DCL B1 INT;
+    DCL B0 INT;
+    DCL REM INT;
+    REM = V;
+    B2 = 0;
+    DO WHILE (REM > 65535);
+        REM = REM - 65536;
+        B2 = B2 + 1;
+    END;
+    B1 = 0;
+    DO WHILE (REM > 255);
+        REM = REM - 256;
+        B1 = B1 + 1;
+    END;
+    B0 = REM;
+    CALL PUT_HEX_BYTE(B2);
+    CALL PUT_HEX_BYTE(B1);
+    CALL PUT_HEX_BYTE(B0);
+END;
+
+DCL M_NL(3) CHAR INIT('
+');
+
+/* ---- Opcode names ---- */
+
+DCL ON_LI(12) CHAR INIT('LOAD_INT');
+DCL ON_LS(12) CHAR INIT('LOAD_STR');
+DCL ON_LV(12) CHAR INIT('LOAD_VAR');
+DCL ON_SV(12) CHAR INIT('STORE_VAR');
+DCL ON_AD(4) CHAR INIT('ADD');
+DCL ON_SU(4) CHAR INIT('SUB');
+DCL ON_PI(12) CHAR INIT('PRINT_INT');
+DCL ON_PS(12) CHAR INIT('PRINT_STR');
+DCL ON_PN(12) CHAR INIT('PRINT_NL');
+DCL ON_BR(4) CHAR INIT('BR');
+DCL ON_BS(12) CHAR INIT('BR_SUCC');
+DCL ON_BF(12) CHAR INIT('BR_FAIL');
+DCL ON_HL(8) CHAR INIT('HALT');
+DCL ON_NP(4) CHAR INIT('NOP');
+DCL ON_UK(4) CHAR INIT('???');
+
+OP_NAME: PROC(OP INT) RETURNS(INT);
+    IF (OP = OP_LOAD_INT) THEN RETURN(ADDR(ON_LI));
+    IF (OP = OP_LOAD_STR) THEN RETURN(ADDR(ON_LS));
+    IF (OP = OP_LOAD_VAR) THEN RETURN(ADDR(ON_LV));
+    IF (OP = OP_STORE_VAR) THEN RETURN(ADDR(ON_SV));
+    IF (OP = OP_ADD) THEN RETURN(ADDR(ON_AD));
+    IF (OP = OP_SUB) THEN RETURN(ADDR(ON_SU));
+    IF (OP = OP_PRINT_INT) THEN RETURN(ADDR(ON_PI));
+    IF (OP = OP_PRINT_STR) THEN RETURN(ADDR(ON_PS));
+    IF (OP = OP_PRINT_NL) THEN RETURN(ADDR(ON_PN));
+    IF (OP = OP_BR) THEN RETURN(ADDR(ON_BR));
+    IF (OP = OP_BR_SUCC) THEN RETURN(ADDR(ON_BS));
+    IF (OP = OP_BR_FAIL) THEN RETURN(ADDR(ON_BF));
+    IF (OP = OP_HALT) THEN RETURN(ADDR(ON_HL));
+    IF (OP = OP_NOP) THEN RETURN(ADDR(ON_NP));
+    RETURN(ADDR(ON_UK));
+END;
+
+/* ---- AM Disassembler ---- */
+
+DCL AD_HDR(16) CHAR INIT('--- AM dump');
+DCL AD_END(16) CHAR INIT('--- end AM');
+DCL AD_SP(4) CHAR INIT(' ');
+
+AM_DUMP: PROC;
+    DCL PC INT;
+    DCL OP INT;
+    DCL V INT;
+
+    CALL UART_PUTS(ADDR(AD_HDR));
+    CALL UART_PUTS(ADDR(M_NL));
+
+    PC = 0;
+    DO WHILE (PC < AM_PC);
+        /* Print address */
+        CALL PUT_HEX_BYTE(PC);
+        CALL UART_PUTS(ADDR(AD_SP));
+
+        OP = AM_CODE(PC);
+        PC = PC + 1;
+
+        /* Print opcode name */
+        CALL UART_PUTS(OP_NAME(OP));
+
+        /* Print operands based on opcode */
+        IF (OP = OP_LOAD_INT OR OP = OP_LOAD_STR OR OP = OP_BR OR OP = OP_BR_SUCC OR OP = OP_BR_FAIL) THEN DO;
+            /* Word operand */
+            V = AM_CODE(PC + 2) * 65536 + AM_CODE(PC + 1) * 256 + AM_CODE(PC);
+            PC = PC + 3;
+            CALL UART_PUTS(ADDR(AD_SP));
+            CALL PUT_HEX24(V);
+        END;
+        ELSE IF (OP = OP_PRINT_STR) THEN DO;
+            V = AM_CODE(PC + 2) * 65536 + AM_CODE(PC + 1) * 256 + AM_CODE(PC);
+            PC = PC + 3;
+            CALL UART_PUTS(ADDR(AD_SP));
+            CALL PUT_HEX24(V);
+        END;
+        ELSE IF (OP = OP_LOAD_VAR OR OP = OP_STORE_VAR) THEN DO;
+            /* Byte operand */
+            V = AM_CODE(PC);
+            PC = PC + 1;
+            CALL UART_PUTS(ADDR(AD_SP));
+            CALL PUT_HEX_BYTE(V);
+        END;
+
+        CALL UART_PUTS(ADDR(M_NL));
+    END;
+
+    CALL UART_PUTS(ADDR(AD_END));
+    CALL UART_PUTS(ADDR(M_NL));
+END;
+
+/* ---- Test ---- */
+
+DCL M_P(4) CHAR INIT('P ');
+DCL M_F(4) CHAR INIT('F ');
+DCL M_DONE(20) CHAR INIT('All tests done');
+
+CHK: PROC(OK INT, N INT);
+    IF (OK != 0) THEN
+        CALL UART_PUTS(ADDR(M_P));
+    ELSE
+        CALL UART_PUTS(ADDR(M_F));
+    CALL UART_PUTCHAR(48 + N);
+    CALL UART_PUTS(ADDR(M_NL));
+END;
+
+MAIN: PROC;
+    /* Emit: LOAD_INT 42, STORE_VAR 0, LOAD_VAR 0, PRINT_INT, PRINT_NL, HALT */
+    CALL AM_INIT;
+
+    CALL AM_EMIT_OP(OP_LOAD_INT);
+    CALL AM_EMIT_WORD(42);
+    CALL AM_EMIT_OP(OP_STORE_VAR);
+    CALL AM_EMIT_BYTE(0);
+    CALL AM_EMIT_OP(OP_LOAD_VAR);
+    CALL AM_EMIT_BYTE(0);
+    CALL AM_EMIT_OP(OP_PRINT_INT);
+    CALL AM_EMIT_OP(OP_PRINT_NL);
+    CALL AM_EMIT_OP(OP_BR);
+    CALL AM_EMIT_WORD(12);
+    CALL AM_EMIT_OP(OP_HALT);
+
+    /* Dump -- visual test */
+    CALL AM_DUMP;
+
+    /* 1: dump completed without crash */
+    CALL CHK(1, 1);
+
+    CALL UART_PUTS(ADDR(M_DONE));
+    CALL UART_PUTS(ADDR(M_NL));
+END;
