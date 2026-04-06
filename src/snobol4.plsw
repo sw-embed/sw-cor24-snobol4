@@ -1,5 +1,6 @@
 /* snobol4.plsw -- SNOBOL4 interpreter for COR24
  *
+ * Reads SNOBOL4 source from UART, parses, and executes.
  * Supports: labels, variables, OUTPUT, integer/string literals,
  * binary +/- expressions, goto :(L) :S(L) :F(L), END.
  */
@@ -35,12 +36,35 @@
 %DEFINE GT_FAIL 3;
 
 /* ================================================================
- * Source + Lexer
+ * UART input: read SNOBOL4 source from UART RX
  * ================================================================ */
 
-DCL SRC(128) CHAR INIT("       OUTPUT = 'Hello, World!' :(END)
-END
-");
+DCL SRC(256) BYTE;
+
+/* Source is loaded at 0x080000 by the emulator via --load-binary */
+%DEFINE SRC_LOAD_ADDR 524288;
+
+/* READ_SRC: copy source from load address into SRC buffer */
+READ_SRC: PROC;
+    DCL P INT;
+    DCL RP PTR;
+    DCL CH INT;
+    P = 0;
+    RP = SRC_LOAD_ADDR;
+    CH = RP->DTAG;
+    DO WHILE (CH != 0 AND P < 254);
+        SRC(P) = CH;
+        P = P + 1;
+        RP = SRC_LOAD_ADDR + P;
+        CH = RP->DTAG;
+    END;
+    SRC(P) = 0;
+END;
+
+/* ================================================================
+ * Lexer
+ * ================================================================ */
+
 DCL SPOS INT STATIC INIT(0);
 DCL TT INT STATIC INIT(0);
 DCL TV INT STATIC INIT(0);
@@ -129,6 +153,16 @@ LEX: PROC;
         TT = TK_IDENT;
         RETURN;
     END;
+    /* Skip comment lines (starting with *) */
+    IF (C = 42) THEN DO;
+        DO WHILE (C != 10 AND C != 0);
+            SPOS = SPOS + 1;
+            C = SRC(SPOS);
+        END;
+        IF (C = 10) THEN DO; SPOS = SPOS + 1; AT_SOL = 1; END;
+        TT = TK_EOL;
+        RETURN;
+    END;
     SPOS = SPOS + 1;
     TT = TK_EOF;
 END;
@@ -137,11 +171,9 @@ END;
  * String helpers
  * ================================================================ */
 
-/* String buffer for storing names and string literals */
 DCL SB(256) BYTE;
 DCL SBPOS INT STATIC INIT(0);
 
-/* Save TB into SB, return offset */
 SBSAVE: PROC RETURNS(INT);
     DCL OFF INT;
     DCL I INT;
@@ -163,7 +195,6 @@ SBSAVE: PROC RETURNS(INT);
     RETURN(OFF);
 END;
 
-/* Compare two null-terminated strings */
 SCEQ: PROC(A PTR, B PTR) RETURNS(INT);
     DCL I INT;
     DCL AP PTR;
@@ -190,7 +221,7 @@ IS_END: PROC RETURNS(INT);
 END;
 
 /* ================================================================
- * Symbol table (variables)
+ * Symbol table
  * ================================================================ */
 
 %DEFINE SYMMAX 16;
@@ -199,7 +230,6 @@ DCL SYMN(128) BYTE;
 DCL SYMV(16) INT;
 DCL SYMC INT STATIC INIT(0);
 
-/* SYM_FIND: find symbol by name offset, return index or -1 */
 SYM_FIND: PROC(NOFF INT) RETURNS(INT);
     DCL I INT;
     DCL NP PTR;
@@ -212,7 +242,6 @@ SYM_FIND: PROC(NOFF INT) RETURNS(INT);
     RETURN(0 - 1);
 END;
 
-/* SYM_ADD: add symbol, return index */
 SYM_ADD: PROC(NOFF INT) RETURNS(INT);
     DCL IDX INT;
     DCL NP PTR;
@@ -242,7 +271,6 @@ SYM_ADD: PROC(NOFF INT) RETURNS(INT);
     RETURN(IDX);
 END;
 
-/* SYM_LOOKUP: find or create */
 SYM_LOOKUP: PROC(NOFF INT) RETURNS(INT);
     DCL IDX INT;
     IDX = SYM_FIND(NOFF);
@@ -342,12 +370,10 @@ PARSE: PROC;
         S_GLBL(S) = 0 - 1;
         S_SPTR(S) = 0 - 1;
 
-        /* Skip blank lines */
         IF (TT = TK_EOL) THEN DO;
             CALL LEX;
             STCNT = STCNT + 1;
         END;
-        /* END statement -- also register as label */
         ELSE IF (TT = TK_IDENT AND IS_END() != 0) THEN DO;
             S_TYP(S) = ST_END;
             NOFF = SBSAVE();
@@ -357,21 +383,18 @@ PARSE: PROC;
             STCNT = STCNT + 1;
         END;
         ELSE IF (TT = TK_IDENT) THEN DO;
-            /* Label? (column 1) */
             IF (LHAS_LBL = 1) THEN DO;
                 NOFF = SBSAVE();
                 CALL LBL_ADD(NOFF, S);
                 CALL LEX;
             END;
 
-            /* Subject */
             IF (TT = TK_IDENT) THEN DO;
                 NOFF = SBSAVE();
                 S_SUBJ(S) = SYM_LOOKUP(NOFF);
                 CALL LEX;
             END;
 
-            /* = object */
             IF (TT = TK_EQ) THEN DO;
                 S_TYP(S) = ST_ASSIGN;
                 CALL LEX;
@@ -392,7 +415,6 @@ PARSE: PROC;
                     CALL LEX;
                 END;
 
-                /* Binary op */
                 IF (TT = TK_PLUS OR TT = TK_MINUS) THEN DO;
                     S_OEOP(S) = TT;
                     S_OETY(S) = OE_BINOP;
@@ -409,11 +431,9 @@ PARSE: PROC;
                 END;
             END;
 
-            /* Goto: :(L) :S(L) :F(L) */
             IF (TT = TK_COLON) THEN DO;
                 CALL LEX;
                 IF (TT = TK_IDENT) THEN DO;
-                    /* S or F */
                     IF (TB(0) = 83 AND TB(1) = 0) THEN DO;
                         S_GTYP(S) = GT_SUCC;
                         CALL LEX;
@@ -436,7 +456,6 @@ PARSE: PROC;
                 END;
             END;
 
-            /* Skip rest of line */
             DO WHILE (TT != TK_EOL AND TT != TK_EOF);
                 CALL LEX;
             END;
@@ -456,7 +475,6 @@ END;
 DCL NL(3) CHAR INIT('
 ');
 
-/* Print integer as decimal */
 PUT_DEC: PROC(V INT);
     DCL BUF(12) BYTE;
     DCL POS INT;
@@ -488,7 +506,6 @@ PUT_DEC: PROC(V INT);
     END;
 END;
 
-/* Check if symbol name is "OUTPUT" */
 DCL N_OUT(8) CHAR INIT('OUTPUT');
 IS_OUTPUT: PROC(IDX INT) RETURNS(INT);
     DCL NP PTR;
@@ -512,7 +529,6 @@ RUN: PROC;
         IF (S_TYP(S) = ST_END) THEN RETURN;
 
         IF (S_TYP(S) = ST_ASSIGN) THEN DO;
-            /* Evaluate object */
             IF (S_OETY(S) = OE_INT) THEN DO;
                 V = S_OEV1(S);
             END;
@@ -529,10 +545,8 @@ RUN: PROC;
                 V = 0;
             END;
 
-            /* Store in subject variable */
             IF (S_SUBJ(S) >= 0) THEN DO;
                 SYMV(S_SUBJ(S)) = V;
-                /* OUTPUT prints */
                 IF (IS_OUTPUT(S_SUBJ(S)) != 0) THEN DO;
                     IF (S_OETY(S) = OE_STR) THEN
                         CALL UART_PUTS(ADDR(SB) + S_SPTR(S));
@@ -543,7 +557,6 @@ RUN: PROC;
             END;
         END;
 
-        /* Handle goto */
         IF (S_GTYP(S) = GT_UNCOND) THEN DO;
             NPC = LBL_FIND(S_GLBL(S));
             IF (NPC >= 0) THEN DO; PC = NPC; END;
@@ -566,10 +579,11 @@ RUN: PROC;
 END;
 
 /* ================================================================
- * Main
+ * Main: read source from UART, parse, execute
  * ================================================================ */
 
 MAIN: PROC;
+    CALL READ_SRC;
     CALL PARSE;
     CALL RUN;
 END;

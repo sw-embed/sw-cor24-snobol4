@@ -1,0 +1,9 @@
+* Pattern matching example (requires Milestone 3)
+* NOT YET SUPPORTED -- this is a target program
+*
+* DIGITS = SPAN('0123456789')
+* TEXT = 'abc 123 xyz'
+* TEXT DIGITS . N :F(NO)
+*        OUTPUT = N :(END)
+* NO     OUTPUT = 'no match'
+END

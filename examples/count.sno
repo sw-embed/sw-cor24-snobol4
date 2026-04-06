@@ -1,0 +1,6 @@
+       N = 1
+LOOP   OUTPUT = N
+       N = N + 1
+       OUTPUT = N
+       OUTPUT = N + 1
+END

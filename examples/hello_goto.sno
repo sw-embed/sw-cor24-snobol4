@@ -1,0 +1,3 @@
+       OUTPUT = 'Hello, World!' :(END)
+       OUTPUT = 'This should not print'
+END
