@@ -1,37 +1,44 @@
-# Milestone 2 — Abstract Machine Boundary
+# Milestone 3 -- First Pattern Subsystem
 
 ## Goal
-Introduce an explicit AM-oriented internal form between the parser
-and executor. Prevent the parser and executor from becoming permanently
-entangled. Make execution traceable and inspectable.
+Introduce SNOBOL4 pattern matching with explicit backtracking.
+Target program:
+
+    DIGITS = SPAN('0123456789')
+    TEXT = 'abc 123 xyz'
+    TEXT DIGITS . N :F(NO)
+           OUTPUT = N :(END)
+    NO     OUTPUT = 'no match'
+    END
 
 ## Current state
-The M1 interpreter (src/snobol4.plsw) parses SNOBOL4 into a statement
-table (parallel arrays) and executes directly from that table. This works
-but couples parsing tightly to execution, making it hard to add pattern
-matching, optimizations, or retargeting.
+The interpreter has an AM-based execution pipeline (parse -> lower -> AM execute).
+It supports assignments, labels, gotos, OUTPUT, integer/string literals, +/-.
+No pattern matching, no subject scanning, no backtracking.
 
 ## Strategy
-1. Define AM opcodes as integer constants
-2. Add an AM code buffer (linear bytecode)
-3. Build a lowering pass: statement table -> AM code
-4. Build an AM executor that replaces the current direct executor
-5. Add AM dump/trace tools
-6. Verify all existing examples still produce identical output
+1. Add pattern objects as heap-allocated node graphs
+2. Add subject cursor model for scanning strings
+3. Add backtrack stack for alternation/failure recovery
+4. Implement core pattern primitives: LEN, SPAN, BREAK, literal match
+5. Add . (dot) capture operator
+6. Add pattern match statement (SUBJECT PATTERN . CAPTURE :F(label))
+7. Extend parser, lowering, and AM executor
+8. New AM opcodes for pattern operations
 
-## AM opcode categories (from docs/design.md)
-- LOAD_INT, LOAD_STR, LOAD_VAR: push values onto eval stack
-- STORE_VAR: pop eval stack into variable
-- ADD, SUB: arithmetic on eval stack
-- PRINT_INT, PRINT_STR: OUTPUT support
-- BR, BR_SUCC, BR_FAIL: control flow
-- HALT: END statement
-- NOP: empty statement
+## Key design decisions (from docs/design.md)
+- Pattern nodes on heap with kind/next/alternate/operand/flags
+- Iterative execution via explicit driver loop (not recursion)
+- Backtrack frames on heap-backed stack
+- Rollback log for speculative side effects
+- Success/failure result drives :S()/:F() gotos
 
 ## Deliverables
-1. AM opcode definitions (include/am.msw)
-2. AM code buffer and emitter
-3. Lowering pass (statement table -> AM bytecode)
-4. AM executor (fetch-decode-execute loop)
-5. AM disassembler/dump tool
-6. Integration: existing examples run via AM
+1. Pattern node representation and constructor
+2. Subject cursor and scanning model
+3. Literal pattern matching
+4. SPAN primitive (character class scanning)
+5. Dot capture (. operator)
+6. Pattern match statement parsing and AM lowering
+7. Backtrack stack and failure recovery
+8. Integration: SPAN example runs correctly

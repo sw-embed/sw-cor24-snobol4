@@ -1,0 +1,1 @@
+Built AM executor (AM_EXEC) with fetch-decode-execute loop. Handles all 14 opcodes: LOAD_INT/STR/VAR, STORE_VAR, ADD, SUB, PRINT_INT/STR/NL, BR, HALT, NOP. Eval stack (EPUSH/EPOP). Variable storage (VARS array). Little-endian word operand reading. 5 tests: print int, add, store/load round-trip, branch skip, subtract.

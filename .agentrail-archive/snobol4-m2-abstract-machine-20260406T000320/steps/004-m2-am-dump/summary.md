@@ -1,0 +1,1 @@
+Built AM disassembler (AM_DUMP) with OP_NAME opcode name lookup. Prints address, opcode name, and operands for each instruction. Handles word (3-byte) and byte operands based on opcode type. 1 test passing with visual verification of disassembly output.

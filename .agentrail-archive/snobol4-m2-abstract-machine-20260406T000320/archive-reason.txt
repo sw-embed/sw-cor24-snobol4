@@ -1,0 +1,1 @@
+Milestone 2 complete. Abstract machine boundary established: AM opcodes, lowering pass, executor, disassembler, full integration. All examples run via AM bytecode. 5 steps, 28 tests across AM components.

@@ -1,1 +1,1 @@
-Saga initialized for Milestone 2: Abstract Machine boundary.
+Saga initialized for Milestone 3: Pattern subsystem.

@@ -1,5 +1,5 @@
-name = "snobol4-m2-abstract-machine"
+name = "snobol4-m3-patterns"
 status = "active"
-current_step = 5
-created_at = "2026-04-05T23:06:44"
+current_step = 1
+created_at = "2026-04-06T00:04:49"
 plan_file = ".agentrail/plan.md"

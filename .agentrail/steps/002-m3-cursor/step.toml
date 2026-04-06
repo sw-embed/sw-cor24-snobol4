@@ -1,0 +1,7 @@
+number = 2
+slug = "m3-cursor"
+status = "pending"
+description = "Subject cursor model and string scanning"
+role = "legacy"
+context_files = []
+created_at = "2026-04-06T00:05:05"

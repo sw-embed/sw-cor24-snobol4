@@ -1,0 +1,1 @@
+Built lowering pass (LOWER_STMT/LOWER_ALL) that translates statement table to AM bytecode. Handles assign with int/str/ident/binop objects, OUTPUT detection (emits print ops), goto (BR with placeholder for fixup), END (HALT), empty (NOP). STMT_ADDR map for goto address resolution. AM_PATCH_WORD for fixups. 11 tests verifying bytecode layout. Updated justfile.
