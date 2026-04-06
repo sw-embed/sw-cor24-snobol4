@@ -1,0 +1,266 @@
+/* test_symtab.plsw -- Symbol table with descriptor-based storage */
+
+%INCLUDE descr;
+%INCLUDE heap;
+
+/* ================================================================
+ * Symbol table
+ *
+ * Parallel arrays: names (8 bytes each) + values (6 bytes each).
+ * Linear search for lookup. Max 32 symbols.
+ * Each symbol stores a descriptor (tag + payload).
+ * ================================================================ */
+
+%DEFINE SYM_MAX 32;
+%DEFINE SYM_NLEN 8;
+
+/* Name storage: 32 * 8 = 256 bytes */
+DCL SYM_NAMES(256) BYTE;
+/* Value storage: 32 * 6 = 192 bytes */
+DCL SYM_VALS(192) BYTE;
+DCL SYM_CNT INT STATIC INIT(0);
+
+/* ---- String helpers ---- */
+
+/* SCOPY: copy null-terminated string from SRC to DST (max N bytes) */
+SCOPY: PROC(DST PTR, SRC PTR, N INT);
+    DCL I INT;
+    DCL C INT;
+    I = 0;
+    C = 1;
+    DO WHILE (C != 0 AND I < N - 1);
+        /* Read byte from SRC+I */
+        DCL SP PTR;
+        SP = SRC + I;
+        C = SP->DTAG;
+        /* Write byte to DST+I */
+        DCL DP PTR;
+        DP = DST + I;
+        DP->DTAG = C;
+        I = I + 1;
+    END;
+    /* Null terminate */
+    DCL EP PTR;
+    EP = DST + I;
+    EP->DTAG = 0;
+END;
+
+/* SCEQ: compare two null-terminated strings. Returns 1 if equal. */
+SCEQ: PROC(A PTR, B PTR) RETURNS(INT);
+    DCL I INT;
+    DCL CA INT;
+    DCL CB INT;
+    DCL AP PTR;
+    DCL BP PTR;
+    I = 0;
+    DO WHILE (1 = 1);
+        AP = A + I;
+        BP = B + I;
+        CA = AP->DTAG;
+        CB = BP->DTAG;
+        IF (CA != CB) THEN RETURN(0);
+        IF (CA = 0) THEN RETURN(1);
+        I = I + 1;
+    END;
+    RETURN(1);
+END;
+
+/* ---- Symbol table operations ---- */
+
+/* SYM_INIT: clear symbol table */
+SYM_INIT: PROC;
+    SYM_CNT = 0;
+END;
+
+/* SYM_FIND: find symbol by name, return index or -1 */
+SYM_FIND: PROC(NAME PTR) RETURNS(INT);
+    DCL I INT;
+    DCL NP PTR;
+    I = 0;
+    DO WHILE (I < SYM_CNT);
+        NP = ADDR(SYM_NAMES) + I * SYM_NLEN;
+        IF (SCEQ(NP, NAME) != 0) THEN
+            RETURN(I);
+        I = I + 1;
+    END;
+    RETURN(0 - 1);
+END;
+
+/* SYM_ADD: add new symbol, return index or -1 if full */
+SYM_ADD: PROC(NAME PTR) RETURNS(INT);
+    DCL IDX INT;
+    DCL NP PTR;
+    DCL VP PTR;
+    IF (SYM_CNT >= SYM_MAX) THEN RETURN(0 - 1);
+    IDX = SYM_CNT;
+    /* Copy name */
+    NP = ADDR(SYM_NAMES) + IDX * SYM_NLEN;
+    CALL SCOPY(NP, NAME, SYM_NLEN);
+    /* Init value to null descriptor */
+    VP = ADDR(SYM_VALS) + IDX * DESC_BYTES;
+    VP->DTAG = TAG_NULL;
+    VP->DSUB = 0;
+    VP->DRSV = 0;
+    VP->DPAY = 0;
+    SYM_CNT = SYM_CNT + 1;
+    RETURN(IDX);
+END;
+
+/* SYM_LOOKUP: find or create symbol, return index */
+SYM_LOOKUP: PROC(NAME PTR) RETURNS(INT);
+    DCL IDX INT;
+    IDX = SYM_FIND(NAME);
+    IF (IDX >= 0) THEN RETURN(IDX);
+    RETURN(SYM_ADD(NAME));
+END;
+
+/* SYM_GET_VAL: get pointer to value descriptor for symbol IDX */
+SYM_GET_VAL: PROC(IDX INT) RETURNS(INT);
+    RETURN(ADDR(SYM_VALS) + IDX * DESC_BYTES);
+END;
+
+/* SYM_SET_INT: set symbol value to integer */
+SYM_SET_INT: PROC(IDX INT, V INT);
+    DCL VP PTR;
+    VP = ADDR(SYM_VALS) + IDX * DESC_BYTES;
+    VP->DTAG = TAG_INT;
+    VP->DSUB = 0;
+    VP->DRSV = 0;
+    VP->DPAY = V;
+END;
+
+/* SYM_GET_INT: get integer value of symbol (assumes TAG_INT) */
+SYM_GET_INT: PROC(IDX INT) RETURNS(INT);
+    DCL VP PTR;
+    VP = ADDR(SYM_VALS) + IDX * DESC_BYTES;
+    RETURN(VP->DPAY);
+END;
+
+/* SYM_GET_NAME: get pointer to name string for symbol IDX */
+SYM_GET_NAME: PROC(IDX INT) RETURNS(INT);
+    RETURN(ADDR(SYM_NAMES) + IDX * SYM_NLEN);
+END;
+
+/* ================================================================
+ * Label table (labels map to statement numbers)
+ * Separate from symbols -- labels are compile-time, not runtime.
+ * ================================================================ */
+
+%DEFINE LBL_MAX 16;
+
+DCL LBL_NAMES(128) BYTE;
+DCL LBL_STMTS(16) INT;
+DCL LBL_CNT INT STATIC INIT(0);
+
+LBL_INIT: PROC;
+    LBL_CNT = 0;
+END;
+
+/* LBL_ADD: add label -> statement mapping */
+LBL_ADD: PROC(NAME PTR, STNUM INT) RETURNS(INT);
+    DCL IDX INT;
+    DCL NP PTR;
+    IF (LBL_CNT >= LBL_MAX) THEN RETURN(0 - 1);
+    IDX = LBL_CNT;
+    NP = ADDR(LBL_NAMES) + IDX * SYM_NLEN;
+    CALL SCOPY(NP, NAME, SYM_NLEN);
+    LBL_STMTS(IDX) = STNUM;
+    LBL_CNT = LBL_CNT + 1;
+    RETURN(IDX);
+END;
+
+/* LBL_FIND: find label, return statement number or -1 */
+LBL_FIND: PROC(NAME PTR) RETURNS(INT);
+    DCL I INT;
+    DCL NP PTR;
+    I = 0;
+    DO WHILE (I < LBL_CNT);
+        NP = ADDR(LBL_NAMES) + I * SYM_NLEN;
+        IF (SCEQ(NP, NAME) != 0) THEN
+            RETURN(LBL_STMTS(I));
+        I = I + 1;
+    END;
+    RETURN(0 - 1);
+END;
+
+/* ---- Test ---- */
+
+DCL M_NL(3) CHAR INIT('
+');
+DCL M_P(4) CHAR INIT('P ');
+DCL M_F(4) CHAR INIT('F ');
+DCL M_DONE(20) CHAR INIT('All tests done');
+
+CHK: PROC(OK INT, N INT);
+    IF (OK != 0) THEN
+        CALL UART_PUTS(ADDR(M_P));
+    ELSE
+        CALL UART_PUTS(ADDR(M_F));
+    CALL UART_PUTCHAR(48 + N);
+    CALL UART_PUTS(ADDR(M_NL));
+END;
+
+DCL N_X(8) CHAR INIT('X');
+DCL N_OUT(8) CHAR INIT('OUTPUT');
+DCL N_Y(8) CHAR INIT('Y');
+DCL N_LOOP(8) CHAR INIT('LOOP');
+DCL N_END(8) CHAR INIT('END');
+
+MAIN: PROC;
+    DCL OK INT;
+    DCL IDX INT;
+    DCL VP PTR;
+    DCL V INT;
+
+    CALL SYM_INIT;
+    CALL LBL_INIT;
+
+    /* 1: add symbol X */
+    IDX = SYM_ADD(ADDR(N_X));
+    OK = (IDX = 0) AND (SYM_CNT = 1);
+    CALL CHK(OK, 1);
+
+    /* 2: add symbol OUTPUT */
+    IDX = SYM_ADD(ADDR(N_OUT));
+    OK = (IDX = 1) AND (SYM_CNT = 2);
+    CALL CHK(OK, 2);
+
+    /* 3: find X returns 0 */
+    IDX = SYM_FIND(ADDR(N_X));
+    OK = (IDX = 0);
+    CALL CHK(OK, 3);
+
+    /* 4: find OUTPUT returns 1 */
+    IDX = SYM_FIND(ADDR(N_OUT));
+    OK = (IDX = 1);
+    CALL CHK(OK, 4);
+
+    /* 5: find Y returns -1 (not found) */
+    IDX = SYM_FIND(ADDR(N_Y));
+    OK = (IDX = 0 - 1);
+    CALL CHK(OK, 5);
+
+    /* 6: lookup X returns existing 0 */
+    IDX = SYM_LOOKUP(ADDR(N_X));
+    OK = (IDX = 0) AND (SYM_CNT = 2);
+    CALL CHK(OK, 6);
+
+    /* 7: lookup Y creates new entry */
+    IDX = SYM_LOOKUP(ADDR(N_Y));
+    OK = (IDX = 2) AND (SYM_CNT = 3);
+    CALL CHK(OK, 7);
+
+    /* 8: set X = 42, read back */
+    CALL SYM_SET_INT(0, 42);
+    V = SYM_GET_INT(0);
+    OK = (V = 42);
+    CALL CHK(OK, 8);
+
+    /* 9: value descriptor has correct tag */
+    VP = SYM_GET_VAL(0);
+    OK = (VP->DTAG = TAG_INT) AND (VP->DPAY = 42);
+    CALL CHK(OK, 9);
+
+    CALL UART_PUTS(ADDR(M_DONE));
+    CALL UART_PUTS(ADDR(M_NL));
+END;

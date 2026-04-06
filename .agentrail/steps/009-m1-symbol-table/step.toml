@@ -1,6 +1,6 @@
 number = 9
 slug = "m1-symbol-table"
-status = "pending"
+status = "in-progress"
 description = "Symbol table and descriptor-based value storage"
 role = "legacy"
 context_files = []
