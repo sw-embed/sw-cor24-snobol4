@@ -40,6 +40,7 @@ if [ ! -f "$INTERP_ASM" ]; then
     "$PROJECT_DIR/scripts/build.sh" \
         "$PROJECT_DIR/include/descr.msw" \
         "$PROJECT_DIR/include/heap.msw" \
+        "$PROJECT_DIR/include/am.msw" \
         "$PROJECT_DIR/src/snobol4.plsw" >/dev/null 2>&1
 fi
 

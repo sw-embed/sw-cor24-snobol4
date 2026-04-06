@@ -1,6 +1,6 @@
 number = 5
 slug = "m2-am-integrate"
-status = "pending"
+status = "in-progress"
 description = "Integration -- existing examples run via AM"
 role = "legacy"
 context_files = []

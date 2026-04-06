@@ -1,12 +1,13 @@
 /* snobol4.plsw -- SNOBOL4 interpreter for COR24
  *
- * Reads SNOBOL4 source from UART, parses, and executes.
+ * Pipeline: read source -> lex -> parse -> lower to AM -> execute AM
  * Supports: labels, variables, OUTPUT, integer/string literals,
  * binary +/- expressions, goto :(L) :S(L) :F(L), END.
  */
 
 %INCLUDE descr;
 %INCLUDE heap;
+%INCLUDE am;
 
 /* Token types */
 %DEFINE TK_IDENT 1;
@@ -469,9 +470,237 @@ PARSE: PROC;
 END;
 
 /* ================================================================
- * Executor
+ * AM code buffer + emitter
  * ================================================================ */
 
+DCL AM_CODE(512) BYTE;
+DCL AM_PC INT STATIC INIT(0);
+DCL STMT_ADDR(16) INT;
+
+AM_INIT: PROC;
+    AM_PC = 0;
+END;
+
+AM_EMIT_OP: PROC(OP INT);
+    AM_CODE(AM_PC) = OP;
+    AM_PC = AM_PC + 1;
+END;
+
+AM_EMIT_BYTE: PROC(V INT);
+    AM_CODE(AM_PC) = V;
+    AM_PC = AM_PC + 1;
+END;
+
+AM_EMIT_WORD: PROC(V INT);
+    DCL B0 INT;
+    DCL B1 INT;
+    DCL B2 INT;
+    DCL REM INT;
+    REM = V;
+    B2 = 0;
+    DO WHILE (REM > 65535);
+        REM = REM - 65536;
+        B2 = B2 + 1;
+    END;
+    B1 = 0;
+    DO WHILE (REM > 255);
+        REM = REM - 256;
+        B1 = B1 + 1;
+    END;
+    B0 = REM;
+    AM_CODE(AM_PC) = B0;
+    AM_PC = AM_PC + 1;
+    AM_CODE(AM_PC) = B1;
+    AM_PC = AM_PC + 1;
+    AM_CODE(AM_PC) = B2;
+    AM_PC = AM_PC + 1;
+END;
+
+AM_PATCH_WORD: PROC(OFF INT, V INT);
+    DCL B0 INT;
+    DCL B1 INT;
+    DCL B2 INT;
+    DCL REM INT;
+    REM = V;
+    B2 = 0;
+    DO WHILE (REM > 65535);
+        REM = REM - 65536;
+        B2 = B2 + 1;
+    END;
+    B1 = 0;
+    DO WHILE (REM > 255);
+        REM = REM - 256;
+        B1 = B1 + 1;
+    END;
+    B0 = REM;
+    AM_CODE(OFF) = B0;
+    AM_CODE(OFF + 1) = B1;
+    AM_CODE(OFF + 2) = B2;
+END;
+
+/* ================================================================
+ * Lowering: statement table -> AM bytecode
+ * ================================================================ */
+
+DCL N_OUT(8) CHAR INIT('OUTPUT');
+DCL OUT_SYM INT STATIC INIT(0);
+
+/* Find OUTPUT symbol index */
+FIND_OUTPUT: PROC;
+    DCL I INT;
+    DCL NP PTR;
+    OUT_SYM = 0 - 1;
+    I = 0;
+    DO WHILE (I < SYMC);
+        NP = ADDR(SYMN) + I * 8;
+        IF (SCEQ(NP, ADDR(N_OUT)) != 0) THEN DO;
+            OUT_SYM = I;
+            RETURN;
+        END;
+        I = I + 1;
+    END;
+END;
+
+LOWER_STMT: PROC(S INT);
+    DCL BR_OFF INT;
+    DCL TGT INT;
+
+    STMT_ADDR(S) = AM_PC;
+
+    IF (S_TYP(S) = ST_END) THEN DO;
+        CALL AM_EMIT_OP(OP_HALT);
+        RETURN;
+    END;
+
+    IF (S_TYP(S) = ST_EMPTY) THEN DO;
+        CALL AM_EMIT_OP(OP_NOP);
+        RETURN;
+    END;
+
+    IF (S_TYP(S) = ST_ASSIGN) THEN DO;
+        /* Evaluate object */
+        IF (S_OETY(S) = OE_INT) THEN DO;
+            CALL AM_EMIT_OP(OP_LOAD_INT);
+            CALL AM_EMIT_WORD(S_OEV1(S));
+        END;
+        ELSE IF (S_OETY(S) = OE_STR) THEN DO;
+            CALL AM_EMIT_OP(OP_LOAD_STR);
+            CALL AM_EMIT_WORD(S_SPTR(S));
+        END;
+        ELSE IF (S_OETY(S) = OE_IDENT) THEN DO;
+            CALL AM_EMIT_OP(OP_LOAD_VAR);
+            CALL AM_EMIT_BYTE(S_OEV1(S));
+        END;
+        ELSE IF (S_OETY(S) = OE_BINOP) THEN DO;
+            CALL AM_EMIT_OP(OP_LOAD_VAR);
+            CALL AM_EMIT_BYTE(S_OEV1(S));
+            CALL AM_EMIT_OP(OP_LOAD_INT);
+            CALL AM_EMIT_WORD(S_OEV2(S));
+            IF (S_OEOP(S) = TK_PLUS) THEN
+                CALL AM_EMIT_OP(OP_ADD);
+            ELSE
+                CALL AM_EMIT_OP(OP_SUB);
+        END;
+
+        /* Store */
+        IF (S_SUBJ(S) >= 0) THEN DO;
+            CALL AM_EMIT_OP(OP_STORE_VAR);
+            CALL AM_EMIT_BYTE(S_SUBJ(S));
+        END;
+
+        /* OUTPUT print */
+        IF (S_SUBJ(S) = OUT_SYM AND OUT_SYM >= 0) THEN DO;
+            IF (S_OETY(S) = OE_STR) THEN DO;
+                CALL AM_EMIT_OP(OP_PRINT_STR);
+                CALL AM_EMIT_WORD(S_SPTR(S));
+            END;
+            ELSE DO;
+                CALL AM_EMIT_OP(OP_LOAD_VAR);
+                CALL AM_EMIT_BYTE(S_SUBJ(S));
+                CALL AM_EMIT_OP(OP_PRINT_INT);
+            END;
+            CALL AM_EMIT_OP(OP_PRINT_NL);
+        END;
+
+        /* Goto */
+        IF (S_GTYP(S) = GT_UNCOND) THEN DO;
+            CALL AM_EMIT_OP(OP_BR);
+            CALL AM_EMIT_WORD(0);
+        END;
+        ELSE IF (S_GTYP(S) = GT_SUCC) THEN DO;
+            CALL AM_EMIT_OP(OP_BR_SUCC);
+            CALL AM_EMIT_WORD(0);
+        END;
+        ELSE IF (S_GTYP(S) = GT_FAIL) THEN DO;
+            CALL AM_EMIT_OP(OP_BR_FAIL);
+            CALL AM_EMIT_WORD(0);
+        END;
+    END;
+END;
+
+/* Fix up goto targets */
+FIXUP_GOTOS: PROC;
+    DCL I INT;
+    DCL PC INT;
+    DCL OP INT;
+    DCL TGT INT;
+
+    PC = 0;
+    DO WHILE (PC < AM_PC);
+        OP = AM_CODE(PC);
+        PC = PC + 1;
+        IF (OP = OP_BR OR OP = OP_BR_SUCC OR OP = OP_BR_FAIL) THEN DO;
+            /* Check if placeholder (0) needs fixup */
+            TGT = AM_CODE(PC + 2) * 65536 + AM_CODE(PC + 1) * 256 + AM_CODE(PC);
+            IF (TGT = 0) THEN DO;
+                /* Find which statement has this goto */
+                I = 0;
+                DO WHILE (I < STCNT);
+                    IF (S_GTYP(I) != GT_NONE AND S_GLBL(I) >= 0) THEN DO;
+                        /* Check if this branch is for statement I */
+                        /* The branch is at PC-1, find stmt with matching addr range */
+                        IF (STMT_ADDR(I) <= PC - 1) THEN DO;
+                            IF (I + 1 >= STCNT OR STMT_ADDR(I + 1) > PC - 1) THEN DO;
+                                TGT = LBL_FIND(S_GLBL(I));
+                                IF (TGT >= 0) THEN DO;
+                                    CALL AM_PATCH_WORD(PC, STMT_ADDR(TGT));
+                                END;
+                            END;
+                        END;
+                    END;
+                    I = I + 1;
+                END;
+            END;
+            PC = PC + 3;
+        END;
+        ELSE IF (OP = OP_LOAD_INT OR OP = OP_LOAD_STR OR OP = OP_PRINT_STR) THEN DO;
+            PC = PC + 3;
+        END;
+        ELSE IF (OP = OP_LOAD_VAR OR OP = OP_STORE_VAR) THEN DO;
+            PC = PC + 1;
+        END;
+    END;
+END;
+
+LOWER_ALL: PROC;
+    DCL I INT;
+    CALL AM_INIT;
+    CALL FIND_OUTPUT;
+    I = 0;
+    DO WHILE (I < STCNT);
+        CALL LOWER_STMT(I);
+        I = I + 1;
+    END;
+    CALL FIXUP_GOTOS;
+END;
+
+/* ================================================================
+ * AM Executor
+ * ================================================================ */
+
+DCL ESTK(32) INT;
+DCL ESP INT STATIC INIT(0);
+DCL VARS(16) INT;
 DCL NL(3) CHAR INIT('
 ');
 
@@ -506,84 +735,95 @@ PUT_DEC: PROC(V INT);
     END;
 END;
 
-DCL N_OUT(8) CHAR INIT('OUTPUT');
-IS_OUTPUT: PROC(IDX INT) RETURNS(INT);
-    DCL NP PTR;
-    NP = ADDR(SYMN) + IDX * 8;
-    RETURN(SCEQ(NP, ADDR(N_OUT)));
-END;
-
-RUN: PROC;
+AM_EXEC: PROC;
     DCL PC INT;
-    DCL S INT;
-    DCL RESULT INT;
+    DCL OP INT;
     DCL V INT;
     DCL V2 INT;
-    DCL NPC INT;
+    DCL IDX INT;
 
     PC = 0;
-    DO WHILE (PC < STCNT);
-        S = PC;
-        RESULT = 1;
+    ESP = 0;
 
-        IF (S_TYP(S) = ST_END) THEN RETURN;
+    DO WHILE (PC < AM_PC);
+        OP = AM_CODE(PC);
+        PC = PC + 1;
 
-        IF (S_TYP(S) = ST_ASSIGN) THEN DO;
-            IF (S_OETY(S) = OE_INT) THEN DO;
-                V = S_OEV1(S);
-            END;
-            ELSE IF (S_OETY(S) = OE_IDENT) THEN DO;
-                V = SYMV(S_OEV1(S));
-            END;
-            ELSE IF (S_OETY(S) = OE_BINOP) THEN DO;
-                V = SYMV(S_OEV1(S));
-                V2 = S_OEV2(S);
-                IF (S_OEOP(S) = TK_PLUS) THEN V = V + V2;
-                ELSE IF (S_OEOP(S) = TK_MINUS) THEN V = V - V2;
-            END;
-            ELSE DO;
-                V = 0;
-            END;
-
-            IF (S_SUBJ(S) >= 0) THEN DO;
-                SYMV(S_SUBJ(S)) = V;
-                IF (IS_OUTPUT(S_SUBJ(S)) != 0) THEN DO;
-                    IF (S_OETY(S) = OE_STR) THEN
-                        CALL UART_PUTS(ADDR(SB) + S_SPTR(S));
-                    ELSE
-                        CALL PUT_DEC(V);
-                    CALL UART_PUTS(ADDR(NL));
-                END;
-            END;
+        IF (OP = OP_LOAD_INT) THEN DO;
+            V = AM_CODE(PC + 2) * 65536 + AM_CODE(PC + 1) * 256 + AM_CODE(PC);
+            PC = PC + 3;
+            ESTK(ESP) = V;
+            ESP = ESP + 1;
         END;
-
-        IF (S_GTYP(S) = GT_UNCOND) THEN DO;
-            NPC = LBL_FIND(S_GLBL(S));
-            IF (NPC >= 0) THEN DO; PC = NPC; END;
-            ELSE DO; PC = PC + 1; END;
+        ELSE IF (OP = OP_LOAD_STR) THEN DO;
+            V = AM_CODE(PC + 2) * 65536 + AM_CODE(PC + 1) * 256 + AM_CODE(PC);
+            PC = PC + 3;
+            ESTK(ESP) = V;
+            ESP = ESP + 1;
         END;
-        ELSE IF (S_GTYP(S) = GT_SUCC AND RESULT = 1) THEN DO;
-            NPC = LBL_FIND(S_GLBL(S));
-            IF (NPC >= 0) THEN DO; PC = NPC; END;
-            ELSE DO; PC = PC + 1; END;
-        END;
-        ELSE IF (S_GTYP(S) = GT_FAIL AND RESULT = 0) THEN DO;
-            NPC = LBL_FIND(S_GLBL(S));
-            IF (NPC >= 0) THEN DO; PC = NPC; END;
-            ELSE DO; PC = PC + 1; END;
-        END;
-        ELSE DO;
+        ELSE IF (OP = OP_LOAD_VAR) THEN DO;
+            IDX = AM_CODE(PC);
             PC = PC + 1;
+            ESTK(ESP) = VARS(IDX);
+            ESP = ESP + 1;
+        END;
+        ELSE IF (OP = OP_STORE_VAR) THEN DO;
+            IDX = AM_CODE(PC);
+            PC = PC + 1;
+            ESP = ESP - 1;
+            VARS(IDX) = ESTK(ESP);
+        END;
+        ELSE IF (OP = OP_ADD) THEN DO;
+            ESP = ESP - 1;
+            V2 = ESTK(ESP);
+            ESP = ESP - 1;
+            ESTK(ESP) = ESTK(ESP) + V2;
+            ESP = ESP + 1;
+        END;
+        ELSE IF (OP = OP_SUB) THEN DO;
+            ESP = ESP - 1;
+            V2 = ESTK(ESP);
+            ESP = ESP - 1;
+            ESTK(ESP) = ESTK(ESP) - V2;
+            ESP = ESP + 1;
+        END;
+        ELSE IF (OP = OP_PRINT_INT) THEN DO;
+            ESP = ESP - 1;
+            CALL PUT_DEC(ESTK(ESP));
+        END;
+        ELSE IF (OP = OP_PRINT_STR) THEN DO;
+            V = AM_CODE(PC + 2) * 65536 + AM_CODE(PC + 1) * 256 + AM_CODE(PC);
+            PC = PC + 3;
+            CALL UART_PUTS(ADDR(SB) + V);
+        END;
+        ELSE IF (OP = OP_PRINT_NL) THEN DO;
+            CALL UART_PUTS(ADDR(NL));
+        END;
+        ELSE IF (OP = OP_BR) THEN DO;
+            V = AM_CODE(PC + 2) * 65536 + AM_CODE(PC + 1) * 256 + AM_CODE(PC);
+            PC = V;
+        END;
+        ELSE IF (OP = OP_BR_SUCC) THEN DO;
+            V = AM_CODE(PC + 2) * 65536 + AM_CODE(PC + 1) * 256 + AM_CODE(PC);
+            PC = V;
+        END;
+        ELSE IF (OP = OP_BR_FAIL) THEN DO;
+            /* Skip for now -- no failure semantics yet */
+            PC = PC + 3;
+        END;
+        ELSE IF (OP = OP_HALT) THEN DO;
+            RETURN;
         END;
     END;
 END;
 
 /* ================================================================
- * Main: read source from UART, parse, execute
+ * Main: read -> parse -> lower -> execute via AM
  * ================================================================ */
 
 MAIN: PROC;
     CALL READ_SRC;
     CALL PARSE;
-    CALL RUN;
+    CALL LOWER_ALL;
+    CALL AM_EXEC;
 END;

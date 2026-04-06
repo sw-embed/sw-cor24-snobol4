@@ -2,7 +2,7 @@
 
 # Build the SNOBOL4 interpreter
 build:
-    ./scripts/build.sh include/descr.msw include/heap.msw src/snobol4.plsw
+    ./scripts/build.sh include/descr.msw include/heap.msw include/am.msw src/snobol4.plsw
 
 # Run a SNOBOL4 program
 run file:
