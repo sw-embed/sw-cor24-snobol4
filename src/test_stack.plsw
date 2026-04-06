@@ -1,0 +1,164 @@
+/* test_stack.plsw -- Test assertion, trace, eval stack, stack dump */
+
+%INCLUDE descr;
+%INCLUDE heap;
+%INCLUDE trace;
+
+/* ---- Assertion ---- */
+
+DCL A_PFX(16) CHAR INIT('ASSERT FAIL: ');
+DCL A_NL(3) CHAR INIT('
+');
+
+SNO_ASSERT: PROC(COND INT, MSG PTR);
+    IF (COND = 0) THEN DO;
+        CALL UART_PUTS(ADDR(A_PFX));
+        CALL UART_PUTS(MSG);
+        CALL UART_PUTS(ADDR(A_NL));
+        ASM DO; '_sno_halt:'; 'bra _sno_halt'; END;
+    END;
+END;
+
+/* ---- Trace ---- */
+
+DCL TRACE_MASK INT STATIC INIT(0);
+
+TR_ENABLED: PROC(CAT INT) RETURNS(INT);
+    IF (TRACE_MASK = CAT) THEN RETURN(1);
+    IF (TRACE_MASK = TR_ALL) THEN RETURN(1);
+    RETURN(0);
+END;
+
+/* ---- Eval stack ---- */
+
+DCL EVAL_DATA(48) BYTE;
+DCL EVAL_SP INT STATIC INIT(0);
+
+EVAL_PUSH: PROC(P PTR) RETURNS(INT);
+    DCL DST PTR;
+    DCL SRC PTR;
+    IF (EVAL_SP >= 8) THEN
+        RETURN(0);
+    DST = ADDR(EVAL_DATA) + EVAL_SP * DESC_BYTES;
+    SRC = P;
+    DST->DTAG = SRC->DTAG;
+    DST->DSUB = SRC->DSUB;
+    DST->DRSV = SRC->DRSV;
+    DST->DPAY = SRC->DPAY;
+    EVAL_SP = EVAL_SP + 1;
+    RETURN(1);
+END;
+
+EVAL_POP: PROC(P PTR) RETURNS(INT);
+    DCL SRC PTR;
+    DCL DST PTR;
+    IF (EVAL_SP = 0) THEN
+        RETURN(0);
+    EVAL_SP = EVAL_SP - 1;
+    SRC = ADDR(EVAL_DATA) + EVAL_SP * DESC_BYTES;
+    DST = P;
+    DST->DTAG = SRC->DTAG;
+    DST->DSUB = SRC->DSUB;
+    DST->DRSV = SRC->DRSV;
+    DST->DPAY = SRC->DPAY;
+    RETURN(1);
+END;
+
+EVAL_PEEK: PROC(P PTR) RETURNS(INT);
+    DCL SRC PTR;
+    DCL DST PTR;
+    IF (EVAL_SP = 0) THEN
+        RETURN(0);
+    SRC = ADDR(EVAL_DATA) + (EVAL_SP - 1) * DESC_BYTES;
+    DST = P;
+    DST->DTAG = SRC->DTAG;
+    DST->DSUB = SRC->DSUB;
+    DST->DRSV = SRC->DRSV;
+    DST->DPAY = SRC->DPAY;
+    RETURN(1);
+END;
+
+/* ---- Test infra ---- */
+
+DCL M_NL(3) CHAR INIT('
+');
+DCL M_P(4) CHAR INIT('P ');
+DCL M_F(4) CHAR INIT('F ');
+DCL M_DONE(20) CHAR INIT('All tests done');
+DCL M_ATEST(16) CHAR INIT('assert test');
+
+CHK: PROC(OK INT, N INT);
+    IF (OK != 0) THEN
+        CALL UART_PUTS(ADDR(M_P));
+    ELSE
+        CALL UART_PUTS(ADDR(M_F));
+    CALL UART_PUTCHAR(48 + N);
+    CALL UART_PUTS(ADDR(M_NL));
+END;
+
+MAIN: PROC;
+    DCL D(6) BYTE;
+    DCL R(6) BYTE;
+    DCL DP PTR;
+    DCL RP PTR;
+    DCL OK INT;
+    DCL V INT;
+
+    DP = ADDR(D);
+    RP = ADDR(R);
+
+    /* 1: assert passes on true */
+    CALL SNO_ASSERT(1, ADDR(M_ATEST));
+    CALL CHK(1, 1);
+
+    /* 2: trace disabled */
+    TRACE_MASK = 0;
+    OK = TR_ENABLED(TR_ALLOC);
+    CALL CHK(OK = 0, 2);
+
+    /* 3: trace enabled */
+    TRACE_MASK = TR_ALLOC;
+    OK = TR_ENABLED(TR_ALLOC);
+    CALL CHK(OK, 3);
+
+    /* 4: stack empty */
+    EVAL_SP = 0;
+    OK = (EVAL_SP = 0);
+    CALL CHK(OK, 4);
+
+    /* 5: push */
+    DP->DTAG = TAG_INT;
+    DP->DSUB = 0;
+    DP->DRSV = 0;
+    DP->DPAY = 42;
+    V = EVAL_PUSH(ADDR(D));
+    OK = (V = 1) AND (EVAL_SP = 1);
+    CALL CHK(OK, 5);
+
+    /* 6: push second */
+    DP->DPAY = 99;
+    V = EVAL_PUSH(ADDR(D));
+    OK = (V = 1) AND (EVAL_SP = 2);
+    CALL CHK(OK, 6);
+
+    /* 7: peek */
+    V = EVAL_PEEK(ADDR(R));
+    RP = ADDR(R);
+    OK = (V = 1) AND (RP->DPAY = 99);
+    CALL CHK(OK, 7);
+
+    /* 8: pop */
+    V = EVAL_POP(ADDR(R));
+    RP = ADDR(R);
+    OK = (V = 1) AND (RP->DPAY = 99);
+    CALL CHK(OK, 8);
+
+    /* 9: underflow */
+    EVAL_SP = 0;
+    V = EVAL_POP(ADDR(R));
+    OK = (V = 0);
+    CALL CHK(OK, 9);
+
+    CALL UART_PUTS(ADDR(M_DONE));
+    CALL UART_PUTS(ADDR(M_NL));
+END;

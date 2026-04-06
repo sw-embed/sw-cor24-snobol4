@@ -549,3 +549,101 @@ HEAP_CHECK: PROC(BASE PTR, TOP PTR) RETURNS(INT);
     END;
     RETURN(ERRS);
 END;
+
+/* ================================================================
+ * Assertion
+ * ================================================================ */
+
+DCL A_PFX(16) CHAR INIT('ASSERT FAIL: ');
+
+/* SNO_ASSERT: check condition, print message and halt if false */
+SNO_ASSERT: PROC(COND INT, MSG PTR);
+    IF (COND = 0) THEN DO;
+        CALL UART_PUTS(ADDR(A_PFX));
+        CALL UART_PUTS(MSG);
+        CALL PUT_NL;
+        ASM DO; '_sno_halt:'; 'bra _sno_halt'; END;
+    END;
+END;
+
+/* ================================================================
+ * Trace mask
+ * ================================================================ */
+
+DCL TRACE_MASK INT STATIC INIT(0);
+
+/* TR_ENABLED: check if a trace category is active.
+ * Uses equality check (no bitwise AND yet -- plsw#14). */
+TR_ENABLED: PROC(CAT INT) RETURNS(INT);
+    IF (TRACE_MASK = CAT) THEN RETURN(1);
+    IF (TRACE_MASK = TR_ALL) THEN RETURN(1);
+    RETURN(0);
+END;
+
+/* TR_EMIT: print message if trace category is enabled */
+TR_EMIT: PROC(CAT INT, MSG PTR);
+    IF (TR_ENABLED(CAT) != 0) THEN
+        CALL UART_PUTS(MSG);
+END;
+
+/* ================================================================
+ * Evaluation stack (heap-backed descriptor stack)
+ *
+ * Fixed-size stack of descriptors (6 bytes each).
+ * Stack grows upward. EVAL_SP = count of entries.
+ * ================================================================ */
+
+DCL EVAL_DATA(192) BYTE;
+DCL EVAL_SP INT STATIC INIT(0);
+
+EVAL_INIT: PROC;
+    EVAL_SP = 0;
+END;
+
+EVAL_DEPTH: PROC RETURNS(INT);
+    RETURN(EVAL_SP);
+END;
+
+EVAL_PUSH: PROC(P PTR) RETURNS(INT);
+    DCL DST PTR;
+    DCL SRC PTR;
+    IF (EVAL_SP >= 32) THEN
+        RETURN(0);
+    DST = ADDR(EVAL_DATA) + EVAL_SP * DESC_BYTES;
+    SRC = P;
+    DST->DTAG = SRC->DTAG;
+    DST->DSUB = SRC->DSUB;
+    DST->DRSV = SRC->DRSV;
+    DST->DPAY = SRC->DPAY;
+    EVAL_SP = EVAL_SP + 1;
+    RETURN(1);
+END;
+
+EVAL_POP: PROC(P PTR) RETURNS(INT);
+    DCL SRC PTR;
+    DCL DST PTR;
+    IF (EVAL_SP = 0) THEN
+        RETURN(0);
+    EVAL_SP = EVAL_SP - 1;
+    SRC = ADDR(EVAL_DATA) + EVAL_SP * DESC_BYTES;
+    DST = P;
+    DST->DTAG = SRC->DTAG;
+    DST->DSUB = SRC->DSUB;
+    DST->DRSV = SRC->DRSV;
+    DST->DPAY = SRC->DPAY;
+    RETURN(1);
+END;
+
+EVAL_PEEK: PROC(P PTR) RETURNS(INT);
+    DCL SRC PTR;
+    DCL DST PTR;
+    IF (EVAL_SP = 0) THEN
+        RETURN(0);
+    SRC = ADDR(EVAL_DATA) + (EVAL_SP - 1) * DESC_BYTES;
+    DST = P;
+    DST->DTAG = SRC->DTAG;
+    DST->DSUB = SRC->DSUB;
+    DST->DRSV = SRC->DRSV;
+    DST->DPAY = SRC->DPAY;
+    RETURN(1);
+END;

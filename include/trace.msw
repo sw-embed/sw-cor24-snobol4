@@ -11,7 +11,7 @@
 %DEFINE TR_DUMP 64;
 %DEFINE TR_ALL 127;
 
-/* Unconditional trap (halts CPU with dump) */
+/* Unconditional halt -- infinite loop */
 MACRODEF SNO_TRAP;
-    GEN DO; 'trap'; END;
+    GEN DO; '_sno_halt:'; 'bra _sno_halt'; END;
 END;

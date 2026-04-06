@@ -1,6 +1,6 @@
 number = 6
 slug = "m0-stack-dump"
-status = "pending"
+status = "in-progress"
 description = "Stack dump support and assertion hooks"
 role = "legacy"
 context_files = []
