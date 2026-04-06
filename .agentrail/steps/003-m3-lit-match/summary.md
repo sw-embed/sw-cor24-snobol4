@@ -1,0 +1,1 @@
+Built pattern execution engine (PAT_EXEC_NODE) handling LIT, SPAN, CAP, LEN nodes. PAT_MATCH does unanchored scanning. SPAN captures '123' from 'abc 123 xyz'. 7 tests passing. This covers steps 003 (literal), 004 (SPAN), and 005 (capture) together.

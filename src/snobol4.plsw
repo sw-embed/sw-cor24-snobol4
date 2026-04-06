@@ -21,16 +21,19 @@
 %DEFINE TK_MINUS 10;
 %DEFINE TK_EOL 11;
 %DEFINE TK_EOF 12;
+%DEFINE TK_DOT 13;
 
 /* Statement / expression / goto types */
 %DEFINE ST_EMPTY 0;
 %DEFINE ST_ASSIGN 1;
 %DEFINE ST_END 2;
+%DEFINE ST_MATCH 3;
 %DEFINE OE_NONE 0;
 %DEFINE OE_IDENT 1;
 %DEFINE OE_INT 2;
 %DEFINE OE_STR 3;
 %DEFINE OE_BINOP 4;
+%DEFINE OE_SPAN 5;
 %DEFINE GT_NONE 0;
 %DEFINE GT_UNCOND 1;
 %DEFINE GT_SUCC 2;
@@ -110,6 +113,7 @@ LEX: PROC;
     IF (C = 0) THEN DO; TT = TK_EOF; RETURN; END;
     IF (C = 10) THEN DO; SPOS = SPOS + 1; TT = TK_EOL; AT_SOL = 1; RETURN; END;
     IF (C = 61) THEN DO; SPOS = SPOS + 1; TT = TK_EQ; RETURN; END;
+    IF (C = 46) THEN DO; SPOS = SPOS + 1; TT = TK_DOT; RETURN; END;
     IF (C = 40) THEN DO; SPOS = SPOS + 1; TT = TK_LPAREN; RETURN; END;
     IF (C = 41) THEN DO; SPOS = SPOS + 1; TT = TK_RPAREN; RETURN; END;
     IF (C = 58) THEN DO; SPOS = SPOS + 1; TT = TK_COLON; RETURN; END;
@@ -396,7 +400,25 @@ PARSE: PROC;
                 CALL LEX;
             END;
 
-            IF (TT = TK_EQ) THEN DO;
+            /* Check: is this a pattern match? (SUBJ PAT . CAP)
+             * If next token is IDENT and not '=', it's a match stmt */
+            IF (TT = TK_IDENT AND S_SUBJ(S) >= 0) THEN DO;
+                /* Pattern match: SUBJECT PATTERN [. CAPTURE] */
+                S_TYP(S) = ST_MATCH;
+                NOFF = SBSAVE();
+                S_OEV1(S) = SYM_LOOKUP(NOFF);
+                CALL LEX;
+                /* Check for . CAPTURE */
+                IF (TT = TK_DOT) THEN DO;
+                    CALL LEX;
+                    IF (TT = TK_IDENT) THEN DO;
+                        NOFF = SBSAVE();
+                        S_OEV2(S) = SYM_LOOKUP(NOFF);
+                        CALL LEX;
+                    END;
+                END;
+            END;
+            ELSE IF (TT = TK_EQ) THEN DO;
                 S_TYP(S) = ST_ASSIGN;
                 CALL LEX;
                 IF (TT = TK_INT) THEN DO;
@@ -411,9 +433,24 @@ PARSE: PROC;
                 END;
                 ELSE IF (TT = TK_IDENT) THEN DO;
                     NOFF = SBSAVE();
-                    S_OETY(S) = OE_IDENT;
-                    S_OEV1(S) = SYM_LOOKUP(NOFF);
-                    CALL LEX;
+                    /* Check for SPAN(...) function call */
+                    IF (TB(0) = 83 AND TB(1) = 80 AND TB(2) = 65 AND TB(3) = 78 AND TB(4) = 0) THEN DO;
+                        CALL LEX;
+                        IF (TT = TK_LPAREN) THEN DO;
+                            CALL LEX;
+                            IF (TT = TK_STR) THEN DO;
+                                S_OETY(S) = OE_SPAN;
+                                S_SPTR(S) = SBSAVE();
+                                CALL LEX;
+                            END;
+                            IF (TT = TK_RPAREN) THEN CALL LEX;
+                        END;
+                    END;
+                    ELSE DO;
+                        S_OETY(S) = OE_IDENT;
+                        S_OEV1(S) = SYM_LOOKUP(NOFF);
+                        CALL LEX;
+                    END;
                 END;
 
                 IF (TT = TK_PLUS OR TT = TK_MINUS) THEN DO;
@@ -601,6 +638,11 @@ LOWER_STMT: PROC(S INT);
             ELSE
                 CALL AM_EMIT_OP(OP_SUB);
         END;
+        ELSE IF (S_OETY(S) = OE_SPAN) THEN DO;
+            /* MAKE_SPAN <class_string_offset> -> pushes pattern ptr */
+            CALL AM_EMIT_OP(OP_MAKE_SPAN);
+            CALL AM_EMIT_WORD(S_SPTR(S));
+        END;
 
         /* Store */
         IF (S_SUBJ(S) >= 0) THEN DO;
@@ -614,6 +656,11 @@ LOWER_STMT: PROC(S INT);
                 CALL AM_EMIT_OP(OP_PRINT_STR);
                 CALL AM_EMIT_WORD(S_SPTR(S));
             END;
+            ELSE IF (S_OETY(S) = OE_IDENT) THEN DO;
+                /* Variable -- might be int or string, use PRINT_VAR */
+                CALL AM_EMIT_OP(OP_PRINT_VAR);
+                CALL AM_EMIT_BYTE(S_SUBJ(S));
+            END;
             ELSE DO;
                 CALL AM_EMIT_OP(OP_LOAD_VAR);
                 CALL AM_EMIT_BYTE(S_SUBJ(S));
@@ -623,6 +670,29 @@ LOWER_STMT: PROC(S INT);
         END;
 
         /* Goto */
+        IF (S_GTYP(S) = GT_UNCOND) THEN DO;
+            CALL AM_EMIT_OP(OP_BR);
+            CALL AM_EMIT_WORD(0);
+        END;
+        ELSE IF (S_GTYP(S) = GT_SUCC) THEN DO;
+            CALL AM_EMIT_OP(OP_BR_SUCC);
+            CALL AM_EMIT_WORD(0);
+        END;
+        ELSE IF (S_GTYP(S) = GT_FAIL) THEN DO;
+            CALL AM_EMIT_OP(OP_BR_FAIL);
+            CALL AM_EMIT_WORD(0);
+        END;
+    END;
+
+    IF (S_TYP(S) = ST_MATCH) THEN DO;
+        /* PAT_MATCH <subj_var> <pat_var> <cap_var>
+         * subj = S_SUBJ, pat = S_OEV1, cap = S_OEV2 */
+        CALL AM_EMIT_OP(OP_PAT_MATCH);
+        CALL AM_EMIT_BYTE(S_SUBJ(S));
+        CALL AM_EMIT_BYTE(S_OEV1(S));
+        CALL AM_EMIT_BYTE(S_OEV2(S));
+
+        /* Goto after match */
         IF (S_GTYP(S) = GT_UNCOND) THEN DO;
             CALL AM_EMIT_OP(OP_BR);
             CALL AM_EMIT_WORD(0);
@@ -673,11 +743,14 @@ FIXUP_GOTOS: PROC;
             END;
             PC = PC + 3;
         END;
-        ELSE IF (OP = OP_LOAD_INT OR OP = OP_LOAD_STR OR OP = OP_PRINT_STR) THEN DO;
+        ELSE IF (OP = OP_LOAD_INT OR OP = OP_LOAD_STR OR OP = OP_PRINT_STR OR OP = OP_MAKE_SPAN) THEN DO;
             PC = PC + 3;
         END;
         ELSE IF (OP = OP_LOAD_VAR OR OP = OP_STORE_VAR) THEN DO;
             PC = PC + 1;
+        END;
+        ELSE IF (OP = OP_PAT_MATCH) THEN DO;
+            PC = PC + 3;
         END;
     END;
 END;
@@ -701,6 +774,7 @@ END;
 DCL ESTK(32) INT;
 DCL ESP INT STATIC INIT(0);
 DCL VARS(16) INT;
+DCL LAST_PUSH_TYP INT STATIC INIT(0);
 DCL NL(3) CHAR INIT('
 ');
 
@@ -735,6 +809,73 @@ PUT_DEC: PROC(V INT);
     END;
 END;
 
+/* ================================================================
+ * Pattern matching primitives
+ * ================================================================ */
+
+/* Pattern values: stored in VARS as (type << 16 | data)
+ * Type 0 = integer, Type 1 = string offset, Type 2 = pattern (class offset)
+ * For SPAN, VARS[i] = 0x020000 | class_string_offset */
+
+%DEFINE VTYP_INT 0;
+%DEFINE VTYP_STR 1;
+%DEFINE VTYP_PAT 2;
+
+/* Variable type tags (high byte of VARS entry for patterns) */
+DCL VTYP(16) INT;
+
+SLEN: PROC(S PTR) RETURNS(INT);
+    DCL I INT;
+    DCL P PTR;
+    I = 0;
+    P = S;
+    DO WHILE (P->DTAG != 0);
+        I = I + 1;
+        P = S + I;
+    END;
+    RETURN(I);
+END;
+
+IN_CLASS: PROC(C INT, CLASS PTR) RETURNS(INT);
+    DCL I INT;
+    DCL P PTR;
+    DCL CH INT;
+    I = 0;
+    P = CLASS;
+    CH = P->DTAG;
+    DO WHILE (CH != 0);
+        IF (CH = C) THEN RETURN(1);
+        I = I + 1;
+        P = CLASS + I;
+        CH = P->DTAG;
+    END;
+    RETURN(0);
+END;
+
+/* EXEC_SPAN: try SPAN match on subject at start_pos.
+ * Returns number of chars matched (0 = failure). */
+EXEC_SPAN: PROC(SUBJ PTR, SLEN2 INT, START INT, CLASS PTR) RETURNS(INT);
+    DCL POS INT;
+    DCL C INT;
+    DCL P PTR;
+    POS = START;
+    IF (POS >= SLEN2) THEN RETURN(0);
+    P = SUBJ + POS;
+    C = P->DTAG;
+    DO WHILE (C != 0 AND IN_CLASS(C, CLASS) != 0 AND POS < SLEN2);
+        POS = POS + 1;
+        IF (POS < SLEN2) THEN DO;
+            P = SUBJ + POS;
+            C = P->DTAG;
+        END;
+        ELSE C = 0;
+    END;
+    RETURN(POS - START);
+END;
+
+/* Last match result for :S/:F */
+DCL LAST_RESULT INT STATIC INIT(1);
+
 AM_EXEC: PROC;
     DCL PC INT;
     DCL OP INT;
@@ -754,24 +895,28 @@ AM_EXEC: PROC;
             PC = PC + 3;
             ESTK(ESP) = V;
             ESP = ESP + 1;
+            LAST_PUSH_TYP = VTYP_INT;
         END;
         ELSE IF (OP = OP_LOAD_STR) THEN DO;
             V = AM_CODE(PC + 2) * 65536 + AM_CODE(PC + 1) * 256 + AM_CODE(PC);
             PC = PC + 3;
             ESTK(ESP) = V;
             ESP = ESP + 1;
+            LAST_PUSH_TYP = VTYP_STR;
         END;
         ELSE IF (OP = OP_LOAD_VAR) THEN DO;
             IDX = AM_CODE(PC);
             PC = PC + 1;
             ESTK(ESP) = VARS(IDX);
             ESP = ESP + 1;
+            LAST_PUSH_TYP = VTYP(IDX);
         END;
         ELSE IF (OP = OP_STORE_VAR) THEN DO;
             IDX = AM_CODE(PC);
             PC = PC + 1;
             ESP = ESP - 1;
             VARS(IDX) = ESTK(ESP);
+            VTYP(IDX) = LAST_PUSH_TYP;
         END;
         ELSE IF (OP = OP_ADD) THEN DO;
             ESP = ESP - 1;
@@ -805,11 +950,94 @@ AM_EXEC: PROC;
         END;
         ELSE IF (OP = OP_BR_SUCC) THEN DO;
             V = AM_CODE(PC + 2) * 65536 + AM_CODE(PC + 1) * 256 + AM_CODE(PC);
-            PC = V;
+            IF (LAST_RESULT = 1) THEN
+                PC = V;
+            ELSE
+                PC = PC + 3;
         END;
         ELSE IF (OP = OP_BR_FAIL) THEN DO;
-            /* Skip for now -- no failure semantics yet */
+            V = AM_CODE(PC + 2) * 65536 + AM_CODE(PC + 1) * 256 + AM_CODE(PC);
+            IF (LAST_RESULT = 0) THEN
+                PC = V;
+            ELSE
+                PC = PC + 3;
+        END;
+        ELSE IF (OP = OP_PRINT_VAR) THEN DO;
+            /* Print variable: check VTYP to decide int vs string */
+            IDX = AM_CODE(PC);
+            PC = PC + 1;
+            IF (VTYP(IDX) = VTYP_STR) THEN
+                CALL UART_PUTS(ADDR(SB) + VARS(IDX));
+            ELSE
+                CALL PUT_DEC(VARS(IDX));
+        END;
+        ELSE IF (OP = OP_MAKE_SPAN) THEN DO;
+            V = AM_CODE(PC + 2) * 65536 + AM_CODE(PC + 1) * 256 + AM_CODE(PC);
             PC = PC + 3;
+            ESTK(ESP) = V;
+            ESP = ESP + 1;
+            LAST_PUSH_TYP = VTYP_PAT;
+        END;
+        ELSE IF (OP = OP_PAT_MATCH) THEN DO;
+            /* PAT_MATCH <subj_var> <pat_var> <cap_var> */
+            DCL SIDX INT;
+            DCL PIDX INT;
+            DCL CIDX INT;
+            DCL SUBJ_OFF INT;
+            DCL PAT_OFF INT;
+            DCL SUBJ_LEN INT;
+            DCL MATCHED INT;
+            DCL TRYPOS INT;
+            DCL MLEN INT;
+            DCL SP2 PTR;
+            DCL I INT;
+
+            SIDX = AM_CODE(PC);
+            PIDX = AM_CODE(PC + 1);
+            CIDX = AM_CODE(PC + 2);
+            PC = PC + 3;
+
+            /* Subject is a string offset in SB */
+            SUBJ_OFF = VARS(SIDX);
+            /* Pattern var holds class string offset (from MAKE_SPAN) */
+            PAT_OFF = VARS(PIDX);
+
+            /* Get subject length */
+            SUBJ_LEN = SLEN(ADDR(SB) + SUBJ_OFF);
+
+            /* Try SPAN at each position (unanchored) */
+            MATCHED = 0;
+            TRYPOS = 0;
+            DO WHILE (TRYPOS <= SUBJ_LEN AND MATCHED = 0);
+                MLEN = EXEC_SPAN(ADDR(SB) + SUBJ_OFF, SUBJ_LEN, TRYPOS, ADDR(SB) + PAT_OFF);
+                IF (MLEN > 0) THEN DO;
+                    MATCHED = 1;
+                    /* Store captured substring as string in SB */
+                    IF (CIDX != 0 - 1 AND CIDX < 16) THEN DO;
+                        /* Copy matched chars to SB */
+                        DCL DST INT;
+                        DST = SBPOS;
+                        I = 0;
+                        DO WHILE (I < MLEN);
+                            SP2 = ADDR(SB) + SUBJ_OFF + TRYPOS + I;
+                            DCL DP PTR;
+                            DP = ADDR(SB) + SBPOS;
+                            DP->DTAG = SP2->DTAG;
+                            SBPOS = SBPOS + 1;
+                            I = I + 1;
+                        END;
+                        DP = ADDR(SB) + SBPOS;
+                        DP->DTAG = 0;
+                        SBPOS = SBPOS + 1;
+                        /* Store offset to captured string */
+                        VARS(CIDX) = DST;
+                        VTYP(CIDX) = VTYP_STR;
+                    END;
+                END;
+                TRYPOS = TRYPOS + 1;
+            END;
+
+            LAST_RESULT = MATCHED;
         END;
         ELSE IF (OP = OP_HALT) THEN DO;
             RETURN;

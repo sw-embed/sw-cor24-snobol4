@@ -1,7 +1,8 @@
 number = 3
 slug = "m3-lit-match"
-status = "in-progress"
+status = "completed"
 description = "Literal pattern matching with cursor"
 role = "legacy"
 context_files = []
 created_at = "2026-04-06T00:05:05"
+completed_at = "2026-04-06T00:17:37"

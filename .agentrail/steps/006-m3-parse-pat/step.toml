@@ -1,6 +1,6 @@
 number = 6
 slug = "m3-parse-pat"
-status = "pending"
+status = "in-progress"
 description = "Parse pattern expressions and match statements"
 role = "legacy"
 context_files = []

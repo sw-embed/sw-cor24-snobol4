@@ -22,12 +22,20 @@ hello-goto:
 count:
     ./scripts/run-snobol4.sh examples/count.sno
 
-# Pattern matching (target -- not yet supported)
+# SPAN pattern matching
+span:
+    ./scripts/run-snobol4.sh examples/span.sno
+
+# SPAN failure path
+span-fail:
+    ./scripts/run-snobol4.sh examples/span_fail.sno
+
+# Pattern matching (commented, aspirational)
 pattern:
     ./scripts/run-snobol4.sh examples/pattern.sno
 
 # Run all demos
-demos: hello hello-goto count
+demos: hello hello-goto count span span-fail
 
 # --- Tests ---
 

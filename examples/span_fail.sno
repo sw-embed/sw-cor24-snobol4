@@ -1,0 +1,6 @@
+       DIGITS = SPAN('0123456789')
+       TEXT = 'abc xyz'
+       TEXT DIGITS . N :F(NO)
+       OUTPUT = N :(END)
+NO     OUTPUT = 'no match'
+END

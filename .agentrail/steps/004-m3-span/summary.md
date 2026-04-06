@@ -1,0 +1,1 @@
+SPAN implemented in step 003 (PAT_EXEC_NODE handles PK_SPAN). CUR_SPAN consumes chars in class. Tested: SPAN(digits) matches '123' in 'abc 123 xyz'.
