@@ -1,0 +1,55 @@
+/* descr.msw -- Descriptor layout (2-word, 6-byte)
+ * Word 0: tag(b0) sub(b1) rsv(b2)
+ * Word 1: payload(b3-5) -- int, ptr, or id
+ */
+
+/* Tag constants */
+%DEFINE TAG_NULL 0;
+%DEFINE TAG_UNINIT 1;
+%DEFINE TAG_INT 2;
+%DEFINE TAG_STR 3;
+%DEFINE TAG_SYM 4;
+%DEFINE TAG_PAT 5;
+%DEFINE TAG_LABEL 6;
+%DEFINE TAG_BUILTIN 7;
+%DEFINE TAG_REAL 8;
+%DEFINE TAG_ARRAY 9;
+%DEFINE TAG_TABLE 10;
+%DEFINE TAG_COUNT 11;
+
+/* Descriptor flag bits (in sub byte) */
+%DEFINE DFLAG_FWD 128;
+%DEFINE DFLAG_IMMUT 64;
+
+/* Descriptor size */
+%DEFINE DESC_BYTES 6;
+%DEFINE DESC_WORDS 2;
+
+/* BASED record for pointer access */
+DCL 1 DESCR BASED,
+    3 DTAG BYTE,
+    3 DSUB BYTE,
+    3 DRSV BYTE,
+    3 DPAY PTR;
+
+/* DESC_COPY: copy 6 bytes. Clobbers r0,r1,r2 */
+MACRODEF DESC_COPY;
+    REQUIRED DST(expr); REQUIRED SRC(expr);
+    GEN DO;
+        'la r1,{SRC}'; 'la r2,{DST}';
+        'lb r0,0(r1)'; 'sb r0,0(r2)';
+        'lb r0,1(r1)'; 'sb r0,1(r2)';
+        'lb r0,2(r1)'; 'sb r0,2(r2)';
+        'lw r0,3(r1)'; 'sw r0,3(r2)';
+    END;
+END;
+
+/* BUILD_NULL: zero a descriptor. Clobbers r0,r2 */
+MACRODEF BUILD_NULL;
+    REQUIRED PTR(expr);
+    GEN DO;
+        'la r2,{PTR}'; 'lc r0,0';
+        'sb r0,0(r2)'; 'sb r0,1(r2)';
+        'sb r0,2(r2)'; 'sw r0,3(r2)';
+    END;
+END;

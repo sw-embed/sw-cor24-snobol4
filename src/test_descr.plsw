@@ -1,0 +1,111 @@
+/* test_descr.plsw -- Smoke test for descriptor and heap header layouts
+ *
+ * Uses BASED records (DESCR, OBJHDR) and %DEFINE constants.
+ * Verifies field access via pointer dereference (->).
+ */
+
+%INCLUDE descr;
+%INCLUDE heap;
+%INCLUDE trace;
+
+/* Scratch descriptor storage (6 bytes each) */
+DCL D1(6) BYTE;
+DCL D2(6) BYTE;
+DCL D3(6) BYTE;
+
+/* Scratch heap area */
+DCL FAKEHEAP(64) BYTE;
+
+/* Output messages */
+DCL M_PASS(8) CHAR INIT('PASS: ');
+DCL M_FAIL(8) CHAR INIT('FAIL: ');
+DCL M_NL(3) CHAR INIT('
+');
+DCL M_T1(12) CHAR INIT('null desc');
+DCL M_T2(12) CHAR INIT('int desc');
+DCL M_T3(12) CHAR INIT('desc copy');
+DCL M_T4(12) CHAR INIT('heap hdr');
+DCL M_T5(12) CHAR INIT('gc mark');
+DCL M_DONE(20) CHAR INIT('All tests done');
+
+/* --- Helper: report pass/fail --- */
+REPORT: PROC(OK INT, MSG PTR);
+    IF (OK != 0) THEN
+        CALL UART_PUTS(ADDR(M_PASS));
+    ELSE
+        CALL UART_PUTS(ADDR(M_FAIL));
+    CALL UART_PUTS(MSG);
+    CALL UART_PUTS(ADDR(M_NL));
+END;
+
+/* --- Helper: build a descriptor via pointer --- */
+DESC_INIT: PROC(P PTR, T BYTE, S BYTE, V INT);
+    DCL DPTR PTR;
+    DPTR = P;
+    DPTR->DTAG = T;
+    DPTR->DSUB = S;
+    DPTR->DRSV = 0;
+    DPTR->DPAY = V;
+END;
+
+/* --- Helper: copy descriptor (6 bytes) via BASED --- */
+DESC_CPY: PROC(D PTR, S PTR);
+    DCL DP PTR;
+    DCL SP PTR;
+    DP = D;
+    SP = S;
+    DP->DTAG = SP->DTAG;
+    DP->DSUB = SP->DSUB;
+    DP->DRSV = SP->DRSV;
+    DP->DPAY = SP->DPAY;
+END;
+
+/* --- Helper: init heap header --- */
+HDR_INIT: PROC(P PTR, K BYTE, SZ INT);
+    DCL HP PTR;
+    HP = P;
+    HP->OKIND = K;
+    HP->OFLAGS = 0;
+    HP->ORSV = 0;
+    HP->OSIZE = SZ;
+END;
+
+/* --- Main --- */
+MAIN: PROC;
+    DCL DPTR PTR;
+    DCL HPTR PTR;
+    DCL OK INT;
+
+    /* Test 1: null descriptor */
+    CALL DESC_INIT(ADDR(D1), TAG_NULL, 0, 0);
+    DPTR = ADDR(D1);
+    OK = (DPTR->DTAG = TAG_NULL) AND (DPTR->DPAY = 0);
+    CALL REPORT(OK, ADDR(M_T1));
+
+    /* Test 2: integer descriptor */
+    CALL DESC_INIT(ADDR(D2), TAG_INT, 0, 42);
+    DPTR = ADDR(D2);
+    OK = (DPTR->DTAG = TAG_INT) AND (DPTR->DPAY = 42);
+    CALL REPORT(OK, ADDR(M_T2));
+
+    /* Test 3: copy descriptor */
+    CALL DESC_CPY(ADDR(D3), ADDR(D2));
+    DPTR = ADDR(D3);
+    OK = (DPTR->DTAG = TAG_INT) AND (DPTR->DPAY = 42);
+    CALL REPORT(OK, ADDR(M_T3));
+
+    /* Test 4: heap header */
+    CALL HDR_INIT(ADDR(FAKEHEAP), OBK_STRING, 24);
+    HPTR = ADDR(FAKEHEAP);
+    OK = (HPTR->OKIND = OBK_STRING) AND (HPTR->OSIZE = 24);
+    CALL REPORT(OK, ADDR(M_T4));
+
+    /* Test 5: flags field (using OBF_PINNED=64 to avoid lb sign bug plsw#8) */
+    HPTR = ADDR(FAKEHEAP);
+    HPTR->OFLAGS = OBF_PINNED;
+    OK = (HPTR->OFLAGS = OBF_PINNED);
+    CALL REPORT(OK, ADDR(M_T5));
+
+    CALL UART_PUTS(ADDR(M_DONE));
+    CALL UART_PUTS(ADDR(M_NL));
+END;

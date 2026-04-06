@@ -1,0 +1,17 @@
+/* trace.msw -- Trace category constants and trap macro */
+
+/* Trace category bits (OR into a mask) */
+%DEFINE TR_NONE 0;
+%DEFINE TR_ALLOC 1;
+%DEFINE TR_STMT 2;
+%DEFINE TR_EXPR 4;
+%DEFINE TR_PATTERN 8;
+%DEFINE TR_GC 16;
+%DEFINE TR_BTRAK 32;
+%DEFINE TR_DUMP 64;
+%DEFINE TR_ALL 127;
+
+/* Unconditional trap (halts CPU with dump) */
+MACRODEF SNO_TRAP;
+    GEN DO; 'trap'; END;
+END;

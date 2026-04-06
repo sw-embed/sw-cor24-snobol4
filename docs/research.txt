@@ -1,0 +1,1915 @@
+
+
+
+
+How was SNOBOL4 implemented (assembler, bootstrapped using itself, other language?).  What would be the best tools to implement it today?
+
+
+Thought for 26s
+You’re asking two things:
+
+How SNOBOL4 was actually implemented historically
+
+What the best implementation approach would be now
+
+Historical implementation
+High-level answer
+SNOBOL4 was not originally bootstrapped in itself. The classic Bell Labs implementation was built as a macro-assembly implementation around a machine-independent intermediate/macro layer called SIL — the SNOBOL Implementation Language. The early SNOBOL family started in assembly on IBM mainframes, and SNOBOL4 kept that low-level implementation style, but made it more portable by expressing the interpreter in SIL and then mapping SIL onto each target machine. 
+
+Evolution by version
+SNOBOL1 was written in assembly language for the IBM 7090. 
+
+SNOBOL3 was a rewritten and extended version, but portability problems and dialect drift pushed the designers toward a more systematic implementation strategy. 
+
+SNOBOL4 was designed around portability, and its implementation was written in macro assembly using SIL, rather than as a self-hosting compiler. The first SNOBOL4 implementation was started on an IBM 7094 and completed on an IBM 360 in 1967. 
+
+What SIL was
+SIL was essentially a machine-independent abstract implementation language defined using macro-assembler techniques. The idea was:
+
+write the SNOBOL4 interpreter in SIL,
+
+implement SIL operations for each target machine,
+
+then assemble the same core implementation on different architectures.
+
+That gave them something very much like a portable virtual machine / abstract machine, but realized through macro assembly instead of a modern bytecode VM. Griswold’s implementation notes explicitly describe SNOBOL4 as implemented in macro-assembly language called SIL. 
+
+Was it self-hosting?
+Not in the usual sense.
+The classic implementation was not “SNOBOL4 written in SNOBOL4.” It was primarily an interpreter implementation written below the language level, in SIL/macro assembly. Later systems existed:
+
+SPITBOL: a compiler-oriented/high-performance implementation
+
+SITBOL: a native PDP-10 implementation in assembler
+
+CSNOBOL4: a modern C port of the macro/SIL implementation 
+
+So if by “bootstrapped” you mean “compiler/interpreter written in its own language,” the answer is generally no for the original SNOBOL4 line.
+
+What this means architecturally
+SNOBOL4’s implementation problem is unusual. It is not “just parse expressions and emit code.” It has some features that strongly shape the implementation:
+
+first-class patterns
+
+backtracking pattern matching
+
+dynamic typing
+
+garbage-collected heap
+
+runtime code generation / on-the-fly compilation in some implementations
+
+success/failure-driven control semantics 
+
+That is why historically it was commonly implemented as an interpreter/abstract machine, not as a straightforward native compiler. 
+
+Best tools to implement it today
+Best practical answer
+If I were implementing SNOBOL4 today, I would choose one of these three paths:
+
+Option A — Rust interpreter + VM
+Best overall choice for a serious modern implementation.
+
+Why
+Rust fits SNOBOL4’s needs well:
+
+good control over memory layout
+
+safe implementation of a GC boundary or arena/handle model
+
+strong enums for tagged runtime values
+
+excellent parser ecosystem if wanted
+
+easy portability
+
+good testing and fuzzing support
+
+good fit for implementing a backtracking engine cleanly
+
+Recommended architecture
+Frontend
+
+hand-written lexer
+
+Pratt parser or recursive descent parser
+
+IR
+
+AST for source
+
+lower to a compact bytecode / SIL-like IR
+
+Runtime
+
+Value enum: string, integer, real, pattern, array, table, user object, null
+
+heap object handles / indices instead of raw pointers exposed everywhere
+
+Pattern engine
+
+explicit backtracking stack
+
+continuation frames
+
+captures and deferred assignments
+
+Memory
+
+start with tracing GC or arena + compaction later
+
+Execution
+
+bytecode interpreter first
+
+optional tracing/JIT later if ever needed
+
+Benefits
+safest and most maintainable
+
+easy cross-platform builds
+
+good for long-term evolution
+
+good for debugger, REPL, embeddability, WASM experiments
+
+Risks
+more design work up front than using C
+
+implementing GC ergonomically takes thought
+
+Option B — C implementation modeled after original SIL/CSNOBOL4
+Best if your goal is historical faithfulness or easiest path to “classic style.”
+
+Why
+There is already a modern path here: CSNOBOL4 is a C port of the Bell Labs macro/SIL implementation. 
+
+Recommended use
+study CSNOBOL4
+
+preserve SIL concepts
+
+either extend that codebase or write a cleaner new interpreter in C inspired by it
+
+Benefits
+closest to the original mental model
+
+lots of precedent
+
+easy interop with existing Unix tooling
+
+simpler if you want a portable CLI interpreter fast
+
+Risks
+memory safety burden is much higher
+
+harder to evolve cleanly than Rust
+
+pattern engine and GC bugs are easier to create
+
+Option C — Self-hosted or partially self-hosted implementation
+Best as a later-stage research goal, not the first implementation.
+
+A sensible modern strategy would be:
+
+implement SNOBOL4 in Rust or C
+
+get a stable interpreter and test suite
+
+add a subset compiler / translator
+
+only later explore self-hosting pieces in SNOBOL4 itself
+
+Why not first?
+SNOBOL4’s hardest parts are runtime semantics, not parsing syntax. Self-hosting too early makes the project much harder:
+
+bootstrap complexity
+
+weak tooling during bring-up
+
+debugging the language while writing the implementation in that same language
+
+So I would not start there unless the project goal is explicitly historical or experimental.
+
+My recommendation by goal
+If your goal is best engineering result
+Use Rust.
+
+If your goal is historical authenticity
+Use C or macro assembly inspired by SIL, and study the original implementation docs plus CSNOBOL4. 
+
+If your goal is minimal viable implementation
+Use:
+
+a hand-written parser
+
+a tree-walking interpreter first
+
+then migrate to bytecode once semantics are correct
+
+Concrete modern tool stack
+Best stack for a new implementation
+Language
+Rust for the implementation
+
+C only if you want closer continuity with CSNOBOL4
+
+Parser
+hand-written lexer and recursive-descent parser
+or
+
+logos + hand-written parser in Rust
+
+I would avoid parser generators at first. SNOBOL4’s real complexity is runtime semantics, not grammar complexity.
+
+Runtime representation
+tagged Value enum
+
+interned identifiers
+
+heap handles for arrays/tables/pattern nodes
+
+explicit continuation/backtracking frames
+
+Testing
+golden tests from historical examples
+
+differential testing against CSNOBOL4 where behavior matches
+
+fuzzing for parser and pattern engine
+
+property tests for match/fail semantics
+
+Tooling
+cargo test
+
+cargo fuzz
+
+snapshot/golden test harness
+
+optional REPL
+
+trace mode for pattern execution
+
+Suggested implementation methodology
+Phase 1 — language core
+scanner
+
+parser
+
+strings, integers
+
+assignments, labels, transfers
+
+success/failure flow
+
+Phase 2 — pattern core
+literal patterns
+
+concatenation
+
+alternation
+
+backtracking
+
+captures
+
+Phase 3 — runtime data
+arrays
+
+tables
+
+user-defined data types
+
+GC
+
+Phase 4 — compatibility
+standard library
+
+file I/O
+
+tracing
+
+compatibility cases vs classic SNOBOL4 / CSNOBOL4
+
+Phase 5 — optimization
+bytecode VM
+
+optional JIT or native lowering
+
+Bottom line
+Historically: SNOBOL4 was implemented as a macro-assembly interpreter using SIL, not primarily as a self-hosted system. Early SNOBOL started in assembler on IBM 7090 hardware, and SNOBOL4 used SIL to make the implementation portable across machines. 
+
+Today: the best implementation path is usually:
+
+Rust if you want the best modern engineering outcome
+
+C if you want continuity with the classic implementation and easy comparison with CSNOBOL4 
+
+My own recommendation: build a Rust bytecode interpreter with a SIL-like internal IR. That gives you the original architectural spirit, but with much better maintainability and testing.
+
+If you want, I can sketch a Rust crate layout and runtime design for a modern SNOBOL4 next.
+
+
+Here's my perspective, I could implement it in Rust, but that is not interesting to me (been there, done that).  I have my own PL/I inspired system programming language  (PL/SW) with macros that intends to be a portable high-level assembler.  It seems very close to SIL in spirit.  My compiler is written in COR24 C to generate COR24 assembler and a binary that runs on COR24-TB hardware or my Rust-based emulator on Mac/Linux.  Also, I am building a S/360-inspired 24-bit O/S, and would like to port my PL/SW implementation of SNOBOL4 from COR24 to S/370-ish O/S.
+
+
+Thought for 11s
+Given your constraints, I would not recommend Rust here.
+
+Your requirements are really:
+
+keep the implementation interesting and aligned with your existing systems work
+
+make it fit a portable high-level assembler / macro-assembler model
+
+have a path from COR24 today to S/370-ish tomorrow
+
+let the implementation live naturally inside your 24-bit OS / monitor / language stack
+
+preserve the spirit of how SNOBOL4 was actually transported historically
+
+That makes your PL/SW approach unusually well matched to SNOBOL4.
+
+The key historical fact that matters for your design
+The original portable SNOBOL4 line was implemented in SIL, a macro-assembly language for an abstract machine, not for a specific hardware ISA. Bell/Arizona documentation says SIL was intended to be implemented on each target by providing target-machine macro definitions, and that “nearly all the logic” of SNOBOL4 lived in the SIL program itself. The transporter then adapted data layouts, syntax tables, and about 130 SIL macros to the target. The same notes also say the classic System/360/370 implementations needed a fairly large single image and were commonly moved by translating the SIL source and then supplying target-specific macros and subroutines. 
+
+Why your PL/SW is a particularly good fit
+From what you described, PL/SW already wants to be:
+
+a portable systems language
+
+a high-level assembler
+
+macro-friendly
+
+close enough to the machine to control layout, descriptors, stacks, and runtime conventions
+
+portable enough to retarget from COR24 to your future S/370-ish OS
+
+That is almost exactly the job SIL was built to do. Historically, SIL did not assume much about the target machine; one transport paper explicitly says it does not even require hardware registers, though target word size and descriptor fit matter a lot for efficiency. 
+
+So the most interesting and most faithful path is:
+
+Best approach: implement “SIL-in-spirit” on PL/SW
+Not “implement SNOBOL4 directly in ad hoc PL/SW,” and not “recreate Bell SIL literally card-for-card.”
+
+Instead:
+
+Build a small abstract machine layer
+Define a SNOBOL abstract machine in PL/SW, with:
+
+descriptor operations
+
+heap/object layout
+
+pattern-machine operations
+
+syntax-table operations
+
+string scanning / slicing / copying primitives
+
+call/return and failure/success control paths
+
+runtime support for GC / regeneration
+
+I/O hooks
+
+In other words, make PL/SW the targetable macro substrate, and define your own SIL2 or SWIL layer above it.
+
+That gives you:
+
+COR24 backend now
+
+S/370-ish backend later
+
+one semantic core
+
+a nice match to your “portable high-level assembler” philosophy
+
+Architecture I would recommend
+1. Separate the project into three layers
+A. SNOBOL semantic core
+This is target-independent logic:
+
+parser / compiler from SNOBOL source to internal ops
+
+pattern compiler
+
+runtime semantics
+
+descriptors and tags
+
+GC policy
+
+builtin functions
+
+failure/success transfer rules
+
+B. abstract machine layer
+This is your PL/SW equivalent of SIL:
+
+DLOAD, DSTORE, MKSTR, MKPAT, BRFAIL, BRSUCC, etc.
+
+macros for descriptor field access
+
+string movement ops
+
+syntax table access
+
+allocator hooks
+
+trace/debug hooks
+
+C. machine adapters
+Per target:
+
+COR24 data layout
+
+COR24 calling conventions
+
+COR24 heap/string representation
+
+COR24 byte/word packing
+
+COR24 I/O bindings
+
+and later:
+
+S/370-ish descriptor layout
+
+S/370-ish assembler emission
+
+OS service bindings
+
+spool/files/console integration
+
+That is exactly the piece SIL transport docs emphasize: the hard portability boundary is not the language logic, but descriptor layout, syntax tables, and macro definitions/subroutines. 
+
+2. Do not start with a native compiler
+Historically, SNOBOL4 was usually interpreted because its semantics are awkward to compile directly, especially:
+
+first-class patterns
+
+dynamic typing
+
+success/failure driven control
+
+late-bound operations
+
+heap-heavy runtime behavior
+
+That is why the classic system centered on an abstract machine and interpreter-style runtime, while SPITBOL was a later performance-oriented path rather than the baseline model. 
+
+For your case, the best order is:
+
+source → bytecode / p-code / macro-op stream
+
+interpreter / abstract machine runtime
+
+optional later:
+
+threaded code
+
+AOT lowering of hot paths
+
+special compilation of simple patterns
+
+That lines up with your existing p-code / monitor / educational-OS mindset too.
+
+3. Treat descriptors as the center of the system
+The transport notes are very explicit that SIL revolves around the descriptor as the AM “word,” and that descriptor fit to the target machine matters heavily. They also note that poor word-size fit can nearly double memory use, and that the known successful transports liked fairly wide words. 
+
+That matters a lot for you:
+
+On COR24
+A single 24-bit word is almost certainly too small for a comfortable “classic SIL descriptor.”
+
+So I would not force a one-word descriptor.
+
+Use either:
+
+2-word descriptors on COR24, or
+
+tag word + payload word, or
+
+pointer-to-descriptor cells for heap objects plus compact immediates
+
+A plausible COR24 descriptor could be:
+
+word 0: type tag, flags, small subtype, maybe short length
+
+word 1: pointer / value / offset
+
+or, for strings/pattern nodes, use heap headers and let descriptors point to them.
+
+On S/370-ish
+You can probably define a more natural descriptor shape, perhaps closer to the historical implementations, because 32-bit-ish storage and richer addressing will make life easier.
+
+So your portability line should be:
+
+semantic descriptor model in PL/SW
+
+physical descriptor layout per backend
+
+That is the big portability lesson from SIL.
+
+4. Make syntax tables explicitly target-neutral
+The transport notes call syntax tables out as one of the trickier areas because character sets and collating sequences vary, and the installer may need to tailor them to the machine. 
+
+That is especially relevant because you may span:
+
+ASCII-ish environments on Mac/Linux-hosted COR24 tooling
+
+possibly EBCDIC-flavored assumptions if you lean into S/370 authenticity
+
+So I would define syntax tables in a declarative source form and generate target tables for:
+
+source character classes
+
+lexical categories
+
+pattern scanner tables
+
+keyword lookup tables
+
+collation-sensitive ops if any
+
+This avoids baking ASCII assumptions into the runtime.
+
+Concrete implementation strategy for your world
+Phase 0 — choose your semantic baseline
+Pick one and freeze it:
+
+Bell-style SNOBOL4 core
+
+or SPITBOL-ish superset
+
+or your own “SNOBOL4/SW” profile
+
+I would start with Bell-compatible core and keep extensions behind flags.
+
+Use the old IBM System/360 manual and SIL docs as the semantic baseline, and use a modern implementation like CSNOBOL4 or SPITBOL only as a cross-check oracle, not the source of truth. The 1968 manual is explicitly for the IBM System/360 OS implementation, while the later SIL docs explain how the portable implementation was structured. 
+
+Phase 1 — build the abstract machine in PL/SW
+Define a small op set, maybe 40–80 ops at first, not 130.
+
+Buckets:
+
+Descriptor ops
+set tag
+
+load/store payload
+
+compare tags
+
+copy descriptor
+
+build integer/string/pattern refs
+
+Control ops
+branch on success/failure
+
+computed goto for statement transfer
+
+call builtin
+
+return value/failure
+
+Heap ops
+allocate block
+
+allocate string
+
+allocate pattern node
+
+mark/sweep hooks or regeneration hooks
+
+String ops
+substring compare
+
+character class test
+
+append/copy
+
+cursor advance / rollback
+
+Pattern ops
+concat
+
+alternation
+
+immediate literal match
+
+capture
+
+deferred assignment
+
+recursion frame / backtrack push-pop
+
+This is the heart of the system.
+
+Phase 2 — compile SNOBOL4 source into AM ops
+Do not compile straight to COR24 assembler initially.
+
+Compile to:
+
+a compact instruction stream
+
+symbolic labels
+
+tables for literals and functions
+
+pattern graphs / pattern bytecode
+
+This gives you portability and makes later S/370-ish retargeting much easier.
+
+Phase 3 — build the COR24 runtime
+This is where the educational value gets high.
+
+You will learn exactly which parts of SNOBOL4 stress your machine:
+
+heap compaction / fragmentation
+
+descriptor density
+
+string storage strategy
+
+backtracking stack depth
+
+call stack versus explicit continuation stack
+
+I/O model
+
+trace output
+
+Historically, SNOBOL4 needed a lot of memory and was organized as a large single image; that warning is worth taking seriously for COR24. The transport notes cite at least 165K bytes for IBM 360/370 user regions and note that small-memory installations were generally unsuccessful. 
+
+That does not mean “don’t do it.” It means:
+
+For COR24, you probably want a subset first
+Examples:
+
+integers + strings only
+
+a useful pattern subset
+
+no reals initially
+
+limited arrays/tables
+
+small test corpus
+
+conservative GC
+
+no giant dynamic format machinery early on
+
+In your environment, a “SNOBOL4/24” profile is probably the right first milestone.
+
+Phase 4 — port the AM layer to S/370-ish
+Once the semantic core and instruction stream are stable, the S/370-ish port becomes mostly:
+
+redesign descriptor layout
+
+rewrite AM macro bodies / runtime glue
+
+rebuild syntax tables if character model changes
+
+bind to your S/370-ish OS console, dataset, spool, loader conventions
+
+That is much closer to the historical transport process.
+
+Best tools for you today
+Given your stated interests, I would use these tools and techniques:
+
+1. PL/SW as the implementation language
+This is the right call for the core runtime and abstract machine.
+
+Why:
+
+it matches the historical SIL role
+
+it gives you machine-portable low-level control
+
+it keeps the work aligned with your OS/toolchain goals
+
+it makes the S/370-ish port part of the same long arc
+
+2. Your COR24 C compiler only as bootstrap support
+Do not center the design around C.
+
+Use it for:
+
+small utilities
+
+generators if needed
+
+table builders
+
+maybe diagnostics or testing helpers
+
+But the runtime itself should live where you want the architecture knowledge to live: PL/SW.
+
+3. A host-side translator/generator
+You already have a Rust-based ecosystem around the emulator and tooling. Even if Rust is not interesting for the runtime, it is still excellent for:
+
+generating syntax tables
+
+assembling test corpora
+
+converting declarative builtin definitions to PL/SW include files
+
+producing cross-reference listings
+
+differential testing
+
+This mirrors a neat historical detail: the SIL transport notes explicitly say SNOBOL4 itself could be used for translation/cross-translation of source material when moving to a target machine. 
+
+So in your world, a host-side generator is perfectly in spirit.
+
+4. Differential test harness
+This is probably the single best tool investment.
+
+Use:
+
+your implementation under COR24 emulator
+
+a reference implementation such as CSNOBOL4 or SPITBOL on the host
+
+golden test outputs
+
+semantic test categories
+
+The transport notes mention the lack of strong test programs as a historical difficulty, so you can materially improve on the original process by building this early. 
+
+5. Trace and dump tools
+SNOBOL4 is hard to debug without runtime visibility.
+
+I would build these from day one:
+
+descriptor dump
+
+heap walk
+
+pattern trace
+
+success/failure transfer trace
+
+backtrack stack trace
+
+statement label trace
+
+GC/regeneration trace
+
+For your emulator and later OS, these will pay for themselves.
+
+What I would not do
+1. I would not try to recreate Bell SIL literally
+Pros:
+
+historically pure
+
+Cons:
+
+you inherit old packaging assumptions
+
+many macro names / source forms are artifacts of old assemblers and card-image workflows
+
+you will spend energy on historical syntax instead of on the interesting architecture
+
+Better: preserve the structural idea, not the exact textual form.
+
+2. I would not try to self-host early
+You could eventually write parts of the compiler or library in SNOBOL4 itself, but that is not where the leverage is at first.
+
+The hard part is the runtime model:
+
+descriptors
+
+string/pattern engine
+
+failure control
+
+memory management
+
+3. I would not target full classic SNOBOL4 immediately on COR24
+Historically, SIL SNOBOL4 was happiest on larger machines with lots of memory. 
+
+So on COR24, start with a disciplined subset and a portability plan.
+
+My concrete recommendation
+Best overall plan for you
+Project shape
+Create something like:
+
+sw-snobol4-am — abstract machine spec and docs
+
+sw-snobol4-plsw — PL/SW runtime and compiler/interpreter core
+
+sw-snobol4-cor24 — COR24 backend/runtime glue
+
+later sw-snobol4-s370 — S/370-ish backend/runtime glue
+
+host-side tools for table generation and differential tests
+
+Execution model
+parse SNOBOL4 source
+
+lower to AM op stream
+
+run in interpreter first
+
+optionally later support threaded code / AOT lowering
+
+First supported subset
+labels and transfers
+
+strings
+
+integers
+
+assignment
+
+basic builtins
+
+literal patterns
+
+concatenation
+
+alternation
+
+simple captures
+
+success/failure branching
+
+Delay until later
+reals
+
+arrays/tables
+
+user-defined datatypes
+
+full formatting/I/O richness
+
+aggressive optimization
+
+Bottom line
+Your instinct is good.
+
+PL/SW is probably a better implementation vehicle for your goals than Rust, because the real value here is not “get a SNOBOL4 quickly.” It is:
+
+build a portable abstract-machine runtime
+
+exercise your systems language
+
+validate your descriptor / macro / runtime design
+
+create something that can move from COR24 to S/370-ish
+
+stay close to the original SIL transport philosophy
+
+If I were in your shoes, I would describe the project this way:
+
+“Implement a SIL-inspired SNOBOL4 abstract machine in PL/SW, with a constrained COR24 profile first, and a later S/370-ish retarget preserving the same semantic core.”
+
+That is historically grounded, architecturally clean, and much more interesting than a fresh Rust implementation.
+
+I can sketch a PL/SW-oriented architecture.md/design.md/plan.md for this next, including descriptor layouts, AM op categories, and a COR24-first milestone plan.
+
+
+Yes, and note: 1. I want to use PL/SW (not C).  2. I want to leverage (recursive, layers of) macros.  3. PL/SW supports in-line cor24-assmbler.  4. cor24-emulator has 1M of heap and 3-to-8K of fast stack (and only 3 general registers, plus fp, sp, ir, iv).  5. S/370-ish is much later and will be 24-bit with more registers before it is 31 bit (even later).  6.  Happy to create as many tools as needed (in PL/SW) to help dogfood it (it is still under development), like heap walkers, dumps, debuggers, etc.  Proceed
+
+Understood. The design target is now much clearer:
+
+implementation language: PL/SW, not C
+
+style: recursive macro layers, SIL-like abstract-machine spirit
+
+escape hatch: inline COR24 assembler where needed
+
+runtime target now: COR24 emulator / COR24-TB class machine
+
+resources now: ~1M heap, ~3–8K fast stack, only 3 general registers plus fp/sp/ir/iv
+
+future target: later S/370-ish 24-bit system, still low-register and low-level at first
+
+tooling philosophy: build as many self-hosting and dogfooding tools as needed in PL/SW
+
+That leads to a very specific conclusion:
+
+Recommended architecture
+Build SNOBOL4 as a layered abstract machine implemented in PL/SW, with the layers deliberately separated so that:
+
+surface SNOBOL4 semantics stay target-neutral
+
+macro-expanded abstract machine ops capture most of the runtime logic
+
+PL/SW implementation code handles medium-level runtime organization
+
+inline COR24 assembler is reserved for a small number of hot or awkward primitives
+
+So the design is not:
+
+“write one giant interpreter in PL/SW”
+
+and not:
+
+“write everything in raw assembler”
+
+Instead it is:
+
+A 5-layer stack
+Layer 0 — COR24 machine substrate
+Raw machine facts:
+
+registers
+
+calling convention
+
+stack discipline
+
+heap allocator entry points
+
+string/block memory movement helpers
+
+trap/debug hooks
+
+optional inline assembly fast paths
+
+Layer 1 — PL/SW machine abstraction
+A reusable low-level runtime substrate in PL/SW:
+
+words, descriptors, pointers, offsets
+
+block headers
+
+stack frame macros
+
+heap allocation macros
+
+typed accessors
+
+debugging/assertion hooks
+
+This layer should be useful beyond SNOBOL4.
+
+Layer 2 — SNOBOL abstract machine
+Your SIL-equivalent. This is the key layer.
+
+It should define the operations that SNOBOL4 needs, independent of COR24 specifics:
+
+load/store descriptor
+
+test type
+
+build integer/string/pattern objects
+
+branch on success/failure
+
+push/pop backtrack frame
+
+create/copy/advance string cursors
+
+allocate pattern nodes
+
+call builtin
+
+trace statement / trace pattern
+
+This is where recursive macros become extremely valuable.
+
+Layer 3 — SNOBOL runtime / executor
+PL/SW code that uses the abstract machine layer to implement:
+
+statement execution
+
+expression evaluation
+
+pattern matching
+
+variable binding
+
+function dispatch
+
+dynamic objects
+
+garbage collection
+
+runtime services
+
+Layer 4 — surface tools
+Also in PL/SW where practical:
+
+parser
+
+offline translators
+
+tracing tools
+
+heap walkers
+
+descriptor dumpers
+
+pattern visualizers
+
+test harnesses
+
+optional compile-to-AM tool
+
+Core design choice
+Do not interpret source text directly for long
+For bring-up, you can start with a tiny direct interpreter if that helps test semantics.
+
+But the real architecture should be:
+
+SNOBOL4 source → internal representation / AM op stream → runtime executor
+
+That buys you:
+
+portability
+
+debuggability
+
+room for macro-based lowering
+
+easier future retargeting
+
+a clean place to insert offline tools
+
+Given your interest in recursive macro layers, I would strongly favor a design where:
+
+the parser emits symbolic AM instructions
+
+a translator lowers those to a denser executable form
+
+the executor runs the lowered form
+
+That makes SNOBOL4 itself less tangled with parsing.
+
+What the macro strategy should look like
+You explicitly want layers of recursive macros. Good. Use them intentionally.
+
+Macro roles
+There should be three macro strata.
+
+1. Structural macros
+These express data layouts and common code shapes.
+
+Examples:
+
+descriptor field access
+
+block header access
+
+stack frame entry/exit
+
+tagged union helpers
+
+list/table traversal helpers
+
+debug assertions
+
+These should expand into ordinary PL/SW plus occasional inline assembler.
+
+2. Abstract machine macros
+These define the SNOBOL runtime machine.
+
+Examples:
+
+AM_LOAD_DESC
+
+AM_STORE_DESC
+
+AM_TEST_TAG
+
+AM_ALLOC_STR
+
+AM_PUSH_BT
+
+AM_POP_BT
+
+AM_MATCH_LIT
+
+AM_BRANCH_FAIL
+
+AM_BRANCH_SUCC
+
+AM_CALL_BLTN
+
+These are the heart of the portability story.
+
+3. Semantic macros
+These express recurring SNOBOL semantic patterns in terms of AM ops.
+
+Examples:
+
+“evaluate object as string”
+
+“coerce integer if possible else fail/error”
+
+“enter pattern frame”
+
+“commit variable binding”
+
+“rollback speculative binding”
+
+“execute statement with success/failure continuation”
+
+These can be recursive and layered. They should read almost like pseudocode for the language semantics.
+
+That gives you something very powerful:
+
+the runtime stays readable
+
+the generated code stays low-level
+
+the portability boundary stays explicit
+
+Most important runtime decision: descriptors
+With only 24-bit words and few registers, the descriptor design will make or break the system.
+
+Recommendation: use a 2-word descriptor on COR24
+Do not try to cram everything into one 24-bit word unless only for tiny immediates.
+
+A good starting point:
+
+Descriptor word 0
+primary tag
+
+subtype / flags
+
+maybe small length / mode bits
+
+Descriptor word 1
+payload:
+
+pointer
+
+integer value
+
+offset
+
+function id
+
+small immediate
+
+This is simple, regular, and macro-friendly.
+
+Why 2 words is right here
+Benefits
+easy to inspect in dumps
+
+easier macro expansion
+
+enough room for tags and payload without bit acrobatics
+
+simpler future port to another 24-bit machine
+
+easier rollback / copy semantics
+
+Costs
+more memory traffic
+
+more heap/storage pressure
+
+more copying
+
+Given 1M heap, that trade is probably acceptable. Your bigger constraint is more likely to be register pressure and stack pressure, not heap size.
+
+Object model
+I would keep descriptors small and move complexity into heap objects.
+
+Suggested object families
+Immediate-like descriptors
+null / uninitialized
+
+small integer
+
+maybe short code / statement labels
+
+maybe builtin ids
+
+Heap-backed descriptors
+string
+
+pattern node / pattern program
+
+array / table
+
+variable cell
+
+code block / procedure
+
+file / channel object
+
+backtrack frame object if needed
+
+Heap object header
+Each heap block should begin with a small fixed header:
+
+object kind
+
+total size in words
+
+GC mark / generation bits
+
+optional subtype
+
+optional owner / debug id
+
+Keep headers uniform. This will make heap walkers and dumpers much easier.
+
+Stack strategy
+Your fast stack is only 3–8K. That is too precious to use casually.
+
+Rule: the fast stack is for execution frames, not language-state bulk
+Use the fast stack for:
+
+PL/SW call frames
+
+tiny temporaries
+
+return linkage
+
+maybe a few fixed scratch descriptors
+
+Do not use it for:
+
+large match state
+
+rollback history
+
+deep pattern backtracking state
+
+variable binding logs
+
+dynamic strings
+
+Those should go in the heap.
+
+Use explicit heap-backed stacks
+You should define at least three logical stacks, probably heap-backed:
+
+1. Evaluation stack
+For intermediate expression results if needed.
+
+2. Backtracking stack
+For pattern continuation frames:
+
+current subject cursor
+
+next pattern pc/node
+
+previous bindings checkpoint
+
+current environment snapshot id
+
+3. Binding rollback stack
+For speculative assignments/captures that must be reverted on failure.
+
+This is extremely important because SNOBOL-style pattern execution is naturally continuation-heavy and can explode stack usage if mapped too literally to machine recursion.
+
+Recommendation
+Avoid deep recursive implementation in machine calls.
+
+Implement pattern matching mostly as:
+
+explicit state machine
+
+explicit continuation frames
+
+explicit heap-backed backtrack stack
+
+You can still use recursive macros to generate this structure, but the generated runtime flow should be mostly iterative.
+
+Register strategy on COR24
+With only 3 GPRs, assume constant register starvation.
+
+Suggested register discipline
+Treat registers as specialized:
+
+r0: primary scratch / return / compare
+
+r1: secondary scratch / pointer
+
+r2: tertiary scratch / current frame / helper
+
+fp: frame anchor
+
+sp: machine stack
+
+iv/ir: per ISA role
+
+The key is to avoid a style where every macro assumes it owns all registers.
+
+Macro convention
+Every AM macro should declare its clobber contract conceptually, even if only in comments/docs.
+
+Example categories:
+
+leaf/no-clobber except r0
+
+clobbers r0,r1
+
+clobbers all GPRs
+
+preserves fp/sp
+
+may call allocator
+
+may trap/fail
+
+Without discipline here, layered macros will become impossible to reason about.
+
+Execution model
+There are really two plausible models.
+
+Option A — AST/tree walking runtime
+Simpler first step.
+
+Pros
+easier bring-up
+
+easier tracing
+
+parser directly feeds runtime
+
+Cons
+runtime becomes branchy and bulky
+
+future retargeting less clean
+
+harder to inspect compiled form
+
+less SIL-like
+
+Option B — AM code interpreter
+Preferred long-term model.
+
+Pros
+closest to your stated goal
+
+easier to debug stepwise
+
+better fit for macro abstraction
+
+cleaner portability
+
+easier to generate tools for dumps/disassembly
+
+Cons
+one more phase to build
+
+Recommendation
+Use a hybrid path:
+
+Milestone 1
+AST enough to validate syntax and a few semantics.
+
+Milestone 2
+Lower everything meaningful into AM code.
+
+Milestone 3
+Executor runs only AM code.
+
+That keeps the parser from becoming entangled with semantics.
+
+Pattern engine design
+This is the hardest part. Design it first-class, not as an afterthought.
+
+Recommended internal form
+Do not execute patterns as arbitrary object trees forever.
+
+Compile patterns to one of these:
+
+Choice 1 — pattern graph
+Nodes with explicit next/alt links.
+
+Choice 2 — pattern bytecode
+Compact op stream with jumps and frame operations.
+
+For your environment, I slightly prefer:
+
+Pattern graph first, bytecode later
+Why
+easier to inspect in dumps
+
+easier to visualize
+
+easier to debug during bring-up
+
+recursive macro generation can target symbolic node builders nicely
+
+Each node can represent:
+
+literal match
+
+character class
+
+concatenation
+
+alternation
+
+repetition
+
+assignment/capture
+
+callout / predicate
+
+success terminal
+
+failure terminal
+
+Then the executor uses explicit backtrack frames to walk the graph.
+
+Key invariant
+All speculative effects must be rollback-able.
+
+That means pattern operations that can assign or capture should log effects in a rollback structure before commit.
+
+Memory management
+With 1M heap, you have room, but SNOBOL4 semantics can fragment memory badly.
+
+Recommendation: start with mark-sweep, maybe with compaction later
+Why mark-sweep first
+simplest to reason about
+
+easy to integrate with heap walkers
+
+good for debugging object lifetimes
+
+less descriptor rewriting complexity initially
+
+Costs
+fragmentation
+
+allocation latency spikes
+
+maybe poor locality
+
+Given your strong tooling appetite, start with a debuggable mark-sweep collector first.
+
+Roots should be explicit
+You want a root-enumeration framework from day one:
+
+global symbol table
+
+current execution frame chain
+
+backtrack stack
+
+evaluation stack
+
+variable environments
+
+currently active descriptors in runtime frames
+
+Build this before the collector. Your future debugger and heap walker will benefit immediately.
+
+Dogfooding tools to build early
+This part matches your stated preference very well.
+
+Essential first-wave tools
+1. Descriptor dumper
+Print:
+
+address
+
+tag/subtype
+
+payload
+
+interpreted summary
+
+This will be used constantly.
+
+2. Heap walker
+Walk every block:
+
+object type
+
+size
+
+mark bit
+
+references
+
+corruption checks
+
+3. Stack dump tools
+Both:
+
+machine call stack summary
+
+heap-backed backtrack/binding stacks
+
+4. Symbol table dumper
+Show variable names, descriptor values, links, scopes.
+
+5. Pattern graph dumper
+Textual first:
+
+node id
+
+op kind
+
+next/alt edges
+
+literal / predicate data
+
+6. Trace executor
+Optional flags:
+
+statement trace
+
+expression trace
+
+pattern step trace
+
+backtrack trace
+
+GC trace
+
+7. Heap consistency checker
+This should become part of test mode:
+
+validate headers
+
+validate free list
+
+validate pointers
+
+validate object sizes
+
+validate stack references
+
+These tools should exist before the implementation gets “clever.”
+
+Inline COR24 assembler use
+You said PL/SW supports inline COR24 assembler. Good. Use it surgically.
+
+Best uses for inline assembler
+1. Tiny memory primitives
+copy 1 descriptor
+
+compare words
+
+fast memset/memcpy variants
+
+scan for terminators / character classes
+
+2. Frame linkage helpers
+prologue/epilogue patterns
+
+multiword move helpers
+
+3. Hot dispatch helpers
+If the AM interpreter loop becomes a hotspot, inline assembly can tighten:
+
+fetch/decode op
+
+jump tables
+
+primitive comparisons
+
+4. Trap/assert/debug hooks
+Useful for breakpoints and emulator integration.
+
+Do not inline assembler for semantic logic
+Do not bury SNOBOL semantics inside ad hoc assembler islands. That will ruin portability and readability.
+
+Keep semantic decisions in PL/SW + macros; keep assembler for primitive mechanics.
+
+Portability toward later S/370-ish
+Even though it is later, the design should prepare for it now.
+
+Portability rules to enforce immediately
+1. No direct assumptions that “pointer == integer”
+Allow explicit conversions only.
+
+2. No baked-in character set assumptions
+Centralize all character classes and scanner tables.
+
+3. No baked-in descriptor bit layout outside one layer
+Only machine abstraction macros may know the physical layout.
+
+4. Separate machine stack from semantic stacks
+Very important for later retargeting.
+
+5. Every heap object type must have explicit scanning logic
+Needed for GC and debug tools across targets.
+
+If you keep these boundaries, a later 24-bit S/370-ish port will be a real retarget, not a rewrite.
+
+Suggested project decomposition
+Here is a practical decomposition that fits your style.
+
+1. snobol4-am.msw
+Defines the abstract machine interface:
+
+op categories
+
+descriptor conventions
+
+semantic helper macros
+
+trace/debug macro hooks
+
+2. snobol4-rt.msw
+Core runtime implementation:
+
+executor
+
+allocator interfaces
+
+symbol table
+
+builtin dispatch
+
+conversions
+
+3. snobol4-pat.msw
+Pattern subsystem:
+
+pattern graph/node structures
+
+compiler from parsed pattern syntax
+
+matcher
+
+backtrack frames
+
+rollback log
+
+4. snobol4-gc.msw
+Heap and collector:
+
+block headers
+
+allocator
+
+free list / block map
+
+root scanning
+
+mark/sweep
+
+5. snobol4-parse.msw
+Parser / frontend:
+
+lexer
+
+parser
+
+source structures
+
+lowering to AM form
+
+6. snobol4-diag.msw
+Diagnostics and dogfooding tools:
+
+dumpers
+
+walkers
+
+validators
+
+trace formatting
+
+7. snobol4-main.plsw
+Driver / REPL / batch runtime.
+
+These can still be thin and macro-heavy internally.
+
+Milestone plan
+Milestone 0 — substrate
+Goal: prove the implementation platform.
+
+Build:
+
+descriptor type
+
+heap block header
+
+allocator
+
+descriptor dump
+
+heap walk
+
+machine/semantic stack dump
+
+assertion/trap macros
+
+Exit criteria
+You can allocate objects, dump them, and validate heap integrity after every test.
+
+Milestone 1 — minimal evaluator
+Goal: smallest useful language core.
+
+Implement:
+
+symbol table
+
+assignment
+
+integer/string literals
+
+labels
+
+goto / transfer
+
+success/failure result model for statements
+
+simple builtin dispatch
+
+Exit criteria
+You can run tiny non-pattern programs with trace output.
+
+Milestone 2 — pattern subset
+Goal: first real SNOBOL feel.
+
+Implement:
+
+subject string
+
+literal patterns
+
+concatenation
+
+alternation
+
+cursor/backtrack frames
+
+simple captures
+
+rollback log
+
+Exit criteria
+You can run pattern-driven examples with visible backtracking traces.
+
+Milestone 3 — pattern compiler / graph
+Goal: avoid ad hoc runtime pattern trees.
+
+Implement:
+
+parsed pattern lowering
+
+pattern graph objects
+
+graph dump tool
+
+graph executor
+
+Exit criteria
+A pattern can be dumped structurally and then executed deterministically through the graph engine.
+
+Milestone 4 — runtime maturity
+Goal: make it live as a language.
+
+Implement:
+
+user functions
+
+arrays/tables or delayed if desired
+
+better coercions
+
+file/device I/O
+
+GC integration
+
+better diagnostics
+
+Exit criteria
+Enough compatibility to run nontrivial sample programs.
+
+Milestone 5 — dogfood and self-support
+Goal: use PL/SW to improve itself.
+
+Implement tools in PL/SW for:
+
+test harness orchestration
+
+source formatting / listing
+
+AM disassembly
+
+pattern graph inspection
+
+runtime profiling counters
+
+Exit criteria
+The implementation becomes its own development environment, at least partially.
+
+Biggest risks and mitigations
+Risk 1 — macro tower becomes unreadable
+Mitigation
+Require every macro layer to have:
+
+a narrow purpose
+
+a documented expansion style
+
+small examples
+
+stable naming conventions
+
+Keep “semantic macros” separate from “machine macros.”
+
+Risk 2 — register pressure makes generated code terrible
+Mitigation
+Design macros around memory-resident temporaries and explicit scratch slots rather than pretending registers are abundant.
+
+Risk 3 — pattern engine consumes stack or heap unpredictably
+Mitigation
+Use explicit heap-backed continuation frames and build tracing early.
+
+Risk 4 — GC and rollback semantics interfere
+Mitigation
+Treat rollback logs and backtrack frames as first-class GC roots from day one.
+
+Risk 5 — parser/runtime get tangled
+Mitigation
+Commit early to the AM boundary.
+
+My strongest recommendation
+If you do only one thing right, do this:
+
+Define the SNOBOL abstract machine first
+Before implementing much syntax, write the conceptual AM spec:
+
+descriptor model
+
+object families
+
+root sets
+
+result model
+
+success/failure model
+
+continuation/backtrack model
+
+rollback model
+
+op categories
+
+tracing hooks
+
+Once that is stable, PL/SW macros can target it cleanly, your dogfooding tools can inspect it, and the future S/370-ish port has a real target.
+
+Proposed next artifact set
+I recommend creating these four documents first in your repo:
+
+prd.md
+Why this exists, scope, non-goals, milestones.
+
+architecture.md
+Layers, runtime model, abstract machine, memory model, tooling model.
+
+design.md
+Concrete descriptor layouts, heap headers, stack shapes, pattern graph shapes, macro strata.
+
+plan.md
+Milestones, deliverables, tests, diagnostics, bring-up order.
+
+I can draft those next in a style tuned to your COR24 / PL/SW environment.
+
+
+proceed, and create a downloadable zip please
+
+
+Thought for 3m 32s
+Done.
+
+Downloads
+ZIP archive
+
+prd.md
+
+architecture.md
+
+design.md
+
+plan.md
+
+I structured them around:
+
+PL/SW-first implementation
+
+recursive macro layers
+
+COR24-first constraints
+
+explicit abstract machine boundary
+
+heap-backed semantic stacks
+
+early diagnostics and dogfooding tools
+
+A strong next step would be to turn this into an initial source skeleton with files like snobol4-am.msw, snobol4-rt.msw, snobol4-pat.msw, and snobol4-diag.msw.
+
+
+
+

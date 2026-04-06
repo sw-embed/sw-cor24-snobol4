@@ -1,0 +1,77 @@
+/* heap.msw -- Heap object header (2-word, 6-byte)
+ * Word 0: kind(b0) flags(b1) rsv(b2)
+ *   flags: bit7=GC-mark, bit6=pinned
+ * Word 1: size in bytes including header (b3-5)
+ */
+
+/* Object kind constants */
+%DEFINE OBK_FREE 0;
+%DEFINE OBK_STRING 1;
+%DEFINE OBK_SYMCELL 2;
+%DEFINE OBK_PATNODE 3;
+%DEFINE OBK_BTFRAME 4;
+%DEFINE OBK_RBENTRY 5;
+%DEFINE OBK_CODEBLK 6;
+%DEFINE OBK_ARRAY 7;
+%DEFINE OBK_TABLE 8;
+%DEFINE OBK_COUNT 9;
+
+/* Flag bits */
+%DEFINE OBF_MARK 128;
+%DEFINE OBF_PINNED 64;
+
+/* Header size */
+%DEFINE HDR_BYTES 6;
+%DEFINE HDR_WORDS 2;
+
+/* BASED record */
+DCL 1 OBJHDR BASED,
+    3 OKIND BYTE,
+    3 OFLAGS BYTE,
+    3 ORSV BYTE,
+    3 OSIZE PTR;
+
+/* String object: header + length + char data */
+DCL 1 STROBJ BASED,
+    3 SHDR_KIND BYTE, 3 SHDR_FLAGS BYTE, 3 SHDR_RSV BYTE,
+    3 SHDR_SIZE PTR,
+    3 SLEN PTR,
+    3 SDATA(1) CHAR;
+
+/* Symbol cell: header + name ptr + value descriptor */
+DCL 1 SYMOBJ BASED,
+    3 YHDR_KIND BYTE, 3 YHDR_FLAGS BYTE, 3 YHDR_RSV BYTE,
+    3 YHDR_SIZE PTR,
+    3 YNAME PTR,
+    3 YVAL_TAG BYTE, 3 YVAL_SUB BYTE, 3 YVAL_RSV BYTE,
+    3 YVAL_PAY PTR;
+
+/* BUILD_HDR: init header. Clobbers r0,r2 */
+MACRODEF BUILD_HDR;
+    REQUIRED PTR(expr); REQUIRED KIND(expr); REQUIRED SIZE(expr);
+    GEN DO;
+        'la r2,{PTR}'; 'lc r0,{KIND}'; 'sb r0,0(r2)';
+        'lc r0,0'; 'sb r0,1(r2)'; 'sb r0,2(r2)';
+        'la r0,{SIZE}'; 'sw r0,3(r2)';
+    END;
+END;
+
+/* OBJ_SET_MARK: set GC mark. Clobbers r0,r1,r2 */
+MACRODEF OBJ_SET_MARK;
+    REQUIRED PTR(expr);
+    GEN DO;
+        'la r2,{PTR}'; 'lb r0,1(r2)';
+        'lc r1,128'; 'or r0,r1';
+        'sb r0,1(r2)';
+    END;
+END;
+
+/* OBJ_CLR_MARK: clear GC mark. Clobbers r0,r1,r2 */
+MACRODEF OBJ_CLR_MARK;
+    REQUIRED PTR(expr);
+    GEN DO;
+        'la r2,{PTR}'; 'lb r0,1(r2)';
+        'lc r1,127'; 'and r0,r1';
+        'sb r0,1(r2)';
+    END;
+END;

@@ -1,0 +1,1 @@
+Project initialized with PRD, architecture, design, and plan docs. Saga created.
