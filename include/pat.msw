@@ -1,0 +1,35 @@
+/* pat.msw -- Pattern node definitions for SNOBOL4
+ *
+ * Pattern nodes are heap-allocated via HEAP_ALLOC.
+ * Each node is 16 bytes: kind(1) flags(1) next(3) alt(3) oper(3) len(3) rsv(2)
+ *
+ * Nodes form a graph: next = sequential successor,
+ * alt = alternation branch, oper = operand (string ptr, inner pat, etc.)
+ */
+
+/* Pattern node kinds */
+%DEFINE PK_LIT 1;
+%DEFINE PK_SPAN 2;
+%DEFINE PK_ANY 3;
+%DEFINE PK_LEN 4;
+%DEFINE PK_CONCAT 5;
+%DEFINE PK_ALT 6;
+%DEFINE PK_CAP 7;
+%DEFINE PK_SUCC 8;
+%DEFINE PK_FAIL 9;
+%DEFINE PK_COUNT 10;
+
+/* Pattern node flags */
+%DEFINE PF_ANCHORED 1;
+
+/* Pattern node size */
+%DEFINE PATNODE_SZ 16;
+
+/* BASED record for pattern node */
+DCL 1 PATNODE BASED,
+    3 PK BYTE,
+    3 PF BYTE,
+    3 PNEXT PTR,
+    3 PALT PTR,
+    3 POPER PTR,
+    3 PLEN PTR;

@@ -1,6 +1,6 @@
 number = 1
 slug = "m3-pattern-nodes"
-status = "pending"
+status = "in-progress"
 description = """
 Define pattern node representation and constructors.
 

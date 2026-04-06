@@ -1,0 +1,202 @@
+/* test_pat.plsw -- Test pattern node representation */
+
+%INCLUDE descr;
+%INCLUDE heap;
+%INCLUDE pat;
+
+/* ---- Heap allocator (from test_alloc) ---- */
+
+DCL ARENA(256) BYTE;
+DCL HEAP_BASE PTR STATIC;
+DCL HEAP_LIM PTR STATIC;
+DCL HEAP_TOP PTR STATIC;
+DCL FREE_HD PTR STATIC INIT(0);
+DCL ALLOC_N INT STATIC INIT(0);
+DCL FREE_N INT STATIC INIT(0);
+
+HEAP_INIT: PROC;
+    HEAP_BASE = ADDR(ARENA);
+    HEAP_LIM = ADDR(ARENA) + 256;
+    HEAP_TOP = HEAP_BASE;
+    FREE_HD = 0;
+    ALLOC_N = 0;
+END;
+
+HEAP_ALLOC: PROC(SZ INT) RETURNS(INT);
+    DCL P PTR;
+    DCL FP PTR;
+    DCL PV PTR;
+    DCL PREV PTR;
+    DCL BS INT;
+    IF (SZ < MIN_BLK) THEN SZ = MIN_BLK;
+    P = FREE_HD;
+    PREV = 0;
+    DO WHILE (P != 0);
+        FP = P;
+        BS = FP->FS;
+        IF (BS >= SZ) THEN DO;
+            IF (PREV = 0) THEN FREE_HD = FP->FNEXT;
+            ELSE DO; PV = PREV; PV->FNEXT = FP->FNEXT; END;
+            ALLOC_N = ALLOC_N + 1;
+            RETURN(P);
+        END;
+        PREV = P;
+        FP = P;
+        P = FP->FNEXT;
+    END;
+    IF (HEAP_TOP + SZ > HEAP_LIM) THEN RETURN(0);
+    P = HEAP_TOP;
+    FP = P;
+    FP->FK = 0;
+    FP->FF = 0;
+    FP->FR = 0;
+    FP->FS = SZ;
+    HEAP_TOP = HEAP_TOP + SZ;
+    ALLOC_N = ALLOC_N + 1;
+    RETURN(P);
+END;
+
+/* ---- Pattern constructors ---- */
+
+/* PAT_ALLOC: allocate a pattern node, return pointer */
+PAT_ALLOC: PROC(KIND INT) RETURNS(INT);
+    DCL P PTR;
+    DCL NP PTR;
+    P = HEAP_ALLOC(PATNODE_SZ);
+    IF (P = 0) THEN RETURN(0);
+    NP = P;
+    NP->PK = KIND;
+    NP->PF = 0;
+    NP->PNEXT = 0;
+    NP->PALT = 0;
+    NP->POPER = 0;
+    NP->PLEN = 0;
+    RETURN(P);
+END;
+
+/* PAT_MAKE_LIT: literal string match node
+ * OPER = offset into string buffer, LEN = string length */
+PAT_MAKE_LIT: PROC(STROFF INT, SLEN INT) RETURNS(INT);
+    DCL P PTR;
+    DCL NP PTR;
+    P = PAT_ALLOC(PK_LIT);
+    IF (P = 0) THEN RETURN(0);
+    NP = P;
+    NP->POPER = STROFF;
+    NP->PLEN = SLEN;
+    RETURN(P);
+END;
+
+/* PAT_MAKE_SPAN: character class scan node
+ * OPER = offset into string buffer (class chars) */
+PAT_MAKE_SPAN: PROC(CLASSOFF INT) RETURNS(INT);
+    DCL P PTR;
+    DCL NP PTR;
+    P = PAT_ALLOC(PK_SPAN);
+    IF (P = 0) THEN RETURN(0);
+    NP = P;
+    NP->POPER = CLASSOFF;
+    RETURN(P);
+END;
+
+/* PAT_MAKE_CAP: capture node (. operator)
+ * OPER = inner pattern, LEN = variable index for capture target */
+PAT_MAKE_CAP: PROC(INNER PTR, VARIDX INT) RETURNS(INT);
+    DCL P PTR;
+    DCL NP PTR;
+    P = PAT_ALLOC(PK_CAP);
+    IF (P = 0) THEN RETURN(0);
+    NP = P;
+    NP->POPER = INNER;
+    NP->PLEN = VARIDX;
+    RETURN(P);
+END;
+
+/* PAT_MAKE_LEN: match exactly N characters */
+PAT_MAKE_LEN: PROC(N INT) RETURNS(INT);
+    DCL P PTR;
+    DCL NP PTR;
+    P = PAT_ALLOC(PK_LEN);
+    IF (P = 0) THEN RETURN(0);
+    NP = P;
+    NP->PLEN = N;
+    RETURN(P);
+END;
+
+/* ---- Test ---- */
+
+DCL M_NL(3) CHAR INIT('
+');
+DCL M_P(4) CHAR INIT('P ');
+DCL M_F(4) CHAR INIT('F ');
+DCL M_DONE(20) CHAR INIT('All tests done');
+
+CHK: PROC(OK INT, N INT);
+    IF (OK != 0) THEN
+        CALL UART_PUTS(ADDR(M_P));
+    ELSE
+        CALL UART_PUTS(ADDR(M_F));
+    CALL UART_PUTCHAR(48 + N);
+    CALL UART_PUTS(ADDR(M_NL));
+END;
+
+MAIN: PROC;
+    DCL P1 PTR;
+    DCL P2 PTR;
+    DCL P3 PTR;
+    DCL P4 PTR;
+    DCL NP PTR;
+    DCL OK INT;
+
+    CALL HEAP_INIT;
+
+    /* 1: allocate LIT node */
+    P1 = PAT_MAKE_LIT(100, 5);
+    OK = (P1 != 0);
+    CALL CHK(OK, 1);
+
+    /* 2: kind is PK_LIT */
+    NP = P1;
+    OK = (NP->PK = PK_LIT);
+    CALL CHK(OK, 2);
+
+    /* 3: operand is 100 (string offset) */
+    OK = (NP->POPER = 100);
+    CALL CHK(OK, 3);
+
+    /* 4: length is 5 */
+    OK = (NP->PLEN = 5);
+    CALL CHK(OK, 4);
+
+    /* 5: next and alt are 0 */
+    OK = (NP->PNEXT = 0) AND (NP->PALT = 0);
+    CALL CHK(OK, 5);
+
+    /* 6: allocate SPAN node */
+    P2 = PAT_MAKE_SPAN(200);
+    NP = P2;
+    OK = (NP->PK = PK_SPAN) AND (NP->POPER = 200);
+    CALL CHK(OK, 6);
+
+    /* 7: allocate CAP node wrapping SPAN */
+    P3 = PAT_MAKE_CAP(P2, 3);
+    NP = P3;
+    OK = (NP->PK = PK_CAP) AND (NP->POPER = P2) AND (NP->PLEN = 3);
+    CALL CHK(OK, 7);
+
+    /* 8: allocate LEN node */
+    P4 = PAT_MAKE_LEN(10);
+    NP = P4;
+    OK = (NP->PK = PK_LEN) AND (NP->PLEN = 10);
+    CALL CHK(OK, 8);
+
+    /* 9: link nodes: LIT -> SPAN (via next) */
+    NP = P1;
+    NP->PNEXT = P2;
+    NP = P1;
+    OK = (NP->PNEXT = P2);
+    CALL CHK(OK, 9);
+
+    CALL UART_PUTS(ADDR(M_DONE));
+    CALL UART_PUTS(ADDR(M_NL));
+END;
