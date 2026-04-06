@@ -1,0 +1,1 @@
+Saga initialized for Milestone 3: Pattern subsystem.

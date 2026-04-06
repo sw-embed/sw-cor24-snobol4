@@ -1,8 +1,0 @@
-number = 7
-slug = "m3-backtrack"
-status = "completed"
-description = "Backtrack stack and failure recovery"
-role = "legacy"
-context_files = []
-created_at = "2026-04-06T00:05:05"
-completed_at = "2026-04-06T00:34:33"

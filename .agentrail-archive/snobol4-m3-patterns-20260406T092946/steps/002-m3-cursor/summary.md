@@ -1,0 +1,1 @@
+Built subject cursor model with CUR_INIT/PEEK/ADVANCE/AT_END/CHAR_AT. Added string scanning: SLEN, IN_CLASS (char class membership), CUR_SPAN (advance over class chars), CUR_MATCH_LIT (literal comparison at cursor). 12 tests on 'abc 123 xyz': cursor ops, SPAN consumes '123', literal match at correct/wrong positions.

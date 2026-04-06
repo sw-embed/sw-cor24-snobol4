@@ -1,0 +1,1 @@
+Milestone 3 complete. Pattern matching with SPAN, capture, unanchored scan, success/failure branching. 8 steps. SPAN example runs end-to-end.

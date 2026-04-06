@@ -1,1 +1,1 @@
-Saga initialized for Milestone 3: Pattern subsystem.
+Saga initialized for M4: richer runtime.

@@ -1,1 +1,0 @@
-Created include/pat.msw with 10 pattern node kinds and PATNODE BASED record (16 bytes: kind, flags, next, alt, oper, len). Built constructors: PAT_ALLOC, PAT_MAKE_LIT, PAT_MAKE_SPAN, PAT_MAKE_CAP, PAT_MAKE_LEN. Nodes heap-allocated via HEAP_ALLOC. 9 tests: allocation, field access, node linking via next pointer.

@@ -1,0 +1,1 @@
+Capture implemented in step 003 (PAT_EXEC_NODE handles PK_CAP). CAP_START/CAP_END/CAP_VALID track matched region. Tested: SPAN(digits).N captures positions 4..7.

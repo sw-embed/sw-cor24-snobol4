@@ -1,1 +1,0 @@
-Integration complete. All examples run via AM: hello, hello_goto, count, span (captures '123'), span_fail ('no match'). Full pipeline: read -> lex -> parse -> lower -> AM execute with pattern matching.

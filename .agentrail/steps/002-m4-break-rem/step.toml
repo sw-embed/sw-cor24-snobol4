@@ -1,0 +1,7 @@
+number = 2
+slug = "m4-break-rem"
+status = "pending"
+description = "BREAK and REM pattern primitives"
+role = "legacy"
+context_files = []
+created_at = "2026-04-06T11:23:22"
