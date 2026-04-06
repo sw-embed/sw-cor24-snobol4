@@ -1,0 +1,223 @@
+/* test_cursor.plsw -- Subject cursor and string scanning */
+
+%INCLUDE descr;
+%INCLUDE heap;
+
+/* ================================================================
+ * Subject cursor
+ *
+ * Tracks position within a subject string for pattern matching.
+ * CUR_STR = pointer to subject string
+ * CUR_LEN = length of subject
+ * CUR_POS = current scan position (0-based)
+ * ================================================================ */
+
+DCL CUR_STR PTR STATIC INIT(0);
+DCL CUR_LEN INT STATIC INIT(0);
+DCL CUR_POS INT STATIC INIT(0);
+
+/* CUR_INIT: set up cursor on a subject string */
+CUR_INIT: PROC(STR PTR, LEN INT);
+    CUR_STR = STR;
+    CUR_LEN = LEN;
+    CUR_POS = 0;
+END;
+
+/* CUR_AT_END: return 1 if cursor at end of subject */
+CUR_AT_END: PROC RETURNS(INT);
+    IF (CUR_POS >= CUR_LEN) THEN RETURN(1);
+    RETURN(0);
+END;
+
+/* CUR_PEEK: return char at current position, or 0 if at end */
+CUR_PEEK: PROC RETURNS(INT);
+    DCL P PTR;
+    IF (CUR_POS >= CUR_LEN) THEN RETURN(0);
+    P = CUR_STR + CUR_POS;
+    RETURN(P->DTAG);
+END;
+
+/* CUR_ADVANCE: move cursor forward by N positions.
+ * Returns 1 if successful, 0 if would go past end. */
+CUR_ADVANCE: PROC(N INT) RETURNS(INT);
+    IF (CUR_POS + N > CUR_LEN) THEN RETURN(0);
+    CUR_POS = CUR_POS + N;
+    RETURN(1);
+END;
+
+/* CUR_CHAR_AT: return char at absolute position I */
+CUR_CHAR_AT: PROC(I INT) RETURNS(INT);
+    DCL P PTR;
+    IF (I >= CUR_LEN) THEN RETURN(0);
+    P = CUR_STR + I;
+    RETURN(P->DTAG);
+END;
+
+/* ================================================================
+ * String length (null-terminated)
+ * ================================================================ */
+
+SLEN: PROC(S PTR) RETURNS(INT);
+    DCL I INT;
+    DCL P PTR;
+    I = 0;
+    P = S;
+    DO WHILE (P->DTAG != 0);
+        I = I + 1;
+        P = S + I;
+    END;
+    RETURN(I);
+END;
+
+/* ================================================================
+ * Character class membership
+ *
+ * IN_CLASS: check if char C appears in null-terminated class string.
+ * Returns 1 if found, 0 if not.
+ * ================================================================ */
+
+IN_CLASS: PROC(C INT, CLASS PTR) RETURNS(INT);
+    DCL I INT;
+    DCL P PTR;
+    DCL CH INT;
+    I = 0;
+    P = CLASS;
+    CH = P->DTAG;
+    DO WHILE (CH != 0);
+        IF (CH = C) THEN RETURN(1);
+        I = I + 1;
+        P = CLASS + I;
+        CH = P->DTAG;
+    END;
+    RETURN(0);
+END;
+
+/* ================================================================
+ * SPAN scan: advance cursor over chars in class.
+ * Returns number of chars consumed (0 = failure for SPAN).
+ * ================================================================ */
+
+CUR_SPAN: PROC(CLASS PTR) RETURNS(INT);
+    DCL START INT;
+    DCL C INT;
+    START = CUR_POS;
+    C = CUR_PEEK();
+    DO WHILE (C != 0 AND IN_CLASS(C, CLASS) != 0);
+        CUR_POS = CUR_POS + 1;
+        C = CUR_PEEK();
+    END;
+    RETURN(CUR_POS - START);
+END;
+
+/* ================================================================
+ * Literal match: compare N chars at cursor with literal string.
+ * Returns 1 if match, 0 if not. Does NOT advance cursor.
+ * ================================================================ */
+
+CUR_MATCH_LIT: PROC(LIT PTR, N INT) RETURNS(INT);
+    DCL I INT;
+    DCL CP PTR;
+    DCL LP PTR;
+    IF (CUR_POS + N > CUR_LEN) THEN RETURN(0);
+    I = 0;
+    DO WHILE (I < N);
+        CP = CUR_STR + CUR_POS + I;
+        LP = LIT + I;
+        IF (CP->DTAG != LP->DTAG) THEN RETURN(0);
+        I = I + 1;
+    END;
+    RETURN(1);
+END;
+
+/* ================================================================
+ * Test
+ * ================================================================ */
+
+DCL SUBJ(20) CHAR INIT('abc 123 xyz');
+DCL DIGITS(12) CHAR INIT('0123456789');
+DCL LIT_ABC(4) CHAR INIT('abc');
+DCL LIT_XYZ(4) CHAR INIT('xyz');
+
+DCL M_NL(3) CHAR INIT('
+');
+DCL M_P(4) CHAR INIT('P ');
+DCL M_F(4) CHAR INIT('F ');
+DCL M_DONE(20) CHAR INIT('All tests done');
+
+CHK: PROC(OK INT, N INT);
+    IF (OK != 0) THEN
+        CALL UART_PUTS(ADDR(M_P));
+    ELSE
+        CALL UART_PUTS(ADDR(M_F));
+    CALL UART_PUTCHAR(48 + N);
+    CALL UART_PUTS(ADDR(M_NL));
+END;
+
+MAIN: PROC;
+    DCL OK INT;
+    DCL V INT;
+    DCL C INT;
+
+    /* Init cursor on "abc 123 xyz" */
+    CALL CUR_INIT(ADDR(SUBJ), SLEN(ADDR(SUBJ)));
+
+    /* 1: length is 11 */
+    OK = (CUR_LEN = 11);
+    CALL CHK(OK, 1);
+
+    /* 2: position starts at 0 */
+    OK = (CUR_POS = 0);
+    CALL CHK(OK, 2);
+
+    /* 3: peek returns 'a' (97) */
+    C = CUR_PEEK();
+    OK = (C = 97);
+    CALL CHK(OK, 3);
+
+    /* 4: not at end */
+    OK = (CUR_AT_END() = 0);
+    CALL CHK(OK, 4);
+
+    /* 5: advance 4, now at '1' */
+    V = CUR_ADVANCE(4);
+    C = CUR_PEEK();
+    OK = (V = 1) AND (C = 49);
+    CALL CHK(OK, 5);
+
+    /* 6: SPAN digits from pos 4 -> consumes "123" (3 chars) */
+    V = CUR_SPAN(ADDR(DIGITS));
+    OK = (V = 3) AND (CUR_POS = 7);
+    CALL CHK(OK, 6);
+
+    /* 7: SPAN digits at pos 7 (space) -> returns 0 */
+    V = CUR_SPAN(ADDR(DIGITS));
+    OK = (V = 0);
+    CALL CHK(OK, 7);
+
+    /* 8: IN_CLASS '1' in digits -> 1 */
+    OK = (IN_CLASS(49, ADDR(DIGITS)) = 1);
+    CALL CHK(OK, 8);
+
+    /* 9: IN_CLASS 'a' in digits -> 0 */
+    OK = (IN_CLASS(97, ADDR(DIGITS)) = 0);
+    CALL CHK(OK, 9);
+
+    /* Reset cursor for literal match tests */
+    CALL CUR_INIT(ADDR(SUBJ), SLEN(ADDR(SUBJ)));
+
+    /* 10: match "abc" at pos 0 -> 1 */
+    OK = (CUR_MATCH_LIT(ADDR(LIT_ABC), 3) = 1);
+    CALL CHK(OK, 10);
+
+    /* 11: match "xyz" at pos 0 -> 0 (wrong position) */
+    OK = (CUR_MATCH_LIT(ADDR(LIT_XYZ), 3) = 0);
+    CALL CHK(OK, 11);
+
+    /* 12: advance to pos 8, match "xyz" -> 1 */
+    V = CUR_ADVANCE(8);
+    OK = (CUR_MATCH_LIT(ADDR(LIT_XYZ), 3) = 1);
+    CALL CHK(OK, 12);
+
+    CALL UART_PUTS(ADDR(M_DONE));
+    CALL UART_PUTS(ADDR(M_NL));
+END;

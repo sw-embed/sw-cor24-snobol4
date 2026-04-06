@@ -51,8 +51,12 @@ test-amdump:
 test-pat:
     ./scripts/build.sh include/descr.msw include/heap.msw include/pat.msw src/test_pat.plsw
 
+# Run cursor test
+test-cursor:
+    ./scripts/build.sh include/descr.msw include/heap.msw src/test_cursor.plsw
+
 # Run all tests
-test: test-am test-lower test-exec test-amdump test-pat
+test: test-am test-lower test-exec test-amdump test-pat test-cursor
     ./scripts/build.sh include/descr.msw include/heap.msw include/trace.msw src/test_descr.plsw
     ./scripts/build.sh include/descr.msw include/heap.msw src/test_snolib.plsw
     ./scripts/build.sh include/descr.msw include/heap.msw src/test_snolib2.plsw

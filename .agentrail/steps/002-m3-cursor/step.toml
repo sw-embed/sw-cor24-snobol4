@@ -1,6 +1,6 @@
 number = 2
 slug = "m3-cursor"
-status = "pending"
+status = "in-progress"
 description = "Subject cursor model and string scanning"
 role = "legacy"
 context_files = []
