@@ -1,0 +1,323 @@
+/* test_exec.plsw -- Test AM executor */
+
+%INCLUDE descr;
+%INCLUDE heap;
+%INCLUDE am;
+
+/* ================================================================
+ * AM code buffer + emitter (from earlier steps)
+ * ================================================================ */
+
+DCL AM_CODE(512) BYTE;
+DCL AM_PC INT STATIC INIT(0);
+
+AM_INIT: PROC;
+    AM_PC = 0;
+END;
+
+AM_EMIT_OP: PROC(OP INT);
+    AM_CODE(AM_PC) = OP;
+    AM_PC = AM_PC + 1;
+END;
+
+AM_EMIT_BYTE: PROC(V INT);
+    AM_CODE(AM_PC) = V;
+    AM_PC = AM_PC + 1;
+END;
+
+AM_EMIT_WORD: PROC(V INT);
+    DCL B0 INT;
+    DCL B1 INT;
+    DCL B2 INT;
+    DCL REM INT;
+    REM = V;
+    B2 = 0;
+    DO WHILE (REM > 65535);
+        REM = REM - 65536;
+        B2 = B2 + 1;
+    END;
+    B1 = 0;
+    DO WHILE (REM > 255);
+        REM = REM - 256;
+        B1 = B1 + 1;
+    END;
+    B0 = REM;
+    AM_CODE(AM_PC) = B0;
+    AM_PC = AM_PC + 1;
+    AM_CODE(AM_PC) = B1;
+    AM_PC = AM_PC + 1;
+    AM_CODE(AM_PC) = B2;
+    AM_PC = AM_PC + 1;
+END;
+
+AM_PATCH_WORD: PROC(OFF INT, V INT);
+    DCL B0 INT;
+    DCL B1 INT;
+    DCL B2 INT;
+    DCL REM INT;
+    REM = V;
+    B2 = 0;
+    DO WHILE (REM > 65535);
+        REM = REM - 65536;
+        B2 = B2 + 1;
+    END;
+    B1 = 0;
+    DO WHILE (REM > 255);
+        REM = REM - 256;
+        B1 = B1 + 1;
+    END;
+    B0 = REM;
+    AM_CODE(OFF) = B0;
+    AM_CODE(OFF + 1) = B1;
+    AM_CODE(OFF + 2) = B2;
+END;
+
+/* ================================================================
+ * Eval stack (simple integer stack)
+ * ================================================================ */
+
+DCL ESTK(32) INT;
+DCL ESP INT STATIC INIT(0);
+
+EPUSH: PROC(V INT);
+    ESTK(ESP) = V;
+    ESP = ESP + 1;
+END;
+
+EPOP: PROC RETURNS(INT);
+    ESP = ESP - 1;
+    RETURN(ESTK(ESP));
+END;
+
+/* ================================================================
+ * Variable storage
+ * ================================================================ */
+
+DCL VARS(16) INT;
+
+/* ================================================================
+ * String buffer (for LOAD_STR / PRINT_STR)
+ * ================================================================ */
+
+DCL SB(256) BYTE;
+
+/* ================================================================
+ * Decimal printer (from snobol4.plsw)
+ * ================================================================ */
+
+PUT_DEC: PROC(V INT);
+    DCL BUF(12) BYTE;
+    DCL POS INT;
+    DCL N INT;
+    DCL D INT;
+    N = V;
+    IF (N = 0) THEN DO;
+        CALL UART_PUTCHAR(48);
+        RETURN;
+    END;
+    POS = 0;
+    DO WHILE (N > 0);
+        D = N;
+        DO WHILE (D >= 10);
+            D = D - 10;
+        END;
+        BUF(POS) = 48 + D;
+        POS = POS + 1;
+        D = 0;
+        DO WHILE (N >= 10);
+            N = N - 10;
+            D = D + 1;
+        END;
+        N = D;
+    END;
+    DO WHILE (POS > 0);
+        POS = POS - 1;
+        CALL UART_PUTCHAR(BUF(POS));
+    END;
+END;
+
+DCL NL(3) CHAR INIT('
+');
+
+/* ================================================================
+ * AM Executor: fetch-decode-execute loop
+ * ================================================================ */
+
+AM_EXEC: PROC;
+    DCL PC INT;
+    DCL OP INT;
+    DCL V INT;
+    DCL V2 INT;
+    DCL IDX INT;
+
+    PC = 0;
+    ESP = 0;
+
+    DO WHILE (PC < AM_PC);
+        OP = AM_CODE(PC);
+        PC = PC + 1;
+
+        IF (OP = OP_LOAD_INT) THEN DO;
+            V = AM_CODE(PC + 2) * 65536 + AM_CODE(PC + 1) * 256 + AM_CODE(PC);
+            PC = PC + 3;
+            CALL EPUSH(V);
+        END;
+        ELSE IF (OP = OP_LOAD_STR) THEN DO;
+            V = AM_CODE(PC + 2) * 65536 + AM_CODE(PC + 1) * 256 + AM_CODE(PC);
+            PC = PC + 3;
+            CALL EPUSH(V);
+        END;
+        ELSE IF (OP = OP_LOAD_VAR) THEN DO;
+            IDX = AM_CODE(PC);
+            PC = PC + 1;
+            CALL EPUSH(VARS(IDX));
+        END;
+        ELSE IF (OP = OP_STORE_VAR) THEN DO;
+            IDX = AM_CODE(PC);
+            PC = PC + 1;
+            V = EPOP();
+            VARS(IDX) = V;
+        END;
+        ELSE IF (OP = OP_ADD) THEN DO;
+            V2 = EPOP();
+            V = EPOP();
+            CALL EPUSH(V + V2);
+        END;
+        ELSE IF (OP = OP_SUB) THEN DO;
+            V2 = EPOP();
+            V = EPOP();
+            CALL EPUSH(V - V2);
+        END;
+        ELSE IF (OP = OP_PRINT_INT) THEN DO;
+            V = EPOP();
+            CALL PUT_DEC(V);
+        END;
+        ELSE IF (OP = OP_PRINT_STR) THEN DO;
+            V = AM_CODE(PC + 2) * 65536 + AM_CODE(PC + 1) * 256 + AM_CODE(PC);
+            PC = PC + 3;
+            CALL UART_PUTS(ADDR(SB) + V);
+        END;
+        ELSE IF (OP = OP_PRINT_NL) THEN DO;
+            CALL UART_PUTS(ADDR(NL));
+        END;
+        ELSE IF (OP = OP_BR) THEN DO;
+            V = AM_CODE(PC + 2) * 65536 + AM_CODE(PC + 1) * 256 + AM_CODE(PC);
+            PC = V;
+        END;
+        ELSE IF (OP = OP_HALT) THEN DO;
+            RETURN;
+        END;
+        ELSE IF (OP = OP_NOP) THEN DO;
+            /* nothing */
+        END;
+    END;
+END;
+
+/* ================================================================
+ * Test
+ * ================================================================ */
+
+DCL M_NL(3) CHAR INIT('
+');
+DCL M_P(4) CHAR INIT('P ');
+DCL M_F(4) CHAR INIT('F ');
+DCL M_DONE(20) CHAR INIT('All tests done');
+
+CHK: PROC(OK INT, N INT);
+    IF (OK != 0) THEN
+        CALL UART_PUTS(ADDR(M_P));
+    ELSE
+        CALL UART_PUTS(ADDR(M_F));
+    CALL UART_PUTCHAR(48 + N);
+    CALL UART_PUTS(ADDR(M_NL));
+END;
+
+MAIN: PROC;
+    DCL OK INT;
+    DCL BR_OFF INT;
+
+    /* === Test 1: LOAD_INT 42, PRINT_INT, PRINT_NL, HALT ===
+     * Should print "42\n" */
+    CALL AM_INIT;
+    CALL AM_EMIT_OP(OP_LOAD_INT);
+    CALL AM_EMIT_WORD(42);
+    CALL AM_EMIT_OP(OP_PRINT_INT);
+    CALL AM_EMIT_OP(OP_PRINT_NL);
+    CALL AM_EMIT_OP(OP_HALT);
+    CALL AM_EXEC;
+    /* If we got here, HALT worked */
+    CALL CHK(1, 1);
+
+    /* === Test 2: LOAD_INT 10, LOAD_INT 3, ADD, STORE_VAR 0, HALT ===
+     * VARS(0) should be 13 */
+    CALL AM_INIT;
+    VARS(0) = 0;
+    CALL AM_EMIT_OP(OP_LOAD_INT);
+    CALL AM_EMIT_WORD(10);
+    CALL AM_EMIT_OP(OP_LOAD_INT);
+    CALL AM_EMIT_WORD(3);
+    CALL AM_EMIT_OP(OP_ADD);
+    CALL AM_EMIT_OP(OP_STORE_VAR);
+    CALL AM_EMIT_BYTE(0);
+    CALL AM_EMIT_OP(OP_HALT);
+    CALL AM_EXEC;
+    OK = (VARS(0) = 13);
+    CALL CHK(OK, 2);
+
+    /* === Test 3: STORE then LOAD back ===
+     * LOAD_INT 99, STORE_VAR 1, LOAD_VAR 1, PRINT_INT, HALT
+     * Should print "99" */
+    CALL AM_INIT;
+    CALL AM_EMIT_OP(OP_LOAD_INT);
+    CALL AM_EMIT_WORD(99);
+    CALL AM_EMIT_OP(OP_STORE_VAR);
+    CALL AM_EMIT_BYTE(1);
+    CALL AM_EMIT_OP(OP_LOAD_VAR);
+    CALL AM_EMIT_BYTE(1);
+    CALL AM_EMIT_OP(OP_PRINT_INT);
+    CALL AM_EMIT_OP(OP_PRINT_NL);
+    CALL AM_EMIT_OP(OP_HALT);
+    CALL AM_EXEC;
+    CALL CHK(1, 3);
+
+    /* === Test 4: BR (unconditional branch) ===
+     * LOAD_INT 1, PRINT_INT, BR <halt>, LOAD_INT 2, PRINT_INT, HALT
+     * Should print "1" only, skipping "2" */
+    CALL AM_INIT;
+    CALL AM_EMIT_OP(OP_LOAD_INT);
+    CALL AM_EMIT_WORD(1);
+    CALL AM_EMIT_OP(OP_PRINT_INT);
+    CALL AM_EMIT_OP(OP_PRINT_NL);
+    CALL AM_EMIT_OP(OP_BR);
+    BR_OFF = AM_PC;
+    CALL AM_EMIT_WORD(0);
+    /* This should be skipped: */
+    CALL AM_EMIT_OP(OP_LOAD_INT);
+    CALL AM_EMIT_WORD(2);
+    CALL AM_EMIT_OP(OP_PRINT_INT);
+    CALL AM_EMIT_OP(OP_PRINT_NL);
+    /* Branch target: HALT */
+    CALL AM_PATCH_WORD(BR_OFF, AM_PC);
+    CALL AM_EMIT_OP(OP_HALT);
+    CALL AM_EXEC;
+    CALL CHK(1, 4);
+
+    /* === Test 5: SUB ===
+    * LOAD_INT 10, LOAD_INT 3, SUB -> 7 */
+    CALL AM_INIT;
+    VARS(0) = 0;
+    CALL AM_EMIT_OP(OP_LOAD_INT);
+    CALL AM_EMIT_WORD(10);
+    CALL AM_EMIT_OP(OP_LOAD_INT);
+    CALL AM_EMIT_WORD(3);
+    CALL AM_EMIT_OP(OP_SUB);
+    CALL AM_EMIT_OP(OP_STORE_VAR);
+    CALL AM_EMIT_BYTE(0);
+    CALL AM_EMIT_OP(OP_HALT);
+    CALL AM_EXEC;
+    OK = (VARS(0) = 7);
+    CALL CHK(OK, 5);
+
+    CALL UART_PUTS(ADDR(M_DONE));
+    CALL UART_PUTS(ADDR(M_NL));
+END;

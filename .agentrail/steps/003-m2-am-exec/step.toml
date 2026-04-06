@@ -1,6 +1,6 @@
 number = 3
 slug = "m2-am-exec"
-status = "pending"
+status = "in-progress"
 description = "AM executor (fetch-decode-execute loop)"
 role = "legacy"
 context_files = []
