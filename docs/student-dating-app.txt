@@ -1,0 +1,937 @@
+
+
+
+
+A long time ago, when I was in college, I created a "computer dating app" (really a dating profile matcher) in SNOBOL4 that processed a file of records, each describing a person, and characteristics, interests, etc.  It would then suggest matches.  I do not recall the details (we gave students a questionaire to gather data).  It was simple.  e.g., assumed heterosexual matches only (M-F or F-M). It was not validated scientifically in any way.  It was more for entertainment, or a way for students to meet other students (even if it gave random matches, it had social value).  I am implementing a SNOBOL4 interpreter  (on top of my own PL/I-inspired language).  I would like to reconstruct a similar program to test my interoreter and for demo purposes (blogging/vlogging) not to provide a service.  Can you suggest a simple set of fields per record (eye color, height, sex, weight, interests) and an algorithm for matching up records using some scoring/ranking system.  Keep it simple, and the main goal is to show SNOBOL4 features.  Provide sample data and the SNOBOL4 program.
+
+
+Thought for 1m 21s
+You want a small, demo-friendly SNOBOL4 profile matcher that:
+
+reads a flat file of person records,
+
+computes simple pairwise compatibility,
+
+prints suggested matches,
+
+exercises SNOBOL4 strengths like pattern-based parsing, strings, tables/arrays, control by success/failure, and a couple of user-defined functions.
+
+For a reconstruction, I would optimize for:
+
+simple text records
+
+easy-to-explain scoring
+
+few enough fields to keep the program readable
+
+enough string work to make it feel like SNOBOL4
+
+Recommended record format
+I would use a pipe-delimited record like this:
+
+name|sex|seeking|age|height|eye|interests
+Example:
+
+Alice|F|M|20|64|brown|music,books,hiking
+Why these fields
+name — obvious output label
+
+sex — M or F
+
+seeking — M or F
+
+age — integer
+
+height — inches, integer
+
+eye — small categorical string
+
+interests — comma-separated list from a small vocabulary
+
+I would omit weight in the first demo. It adds social baggage, does not improve the demonstration much, and makes the example feel less timeless. If you want another physical attribute, a lightweight replacement is something like build or style, but even that is optional.
+
+Simple scoring algorithm
+Keep it intentionally naïve and entertainment-oriented.
+
+Hard filter
+Only consider A and B compatible if both of these are true:
+
+A.sex = B.seeking
+
+B.sex = A.seeking
+
+If not, score fails immediately.
+
+Score components
+Start with a base score of 50 for passing the hard filter.
+
+Then add:
+
+Age difference
+
+<= 2 years: +20
+
+<= 5 years: +10
+
+<= 8 years: +5
+
+Height difference
+
+<= 3 inches: +8
+
+<= 6 inches: +4
+
+Eye color
+
+exact match: +3
+
+Shared interests
+
++6 for each shared interest
+
+That is enough to be explainable in a blog/video and easy to tune.
+
+Controlled interest vocabulary
+For the demo, use a small fixed set so the program stays readable:
+
+music
+
+books
+
+hiking
+
+movies
+
+chess
+
+art
+
+coding
+
+dancing
+
+Sample data
+You can store this in a file like people.dat:
+
+Alice|F|M|20|64|brown|music,books,hiking,art
+Bob|M|F|21|70|blue|music,hiking,movies,coding
+Carol|F|M|22|66|green|books,movies,art,chess
+Dave|M|F|20|68|brown|music,books,chess,dancing
+Eve|F|M|19|63|blue|movies,dancing,art,music
+Frank|M|F|23|72|green|hiking,coding,chess,movies
+Grace|F|M|21|65|brown|books,coding,music,hiking
+Henry|M|F|22|69|blue|art,dancing,movies,books
+END
+SNOBOL4 program
+This version is designed to be simple and demonstrative, not maximally elegant.
+
+* profile_match.sno
+*
+* Demo dating-profile matcher for SNOBOL4.
+* Record format:
+*   name|sex|seeking|age|height|eye|interest1,interest2,...
+*
+* Reads records from standard input until END
+* Then prints best match for each person.
+
+        DEFINE('HAS(LIST,ITEM)')
+        DEFINE('COMMON(L1,L2)')
+        DEFINE('SCORE(I,J)D,C')
+
+        NAMES     = ARRAY('1:50')
+        SEXES     = ARRAY('1:50')
+        SEEKS     = ARRAY('1:50')
+        AGES      = ARRAY('1:50')
+        HEIGHTS   = ARRAY('1:50')
+        EYES      = ARRAY('1:50')
+        INTS      = ARRAY('1:50')
+
+        N = 0
+
+* ---------- LOAD RECORDS ----------
+
+READ    LINE = INPUT                               :F(LOADED)
+        IDENT(LINE,'')                             :S(READ)
+        IDENT(LINE,'END')                          :S(LOADED)
+
+        LINE BREAK('|') . NAME
++            '|' BREAK('|') . SEX
++            '|' BREAK('|') . SEEK
++            '|' BREAK('|') . AGE
++            '|' BREAK('|') . HEIGHT
++            '|' BREAK('|') . EYE
++            '|' REM . INTERESTS                   :F(BADREC)
+
+        N = N + 1
+        NAMES<N>   = NAME
+        SEXES<N>   = SEX
+        SEEKS<N>   = SEEK
+        AGES<N>    = +AGE
+        HEIGHTS<N> = +HEIGHT
+        EYES<N>    = EYE
+        INTS<N>    = ',' INTERESTS ','
+
+        :(READ)
+
+BADREC  OUTPUT = 'Bad record: ' LINE
+        :(READ)
+
+* ---------- FIND BEST MATCH FOR EACH PERSON ----------
+
+LOADED  I = 1
+
+OUTER   GT(I,N)                                   :S(DONE)
+        BESTJ = 0
+        BESTS = -1
+        J = 1
+
+INNER   GT(J,N)                                   :S(REPORT)
+        EQ(I,J)                                   :S(NEXTJ)
+
+        S = SCORE(I,J)                            :F(NEXTJ)
+        GT(S,BESTS)                               :F(NEXTJ)
+        BESTS = S
+        BESTJ = J
+
+NEXTJ   J = J + 1                                 :(INNER)
+
+REPORT  EQ(BESTJ,0)                               :S(NOMATCH)
+        OUTPUT = NAMES<I> ' -> ' NAMES<BESTJ> '  score=' BESTS
+        :(NEXTI)
+
+NOMATCH OUTPUT = NAMES<I> ' -> no compatible match'
+
+NEXTI   I = I + 1                                 :(OUTER)
+
+DONE    END
+
+* ---------- FUNCTIONS ----------
+
+* HAS(LIST,ITEM)
+* succeeds if LIST contains ITEM as a whole comma-delimited token
+HAS     LIST ',' ITEM ','                         :S(RETURN)
+                                                :(FRETURN)
+
+* COMMON(L1,L2)
+* count shared interests from a small fixed vocabulary
+COMMON  COMMON = 0
+
+        HAS(L1,'music')                           :F(C1)
+        HAS(L2,'music')                           :F(C1)
+        COMMON = COMMON + 1
+C1      HAS(L1,'books')                           :F(C2)
+        HAS(L2,'books')                           :F(C2)
+        COMMON = COMMON + 1
+C2      HAS(L1,'hiking')                          :F(C3)
+        HAS(L2,'hiking')                          :F(C3)
+        COMMON = COMMON + 1
+C3      HAS(L1,'movies')                          :F(C4)
+        HAS(L2,'movies')                          :F(C4)
+        COMMON = COMMON + 1
+C4      HAS(L1,'chess')                           :F(C5)
+        HAS(L2,'chess')                           :F(C5)
+        COMMON = COMMON + 1
+C5      HAS(L1,'art')                             :F(C6)
+        HAS(L2,'art')                             :F(C6)
+        COMMON = COMMON + 1
+C6      HAS(L1,'coding')                          :F(C7)
+        HAS(L2,'coding')                          :F(C7)
+        COMMON = COMMON + 1
+C7      HAS(L1,'dancing')                         :F(CEND)
+        HAS(L2,'dancing')                         :F(CEND)
+        COMMON = COMMON + 1
+CEND    :(RETURN)
+
+* SCORE(I,J)
+* fails if pair is incompatible
+SCORE   DIFFER(SEXES<I>,SEEKS<J>)                 :S(FRETURN)
+        DIFFER(SEXES<J>,SEEKS<I>)                 :S(FRETURN)
+
+        SCORE = 50
+
+* age difference
+        D = ABS(AGES<I> - AGES<J>)
+        LE(D,2)                                   :S(AGE20)
+        LE(D,5)                                   :S(AGE10)
+        LE(D,8)                                   :S(AGE5)
+        :(HEIGHT)
+
+AGE20   SCORE = SCORE + 20                        :(HEIGHT)
+AGE10   SCORE = SCORE + 10                        :(HEIGHT)
+AGE5    SCORE = SCORE + 5
+
+* height difference
+HEIGHT  D = ABS(HEIGHTS<I> - HEIGHTS<J>)
+        LE(D,3)                                   :S(H8)
+        LE(D,6)                                   :S(H4)
+        :(EYE)
+
+H8      SCORE = SCORE + 8                         :(EYE)
+H4      SCORE = SCORE + 4
+
+* eye color
+EYE     IDENT(EYES<I>,EYES<J>)                    :S(EYEYES)
+        :(INTERS)
+
+EYEYES  SCORE = SCORE + 3
+
+* shared interests
+INTERS  C = COMMON(INTS<I>,INTS<J>)
+        SCORE = SCORE + (C * 6)
+        :(RETURN)
+What this demonstrates well in SNOBOL4
+This is why I think it is a nice interpreter test/demo:
+
+1. Pattern-based parsing of records
+The record parser uses BREAK('|'), literal delimiters, and REM to split a line into fields. That is a very natural SNOBOL4 use case. SNOBOL4 statements consist of subject, pattern, replacement, and transfer fields, and a pattern match can drive control flow through success/failure branches. 
+
+2. Arrays and mixed string/integer handling
+SNOBOL4 has first-class arrays and automatic data conversion in many contexts, so storing names, ages, eye colors, and interest strings in parallel arrays is straightforward. The ARRAY() primitive creates arrays, and SNOBOL4 variables can hold different data types as needed. 
+
+3. User-defined functions with success/failure style
+The helper functions HAS, COMMON, and SCORE fit the SNOBOL4 model well. Program-defined functions are created with DEFINE, return by assigning to a variable with the same name as the function, and exit via RETURN or FRETURN. 
+
+Expected output shape
+With the sample data, you should get output lines like:
+
+Alice -> Grace  score=...
+Bob -> Grace  score=...
+Carol -> Henry  score=...
+...
+The exact winners depend on how your interpreter handles arithmetic and function success/failure, but the structure should be stable.
+
+Pros, risks, and alternatives
+Pros
+easy to explain
+
+small enough to fit in a blog post or short video
+
+exercises parsing, arrays, functions, arithmetic, and branching
+
+avoids ethically awkward “real dating app” complexity
+
+Risks
+the scoring is arbitrary
+
+the heterosexual-only assumption is historically faithful to your old student demo, but dated
+
+fixed interest vocabulary is artificial
+
+Better demo alternatives
+If you want something equally social but less “dating app,” you could turn the exact same engine into:
+
+study-buddy matcher
+
+roommate matcher
+
+club/activity partner matcher
+
+project teammate matcher
+
+That lets you drop sex/seeking entirely and replace it with:
+
+major
+
+year
+
+study habits
+
+noise tolerance
+
+interests
+
+available hours
+
+Same SNOBOL4 techniques, less baggage.
+
+Best next refinement
+If you want the next iteration to show off more SNOBOL4 flavor, I would extend this in one of two directions:
+
+replace the hard-coded interest list with a more pattern-driven tokenizer and a table of counts, or
+
+keep the simple matcher, but add a second pass that prints the top 3 matches per person instead of just the best one.
+
+
+To make it more historically accurate, only track sex of person (assume opposite sex sought).  It was not for study buddies, it was for dating.   your suggestions like hiking, dancing, movies seems likely.  we can drop weight (people would probably not give it or seek on it).  maybe drop height, and age, too.  This was late 70s, before digital photos, so things like eye-color, hair-color could be attributes and sought after attributes.  since it was college, major might be of interest.  I do not recall the questionare being very long or detailed.  It could have simply returned a sorted list of opposite sex records that were scored on similar major (high), interests (medium), and eye/hair color (low weight).  keep it simple.  Do not make it politically correct. 
+
+Got it — you want something historically plausible (late-70s campus), simple, and SNOBOL4-friendly, with:
+
+minimal questionnaire
+
+opposite-sex matching only (implicit)
+
+lightweight scoring:
+
+major = high weight
+
+interests = medium
+
+eye/hair color = low
+
+strong emphasis on string processing / pattern matching
+
+Below is a clean design + working SNOBOL4 demo.
+
+1. Record Format (period-appropriate, simple)
+Keep it short and very “paper form”-like:
+
+name|sex|major|eye|hair|interests
+Example:
+
+Alice|F|English|brown|brown|music,books,art
+Fields rationale
+name — output only
+
+sex — M / F
+
+major — categorical (strong signal)
+
+eye, hair — simple descriptors (common in that era)
+
+interests — comma list (core SNOBOL4 string demo)
+
+No age, no height, no weight — matches your constraints and keeps parsing trivial.
+
+2. Scoring Model (intentionally simple)
+Hard filter
+Only match opposite sex:
+
+M ↔ F only
+Score
+Start at 0, then:
+
+Feature	Rule	Score
+Major	exact match	+30
+Interests	each shared	+10
+Eye color	exact match	+3
+Hair color	exact match	+2
+This keeps:
+
+obvious ranking behavior
+
+easy to explain in a demo
+
+visible effect from each attribute
+
+3. Sample Data
+Alice|F|English|brown|brown|music,books,art
+Beth|F|Math|blue|blonde|chess,books,movies
+Carol|F|CS|green|brown|coding,music,movies
+Diane|F|History|brown|black|art,books,dancing
+
+Alan|M|English|brown|brown|books,music,art
+Bob|M|Physics|blue|blonde|chess,movies,hiking
+Chris|M|CS|green|brown|coding,music,games
+David|M|History|brown|black|books,art,dancing
+
+END
+4. SNOBOL4 Program
+This version emphasizes:
+
+pattern parsing
+
+success/failure flow
+
+string membership tricks
+
+simple arrays
+
+* dating_demo.sno
+*
+* Late-70s style dating matcher demo
+
+        DEFINE('HAS(LIST,ITEM)')
+        DEFINE('COMMON(L1,L2)')
+        DEFINE('SCORE(I,J)D,C')
+
+        NAMES   = ARRAY('1:50')
+        SEXES   = ARRAY('1:50')
+        MAJORS  = ARRAY('1:50')
+        EYES    = ARRAY('1:50')
+        HAIRS   = ARRAY('1:50')
+        INTS    = ARRAY('1:50')
+
+        N = 0
+
+* ---------- LOAD DATA ----------
+
+READ    LINE = INPUT                          :F(LOADED)
+        IDENT(LINE,'END')                     :S(LOADED)
+
+        LINE BREAK('|') . NAME
++            '|' BREAK('|') . SEX
++            '|' BREAK('|') . MAJOR
++            '|' BREAK('|') . EYE
++            '|' BREAK('|') . HAIR
++            '|' REM . INTERESTS              :F(BAD)
+
+        N = N + 1
+        NAMES<N>  = NAME
+        SEXES<N>  = SEX
+        MAJORS<N> = MAJOR
+        EYES<N>   = EYE
+        HAIRS<N>  = HAIR
+        INTS<N>   = ',' INTERESTS ','
+
+        :(READ)
+
+BAD     OUTPUT = 'Bad record: ' LINE
+        :(READ)
+
+* ---------- MATCHING ----------
+
+LOADED  I = 1
+
+OUTER   GT(I,N)                              :S(DONE)
+
+        OUTPUT = '--- Matches for ' NAMES<I> ' ---'
+
+        J = 1
+
+INNER   GT(J,N)                              :S(NEXTI)
+        EQ(I,J)                              :S(SKIP)
+
+        S = SCORE(I,J)                       :F(SKIP)
+
+        OUTPUT = '  ' NAMES<J> '  score=' S
+
+SKIP    J = J + 1                            :(INNER)
+
+NEXTI   I = I + 1                            :(OUTER)
+
+DONE    END
+
+* ---------- FUNCTIONS ----------
+
+* Check if ITEM appears in comma-delimited LIST
+HAS     LIST ',' ITEM ','                    :S(RETURN)
+                                            :(FRETURN)
+
+* Count shared interests (fixed vocabulary keeps it simple)
+COMMON  COMMON = 0
+
+        HAS(L1,'music')                      :F(C1)
+        HAS(L2,'music')                      :F(C1)
+        COMMON = COMMON + 1
+C1      HAS(L1,'books')                      :F(C2)
+        HAS(L2,'books')                      :F(C2)
+        COMMON = COMMON + 1
+C2      HAS(L1,'art')                        :F(C3)
+        HAS(L2,'art')                        :F(C3)
+        COMMON = COMMON + 1
+C3      HAS(L1,'movies')                     :F(C4)
+        HAS(L2,'movies')                     :F(C4)
+        COMMON = COMMON + 1
+C4      HAS(L1,'chess')                      :F(C5)
+        HAS(L2,'chess')                      :F(C5)
+        COMMON = COMMON + 1
+C5      HAS(L1,'coding')                     :F(C6)
+        HAS(L2,'coding')                     :F(C6)
+        COMMON = COMMON + 1
+C6      HAS(L1,'dancing')                    :F(C7)
+        HAS(L2,'dancing')                    :F(C7)
+        COMMON = COMMON + 1
+C7      HAS(L1,'hiking')                     :F(CEND)
+        HAS(L2,'hiking')                     :F(CEND)
+        COMMON = COMMON + 1
+
+CEND    :(RETURN)
+
+* Compute compatibility score
+SCORE   DIFFER(SEXES<I>,SEXES<J>)            :F(OK)
+                                            :(FRETURN)
+
+OK      SCORE = 0
+
+* major (high weight)
+        IDENT(MAJORS<I>,MAJORS<J>)           :S(MAJ)
+        :(INTSCORE)
+
+MAJ     SCORE = SCORE + 30
+
+* interests (medium)
+INTSCORE C = COMMON(INTS<I>,INTS<J>)
+        SCORE = SCORE + (C * 10)
+
+* eye color (low)
+        IDENT(EYES<I>,EYES<J>)               :S(EYE)
+        :(HAIR)
+
+EYE     SCORE = SCORE + 3
+
+* hair color (low)
+HAIR    IDENT(HAIRS<I>,HAIRS<J>)             :S(HADD)
+        :(RETURN)
+
+HADD    SCORE = SCORE + 2
+        :(RETURN)
+5. What This Shows Off (SNOBOL4 strengths)
+This version deliberately highlights:
+
+1. Pattern parsing
+LINE BREAK('|') . NAME ...
+Clean, declarative parsing — very SNOBOL4.
+
+2. Success/failure control flow
+S = SCORE(I,J) :F(SKIP)
+No booleans — control is driven by match success.
+
+3. String-as-data model
+INTS<N> = ',' INTERESTS ','
+HAS(LIST, ITEM)
+Classic SNOBOL4 trick for token membership.
+
+4. Minimal data structures
+Just arrays + strings — very period-authentic.
+
+6. Output Example (shape)
+--- Matches for Alice ---
+  Alan  score=55
+  Chris score=20
+  David score=15
+
+--- Matches for Beth ---
+  Bob   score=40
+...
+7. Optional Enhancements (still era-consistent)
+If you want a slightly richer demo later:
+
+A. Sort matches (more impressive output)
+SNOBOL4 can do it, but adds complexity — good “phase 2”.
+
+B. Add “ideal traits” fields
+Example:
+
+pref_eye
+pref_hair
+Then give bonus points if partner matches preference.
+
+C. Replace fixed COMMON() with dynamic parsing
+More “pure SNOBOL4”, but harder to read.
+
+8. Why this is a good interpreter test
+exercises pattern engine
+
+uses arrays + numeric ops
+
+uses functions + RETURN/FRETURN
+
+mixes strings + integers
+
+uses control via success/failure
+
+…and it’s small enough to debug inside your PL/SW-based interpreter.
+
+If you want next step, I can:
+
+convert this into a minimal conformance test suite for your interpreter
+
+or rewrite it to stress specific SNOBOL4 edge cases (backtracking, recursion, tables, etc.)
+
+
+To make the results actionable, need a psuedo student ID that indexes contact info (separate file). There were no cell-phone or emails back then, so dorm building and room numbers, maybe some kind of mail drop number.
+
+Great—this is exactly the right addition to make the output feel actionable and period-authentic.
+
+Now we’ll evolve the design into a two-file system:
+
+profiles file → used for matching
+
+directory file → used for contact lookup (via student ID)
+
+This also nicely exercises SNOBOL4’s ability to:
+
+join datasets (manual “lookup table”)
+
+keep parsing simple but realistic
+
+separate concerns (matching vs. contact info)
+
+1. Updated Architecture
+Requirements (restated)
+Each profile has a student ID
+
+Matching is done only on profile data
+
+Output includes top matches + contact info
+
+Contact info is stored in a separate file
+
+High-Level Flow
+1. Load directory file → ID → contact info
+2. Load profile file → ID → attributes
+3. For each student:
+     find matches (opposite sex)
+     compute score
+     print match + contact info lookup
+2. File Formats
+Profiles file
+id|name|sex|major|eye|hair|interests
+Example:
+
+1001|Alice|F|English|brown|brown|music,books,art
+1002|Beth|F|Math|blue|blonde|chess,books,movies
+1003|Carol|F|CS|green|brown|coding,music,movies
+1004|Diane|F|History|brown|black|art,books,dancing
+
+2001|Alan|M|English|brown|brown|books,music,art
+2002|Bob|M|Physics|blue|blonde|chess,movies,hiking
+2003|Chris|M|CS|green|brown|coding,music,games
+2004|David|M|History|brown|black|books,art,dancing
+
+END
+Directory file (contact info)
+id|dorm|room|mailbox
+Example:
+
+1001|Adams Hall|214|MH-332
+1002|Baker Hall|102|MH-118
+1003|Clark Hall|305|MH-442
+1004|Davis Hall|221|MH-207
+
+2001|Evans Hall|110|MH-501
+2002|Ford Hall|333|MH-620
+2003|Grant Hall|278|MH-588
+2004|Hill Hall|199|MH-455
+
+END
+3. Data Structures (SNOBOL4-friendly)
+We’ll add:
+
+IDS      = ARRAY('1:50')
+DORM     = TABLE()
+ROOM     = TABLE()
+MAIL     = TABLE()
+Why TABLE?
+
+SNOBOL4 TABLE() is perfect for ID → value lookup
+
+avoids manual indexing loops
+
+4. Updated SNOBOL4 Program
+This is a clean extension of the previous version.
+
+* dating_with_directory.sno
+
+        DEFINE('HAS(LIST,ITEM)')
+        DEFINE('COMMON(L1,L2)')
+        DEFINE('SCORE(I,J)D,C')
+
+* ---------- PROFILE ARRAYS ----------
+
+        IDS     = ARRAY('1:50')
+        NAMES   = ARRAY('1:50')
+        SEXES   = ARRAY('1:50')
+        MAJORS  = ARRAY('1:50')
+        EYES    = ARRAY('1:50')
+        HAIRS   = ARRAY('1:50')
+        INTS    = ARRAY('1:50')
+
+* ---------- DIRECTORY TABLES ----------
+
+        DORM = TABLE()
+        ROOM = TABLE()
+        MAIL = TABLE()
+
+        N = 0
+
+* =========================================================
+* LOAD DIRECTORY FILE
+* =========================================================
+
+DIRREAD LINE = INPUT                          :F(DIRDONE)
+        IDENT(LINE,'END')                     :S(DIRDONE)
+
+        LINE BREAK('|') . ID
++            '|' BREAK('|') . D
++            '|' BREAK('|') . R
++            '|' REM . M                      :F(DIRBAD)
+
+        DORM<ID> = D
+        ROOM<ID> = R
+        MAIL<ID> = M
+
+        :(DIRREAD)
+
+DIRBAD  OUTPUT = 'Bad directory record: ' LINE
+        :(DIRREAD)
+
+DIRDONE
+
+* =========================================================
+* LOAD PROFILE FILE
+* =========================================================
+
+READ    LINE = INPUT                          :F(LOADED)
+        IDENT(LINE,'END')                     :S(LOADED)
+
+        LINE BREAK('|') . ID
++            '|' BREAK('|') . NAME
++            '|' BREAK('|') . SEX
++            '|' BREAK('|') . MAJOR
++            '|' BREAK('|') . EYE
++            '|' BREAK('|') . HAIR
++            '|' REM . INTERESTS              :F(BAD)
+
+        N = N + 1
+
+        IDS<N>    = ID
+        NAMES<N>  = NAME
+        SEXES<N>  = SEX
+        MAJORS<N> = MAJOR
+        EYES<N>   = EYE
+        HAIRS<N>  = HAIR
+        INTS<N>   = ',' INTERESTS ','
+
+        :(READ)
+
+BAD     OUTPUT = 'Bad profile: ' LINE
+        :(READ)
+
+* =========================================================
+* MATCHING + OUTPUT
+* =========================================================
+
+LOADED  I = 1
+
+OUTER   GT(I,N)                              :S(DONE)
+
+        OUTPUT = '--- Matches for ' NAMES<I> ' ---'
+
+        J = 1
+
+INNER   GT(J,N)                              :S(NEXTI)
+        EQ(I,J)                              :S(SKIP)
+
+        S = SCORE(I,J)                       :F(SKIP)
+
+        IDJ = IDS<J>
+
+        OUTPUT = '  ' NAMES<J> '  score=' S
++                '  ' DORM<IDJ> ', room ' ROOM<IDJ>
++                '  mailbox ' MAIL<IDJ>
+
+SKIP    J = J + 1                            :(INNER)
+
+NEXTI   I = I + 1                            :(OUTER)
+
+DONE    END
+
+* =========================================================
+* FUNCTIONS
+* =========================================================
+
+HAS     LIST ',' ITEM ','                    :S(RETURN)
+                                            :(FRETURN)
+
+COMMON  COMMON = 0
+
+        HAS(L1,'music')                      :F(C1)
+        HAS(L2,'music')                      :F(C1)
+        COMMON = COMMON + 1
+C1      HAS(L1,'books')                      :F(C2)
+        HAS(L2,'books')                      :F(C2)
+        COMMON = COMMON + 1
+C2      HAS(L1,'art')                        :F(C3)
+        HAS(L2,'art')                        :F(C3)
+        COMMON = COMMON + 1
+C3      HAS(L1,'movies')                     :F(C4)
+        HAS(L2,'movies')                     :F(C4)
+        COMMON = COMMON + 1
+C4      HAS(L1,'chess')                      :F(C5)
+        HAS(L2,'chess')                      :F(C5)
+        COMMON = COMMON + 1
+C5      HAS(L1,'coding')                     :F(C6)
+        HAS(L2,'coding')                     :F(C6)
+        COMMON = COMMON + 1
+C6      HAS(L1,'dancing')                    :F(C7)
+        HAS(L2,'dancing')                    :F(C7)
+        COMMON = COMMON + 1
+C7      HAS(L1,'hiking')                     :F(CEND)
+        HAS(L2,'hiking')                     :F(CEND)
+        COMMON = COMMON + 1
+
+CEND    :(RETURN)
+
+SCORE   DIFFER(SEXES<I>,SEXES<J>)            :F(OK)
+                                            :(FRETURN)
+
+OK      SCORE = 0
+
+        IDENT(MAJORS<I>,MAJORS<J>)           :S(MAJ)
+        :(INTSCORE)
+
+MAJ     SCORE = SCORE + 30
+
+INTSCORE C = COMMON(INTS<I>,INTS<J>)
+        SCORE = SCORE + (C * 10)
+
+        IDENT(EYES<I>,EYES<J>)               :S(EYE)
+        :(HAIR)
+
+EYE     SCORE = SCORE + 3
+
+HAIR    IDENT(HAIRS<I>,HAIRS<J>)             :S(HADD)
+        :(RETURN)
+
+HADD    SCORE = SCORE + 2
+        :(RETURN)
+5. What This Adds (Architecturally)
+Separation of concerns
+Layer	Responsibility
+Profiles	matching logic
+Directory	contact lookup
+Matcher	joins via ID
+This mirrors real systems (even modern ones).
+
+SNOBOL4 features exercised further
+TABLE() lookup (associative memory)
+
+multi-file processing
+
+manual join logic (classic pre-relational style)
+
+6. Output Example
+--- Matches for Alice ---
+  Alan  score=55  Evans Hall, room 110  mailbox MH-501
+  Chris score=20  Grant Hall, room 278  mailbox MH-588
+7. Optional Next Step (very authentic)
+If you want one more period-accurate touch:
+
+Add “printable report” mode
+Instead of console output:
+
+generate fixed-width lines
+
+suitable for line printer / dot-matrix
+
+Example:
+
+Alice      Alan       55   Evans Hall   110   MH-501
+8. Why this version is especially good for your interpreter
+This one now tests:
+
+parsing
+
+arrays
+
+tables (important!)
+
+function calls
+
+arithmetic
+
+string matching
+
+multi-pass processing
+
+…and still stays small enough to debug in your PL/SW implementation.
+
+If you want, next I can:
+
+convert this into a step-by-step SNOBOL4 interpreter test suite
+
+or refactor it to stress backtracking/pattern engine edge cases (much more “SNOBOL4 nerd demo”)
+
+
+

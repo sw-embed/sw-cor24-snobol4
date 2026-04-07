@@ -111,9 +111,7 @@ END;
  * Symbol + Label tables
 /* ================================================================ */
 
-DCL SYMN(128) BYTE;
-DCL SYMV(16) INT;
-DCL SYMC INT STATIC INIT(0);
+/* SYMN, SYMV, SYMC declared in snoglob.msw */
 
 SYM_FIND: PROC(NOFF INT) RETURNS(INT);
     DCL I INT;
@@ -169,9 +167,7 @@ END;
 
 %DEFINE LBLMAX 8;
 
-DCL LBLN(64) BYTE;
-DCL LBLS(8) INT;
-DCL LBLC INT STATIC INIT(0);
+/* LBLN, LBLS, LBLC declared in snoglob.msw */
 
 LBL_ADD: PROC(NOFF INT, STNUM INT);
     DCL NP PTR;
@@ -217,25 +213,13 @@ END;
 
 %DEFINE STMAX 16;
 
-DCL S_TYP(16) INT;
-DCL S_SUBJ(16) INT;
-DCL S_SIDX(16) INT;
-DCL S_OETY(16) INT;
-DCL S_OEV1(16) INT;
-DCL S_OEOP(16) INT;
-DCL S_OEV2(16) INT;
-DCL S_GTYP(16) INT;
-DCL S_GLBL(16) INT;
-DCL S_SPTR(16) INT;
-DCL STCNT INT STATIC INIT(0);
+/* S_TYP, S_SUBJ, S_SIDX, S_OETY, S_OEV1, S_OEOP, S_OEV2, S_GTYP, S_GLBL, S_SPTR, STCNT in snoglob.msw */
 
 /* Expression parts for concatenation: up to 4 parts per statement.
  * S_EPCNT(s) = number of parts (0 = use S_OETY/S_OEV1 as before).
 /* EP_TYP(s*4+i) = part type (OE_INT, OE_STR, OE_IDENT).
  * EP_VAL(s*4+i) = part value (int, str offset, sym idx). */
-DCL S_EPCNT(16) INT;
-DCL EP_TYP(64) INT;
-DCL EP_VAL(64) INT;
+/* S_EPCNT, EP_TYP, EP_VAL declared in snoglob.msw */
 
 /* Pattern parts for compound match statements.
  * PP_TYP: OE_IDENT=var, OE_STR=literal, OE_SPAN, OE_BREAK, OE_REM, OE_CAP.
@@ -246,9 +230,7 @@ DCL EP_VAL(64) INT;
 %DEFINE OE_CAP 8;
 %DEFINE OE_ARRAY 9;
 %DEFINE OE_ARRREF 10;
-DCL S_PPCNT(16) INT;
-DCL PP_TYP(128) INT;
-DCL PP_VAL(128) INT;
+/* S_PPCNT, PP_TYP, PP_VAL declared in snoglob.msw */
 
 /* ================================================================
  * Parser
@@ -567,9 +549,7 @@ END;
  * AM code buffer + emitter
 /* ================================================================ */
 
-DCL AM_CODE(512) BYTE;
-DCL AM_PC INT STATIC INIT(0);
-DCL STMT_ADDR(16) INT;
+/* AM_CODE, AM_PC, STMT_ADDR declared in snoglob.msw */
 
 /* Dummy MAIN for library compilation */
 MAIN: PROC;

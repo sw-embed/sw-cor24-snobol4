@@ -74,7 +74,7 @@ else
 fi
 
 # Extract UART output
-PROG_OUT=$(echo "$RUN_OUT" | awk '/^UART output:/{found=1; sub(/^UART output: /,""); print; next} found && /^Executed /{exit} found && /^$/{exit} found{print}')
+PROG_OUT=$(echo "$RUN_OUT" | awk '/^UART output:/{found=1; sub(/^UART output: /,""); print; next} found && /^Executed /{exit} found{print}')
 if [ -n "$PROG_OUT" ]; then
     echo "$PROG_OUT"
 fi

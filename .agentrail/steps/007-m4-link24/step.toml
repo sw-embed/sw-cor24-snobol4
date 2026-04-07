@@ -1,6 +1,6 @@
 number = 7
 slug = "m4-link24"
-status = "pending"
+status = "in-progress"
 description = "Build or integrate link24 linker tool"
 role = "legacy"
 context_files = []

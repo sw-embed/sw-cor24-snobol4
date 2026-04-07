@@ -1,0 +1,3 @@
+       OUTPUT = 'first'
+       OUTPUT = 'second'
+END
