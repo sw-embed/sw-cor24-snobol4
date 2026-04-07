@@ -1,7 +1,7 @@
 /* sno_lex.plsw -- Layer 2: lexer, parser, symbol/label tables
  * Depends on: sno_util (L1)
 /* */
-%DEFINE NOLISTING;
+%DEFINE LIBRARY;
 %INCLUDE descr;
 %INCLUDE heap;
 %INCLUDE am;

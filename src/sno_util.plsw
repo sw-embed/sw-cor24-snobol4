@@ -2,7 +2,7 @@
  * String helpers, I/O, character classification.
  * No dependencies on other SNOBOL4 modules.
  */
-%DEFINE NOLISTING;
+%DEFINE LIBRARY;
 %INCLUDE descr;
 %INCLUDE heap;
 %INCLUDE am;

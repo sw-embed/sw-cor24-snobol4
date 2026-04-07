@@ -1,7 +1,7 @@
 /* sno_exec.plsw -- Layer 3: AM emitter, lowering, executor, patterns
  * Depends on: sno_util (L1), sno_lex (L2)
 /* */
-%DEFINE NOLISTING;
+%DEFINE LIBRARY;
 %INCLUDE descr;
 %INCLUDE heap;
 %INCLUDE am;

@@ -5,8 +5,6 @@
  * binary +/- expressions, goto :(L) :S(L) :F(L), END.
  */
 
-%DEFINE NOLISTING;
-
 %INCLUDE descr;
 %INCLUDE heap;
 %INCLUDE am;
