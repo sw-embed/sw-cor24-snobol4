@@ -13,4 +13,13 @@ MAIN: PROC;
     CALL PARSE;
     CALL LOWER_ALL;
     CALL AM_EXEC;
+    /* Inline 1-instruction self-loop. The COR24 emulator detects this
+     * pattern and reports Halted: true. We do this here rather than
+     * relying on MAIN's normal return path, because some plsw runtime
+     * call (currently under investigation) corrupts r1 and returns to
+     * PC=0, which would otherwise re-enter the program. */
+    ASM DO;
+        '_sno_done:';
+        '        bra     _sno_done';
+    END;
 END;
