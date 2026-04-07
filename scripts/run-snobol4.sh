@@ -6,7 +6,7 @@
 # The interpreter is loaded from build/snobol4.bin (modular build).
 # SNOBOL4 source at 0x080000, optional data at 0x090000.
 
-set -euo pipefail
+set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -56,31 +56,25 @@ echo "=== SNOBOL4: $BASENAME ===" >&2
 cat "$SNO_FILE" >&2
 echo "---" >&2
 
-# Find entry address from map
+# Entry at 0 (which is _start, which calls _MAIN)
 ENTRY=0
-if [ -f "$PROJECT_DIR/build/mod/snobol4.map" ]; then
-    ENTRY_LINE=$(grep "^_MAIN " "$PROJECT_DIR/build/mod/snobol4.map" 2>/dev/null | head -1)
-    if [ -n "$ENTRY_LINE" ]; then
-        ENTRY=$(echo "$ENTRY_LINE" | awk '{print $2}')
-    fi
-fi
 
 # Run
 if [ -n "$DAT_FILE" ]; then
     RUN_OUT=$(cor24-run --load-binary "$INTERP_BIN"@0 \
         --load-binary "$SNO_FILE"@0x080000 \
         --load-binary "$DAT_FILE"@0x090000 \
-        --entry "0x${ENTRY}" \
+        --entry "$ENTRY" \
         -n 200000000 -t 120 --speed 0 --dump 2>&1)
 else
     RUN_OUT=$(cor24-run --load-binary "$INTERP_BIN"@0 \
         --load-binary "$SNO_FILE"@0x080000 \
-        --entry "0x${ENTRY}" \
+        --entry "$ENTRY" \
         -n 200000000 -t 120 --speed 0 --dump 2>&1)
 fi
 
 # Extract UART output
-PROG_OUT=$(echo "$RUN_OUT" | awk '/^UART output:/{found=1; sub(/^UART output: /,""); print; next} found && /^Executed /{exit} found{print}')
+PROG_OUT=$(echo "$RUN_OUT" | awk '/^UART output:/{found=1; sub(/^UART output: /,""); print; next} found && /^Executed /{exit} found && /^$/{exit} found{print}')
 if [ -n "$PROG_OUT" ]; then
     echo "$PROG_OUT"
 fi

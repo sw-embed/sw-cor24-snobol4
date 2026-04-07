@@ -161,10 +161,7 @@ PUT_DEC: PROC(V INT);
     END;
 END;
 
-/* ---- Special symbol detection (moved here from main to avoid circular deps) ---- */
-
-DCL N_OUT(8) CHAR INIT('OUTPUT');
-DCL N_INP(8) CHAR INIT('INPUT');
+/* ---- Special symbol detection (N_OUT/N_INP now in snoglob.msw) ---- */
 
 FIND_SPECIAL: PROC;
     DCL I INT;
