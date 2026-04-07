@@ -1,7 +1,8 @@
 number = 1
 slug = "m5-remdr"
-status = "in-progress"
+status = "completed"
 description = "Add REMDR(A,B) as a numeric 2-arg expression builtin that returns A mod B on ..."
 role = "production"
 context_files = []
 created_at = "2026-04-07T09:50:21"
+completed_at = "2026-04-07T10:47:02"

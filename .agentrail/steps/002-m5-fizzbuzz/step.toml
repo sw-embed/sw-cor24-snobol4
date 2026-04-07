@@ -1,6 +1,6 @@
 number = 2
 slug = "m5-fizzbuzz"
-status = "pending"
+status = "in-progress"
 description = "Write examples/fizzbuzz.sno that prints classic FizzBuzz for N=1..15 on the m..."
 role = "production"
 context_files = []

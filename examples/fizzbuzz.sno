@@ -1,0 +1,14 @@
+ N = 1
+L R = REMDR(N,15)
+ EQ(R,0) :S(A)
+ R = REMDR(N,3)
+ EQ(R,0) :S(B)
+ R = REMDR(N,5)
+ EQ(R,0) :S(C)
+ OUTPUT = N :(I)
+A OUTPUT = 'FizzBuzz' :(I)
+B OUTPUT = 'Fizz' :(I)
+C OUTPUT = 'Buzz'
+I N = N + 1
+ LE(N,15) :S(L)
+END

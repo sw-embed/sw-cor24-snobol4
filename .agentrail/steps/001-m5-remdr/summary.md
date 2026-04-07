@@ -1,0 +1,1 @@
+REMDR(A,B) numeric expression builtin with OP_MOD opcode. Parser recognizes REMDR() inside assign expressions (like SPAN/BREAK), reuses BINOP lowering via S_OEOP=100 marker. Executor computes mod by repeated subtraction. examples/remdr.sno prints 1 from REMDR(7,3). Note: %DEFINE headroom recovered thanks to plsw #30.
