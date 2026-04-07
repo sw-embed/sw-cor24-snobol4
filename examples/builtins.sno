@@ -1,0 +1,9 @@
+  A = 'HI'
+  IDENT(A,'HI') :F(BAD)
+  DIFFER(A,'BYE') :F(BAD)
+  GT(5,3) :F(BAD)
+  EQ(7,7) :F(BAD)
+  LE(2,9) :F(BAD)
+  OUTPUT = 'ALL OK' :(END)
+BAD OUTPUT = 'FAIL' :(END)
+END

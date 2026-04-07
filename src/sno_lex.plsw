@@ -53,6 +53,7 @@ LEX: PROC;
     IF (C = 42) THEN DO; SPOS = SPOS + 1; TT = TK_STAR; RETURN; END;
     IF (C = 60) THEN DO; SPOS = SPOS + 1; TT = TK_LT; RETURN; END;
     IF (C = 62) THEN DO; SPOS = SPOS + 1; TT = TK_GT; RETURN; END;
+    IF (C = 44) THEN DO; SPOS = SPOS + 1; TT = 17; RETURN; END;
     IF (C = 39 OR C = 34) THEN DO;
         Q = C;
         SPOS = SPOS + 1;
@@ -287,6 +288,35 @@ DEF_PARSE: PROC RETURNS(INT);
     RETURN(0);
 END;
 
+/* SYM idx -> builtin code: 1=IDENT,2=DIFFER,3=GT,4=EQ,5=LE; 0=none */
+BLT_CODE: PROC(SIDX INT) RETURNS(INT);
+    DCL NP PTR;
+    DCL P1 PTR;
+    DCL P2 PTR;
+    DCL P3 PTR;
+    DCL P4 PTR;
+    DCL P5 PTR;
+    NP = ADDR(SYMN) + SIDX * 8;
+    P1 = NP + 1;
+    P2 = NP + 2;
+    P3 = NP + 3;
+    P4 = NP + 4;
+    P5 = NP + 5;
+    IF (NP->DTAG = 73) THEN IF (P1->DTAG = 68) THEN IF (P2->DTAG = 69) THEN
+        IF (P3->DTAG = 78) THEN IF (P4->DTAG = 84) THEN IF (P5->DTAG = 0) THEN
+            RETURN(1);
+    IF (NP->DTAG = 68) THEN IF (P1->DTAG = 73) THEN IF (P2->DTAG = 70) THEN
+        IF (P3->DTAG = 70) THEN IF (P4->DTAG = 69) THEN IF (P5->DTAG = 82) THEN
+            RETURN(2);
+    IF (NP->DTAG = 71) THEN IF (P1->DTAG = 84) THEN IF (P2->DTAG = 0) THEN
+        RETURN(3);
+    IF (NP->DTAG = 69) THEN IF (P1->DTAG = 81) THEN IF (P2->DTAG = 0) THEN
+        RETURN(4);
+    IF (NP->DTAG = 76) THEN IF (P1->DTAG = 69) THEN IF (P2->DTAG = 0) THEN
+        RETURN(5);
+    RETURN(0);
+END;
+
 FN_FIND: PROC(SIDX INT) RETURNS(INT);
     DCL I INT;
     I = 0;
@@ -383,6 +413,66 @@ PARSE: PROC;
                         S_TYP(S) = ST_EMPTY;
                         S_SUBJ(S) = 0 - 1;
                     END;
+                END;
+            END;
+
+            /* Builtin predicate: NAME(arg1,arg2) :S/:F */
+            IF (S_SUBJ(S) >= 0 AND TT = TK_LPAREN) THEN DO;
+                DCL BC INT;
+                BC = BLT_CODE(S_SUBJ(S));
+                IF (BC > 0) THEN DO;
+                    DCL BEPB INT;
+                    DCL BEPI INT;
+                    DCL BANO INT;
+                    S_TYP(S) = 4;
+                    S_OEV1(S) = BC;
+                    S_SUBJ(S) = 0 - 1;
+                    BEPB = S * 4;
+                    BEPI = 0;
+                    CALL LEX;  /* past ( */
+                    /* arg1 */
+                    IF (TT = TK_IDENT) THEN DO;
+                        BANO = SBSAVE();
+                        EP_TYP(BEPB + BEPI) = OE_IDENT;
+                        EP_VAL(BEPB + BEPI) = SYM_LOOKUP(BANO);
+                        BEPI = BEPI + 1;
+                        CALL LEX;
+                    END;
+                    ELSE IF (TT = TK_INT) THEN DO;
+                        EP_TYP(BEPB + BEPI) = OE_INT;
+                        EP_VAL(BEPB + BEPI) = TV;
+                        BEPI = BEPI + 1;
+                        CALL LEX;
+                    END;
+                    ELSE IF (TT = TK_STR) THEN DO;
+                        EP_TYP(BEPB + BEPI) = OE_STR;
+                        EP_VAL(BEPB + BEPI) = SBSAVE();
+                        BEPI = BEPI + 1;
+                        CALL LEX;
+                    END;
+                    IF (TT = 17) THEN CALL LEX;
+                    /* arg2 */
+                    IF (TT = TK_IDENT) THEN DO;
+                        BANO = SBSAVE();
+                        EP_TYP(BEPB + BEPI) = OE_IDENT;
+                        EP_VAL(BEPB + BEPI) = SYM_LOOKUP(BANO);
+                        BEPI = BEPI + 1;
+                        CALL LEX;
+                    END;
+                    ELSE IF (TT = TK_INT) THEN DO;
+                        EP_TYP(BEPB + BEPI) = OE_INT;
+                        EP_VAL(BEPB + BEPI) = TV;
+                        BEPI = BEPI + 1;
+                        CALL LEX;
+                    END;
+                    ELSE IF (TT = TK_STR) THEN DO;
+                        EP_TYP(BEPB + BEPI) = OE_STR;
+                        EP_VAL(BEPB + BEPI) = SBSAVE();
+                        BEPI = BEPI + 1;
+                        CALL LEX;
+                    END;
+                    IF (TT = TK_RPAREN) THEN CALL LEX;
+                    S_EPCNT(S) = BEPI;
                 END;
             END;
 

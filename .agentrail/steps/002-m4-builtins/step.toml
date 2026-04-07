@@ -1,6 +1,6 @@
 number = 2
 slug = "m4-builtins"
-status = "pending"
+status = "in-progress"
 description = "Add SNOBOL4 predicate builtins: IDENT(A,B), DIFFER(A,B), GT(A,B), EQ(A,B), LE..."
 role = "production"
 context_files = []
