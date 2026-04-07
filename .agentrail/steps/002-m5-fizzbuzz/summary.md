@@ -1,0 +1,1 @@
+examples/fizzbuzz.sno produces classic FizzBuzz output for 1..15. 14 statements, 219 bytes — fits STMAX=16 and SRC=256. Uses N=N+1 loop with LE(N,15) :S(L), assigns R=REMDR(N,k) and EQ(R,0) :S(label) to dispatch to FizzBuzz/Fizz/Buzz, falls through to OUTPUT=N otherwise.

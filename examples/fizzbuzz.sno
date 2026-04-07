@@ -1,3 +1,4 @@
+* fizzbuzz.sno -- FizzBuzz 1..15
  N = 1
 L R = REMDR(N,15)
  EQ(R,0) :S(A)

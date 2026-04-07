@@ -12,6 +12,23 @@ AM_INIT: PROC;
     AM_PC = 0;
 END;
 
+/* Print null-terminated string from SB at OFF.
+ * Avoids the runtime UART_PUTS, which appends a trailing newline. */
+PUT_SBSTR: PROC(OFF INT);
+    DCL P PTR;
+    DCL C INT;
+    DCL I INT;
+    I = 0;
+    P = ADDR(SB) + OFF;
+    C = P->DTAG;
+    DO WHILE (C != 0);
+        CALL UART_PUTCHAR(C);
+        I = I + 1;
+        P = ADDR(SB) + OFF + I;
+        C = P->DTAG;
+    END;
+END;
+
 AM_EMIT_OP: PROC(OP INT);
     AM_CODE(AM_PC) = OP;
     AM_PC = AM_PC + 1;
@@ -677,10 +694,10 @@ AM_EXEC: PROC;
         ELSE IF (OP = OP_PRINT_STR) THEN DO;
             V = AM_CODE(PC + 2) * 65536 + AM_CODE(PC + 1) * 256 + AM_CODE(PC);
             PC = PC + 3;
-            CALL UART_PUTS(ADDR(SB) + V);
+            CALL PUT_SBSTR(V);
         END;
         ELSE IF (OP = OP_PRINT_NL) THEN DO;
-            CALL UART_PUTS(ADDR(NL));
+            CALL UART_PUTCHAR(10);
         END;
         ELSE IF (OP = OP_BR) THEN DO;
             V = AM_CODE(PC + 2) * 65536 + AM_CODE(PC + 1) * 256 + AM_CODE(PC);
@@ -701,11 +718,10 @@ AM_EXEC: PROC;
                 PC = PC + 3;
         END;
         ELSE IF (OP = OP_PRINT_VAR) THEN DO;
-            /* Print variable: check VTYP to decide int vs string */
             IDX = AM_CODE(PC);
             PC = PC + 1;
             IF (VTYP(IDX) = VTYP_STR) THEN
-                CALL UART_PUTS(ADDR(SB) + VARS(IDX));
+                CALL PUT_SBSTR(VARS(IDX));
             ELSE
                 CALL PUT_DEC(VARS(IDX));
         END;

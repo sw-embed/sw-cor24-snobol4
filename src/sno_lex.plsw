@@ -30,6 +30,20 @@ LEX: PROC;
     DCL I INT;
     DCL Q INT;
     C = SRC(SPOS);
+    /* Column-1 '*' = full-line comment (SNOBOL4 convention) */
+    IF (AT_SOL = 1 AND C = 42) THEN DO;
+        AT_SOL = 0;
+        DO WHILE (C != 10 AND C != 0);
+            SPOS = SPOS + 1;
+            C = SRC(SPOS);
+        END;
+        IF (C = 10) THEN DO;
+            SPOS = SPOS + 1;
+            AT_SOL = 1;
+        END;
+        TT = TK_EOL;
+        RETURN;
+    END;
     IF (AT_SOL = 1) THEN DO;
         AT_SOL = 0;
         IF (C != 32 AND C != 9 AND C != 10 AND C != 0) THEN
