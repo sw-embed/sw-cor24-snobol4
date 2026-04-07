@@ -1,0 +1,1 @@
+Continuation lines: a source line beginning with '+' (or '.') in column 1 continues the previous statement instead of starting a new one. Update the lexer/parser. See docs/m4-pending-steps.md.

@@ -1,0 +1,4 @@
+       DEFINE('DBL(X)')
+       OUTPUT = DBL(21)                 :(END)
+DBL    DBL = X + X                      :(RETURN)
+END

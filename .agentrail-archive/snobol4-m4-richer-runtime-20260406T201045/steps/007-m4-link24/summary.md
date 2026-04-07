@@ -1,0 +1,1 @@
+Fixed multi-OUTPUT regression: root cause was awk filter in run-snobol4.sh exiting UART capture at first blank line (PRINT_NL emits multiple chars from NL(3)). Interpreter was producing correct output all along. Verified two_str, count, break, input, array all print all expected lines. Also cleaned up duplicate global DCLs in sno_lex/sno_exec already in snoglob.msw.

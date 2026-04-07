@@ -1,0 +1,1 @@
+Integration: a subset of the student dating app (docs/student-dating-app.txt) runs end-to-end on the modular interpreter, exercising INPUT, arrays, BREAK patterns, user functions, builtins, and continuation lines together. See docs/m4-pending-steps.md.

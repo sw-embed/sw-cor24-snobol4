@@ -1,0 +1,1 @@
+Implement user-defined functions in the modular SNOBOL4 interpreter: DEFINE('NAME(ARG1,ARG2)LOCAL1,LOCAL2'), :(RETURN) for success-return, :(FRETURN) for failure-return. Save/restore local variables on call/return; support recursion via a call stack. See docs/m4-pending-steps.md.

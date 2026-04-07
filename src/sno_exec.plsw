@@ -145,10 +145,28 @@ LOWER_STMT: PROC(S INT);
                     EPI = EPI + 1;
                     /* Skip the index part -- it's used by ARR_LOAD */
                 END;
+                ELSE IF (EPT = OE_FNCALL) THEN DO;
+                    /* Next part is the arg */
+                    DCL APT INT;
+                    DCL APV INT;
+                    EPI = EPI + 1;
+                    APT = EP_TYP(EPB + EPI);
+                    APV = EP_VAL(EPB + EPI);
+                    IF (APT = OE_IDENT) THEN DO;
+                        CALL AM_EMIT_OP(OP_LOAD_VAR);
+                        CALL AM_EMIT_BYTE(APV);
+                    END;
+                    ELSE DO;
+                        CALL AM_EMIT_OP(OP_LOAD_INT);
+                        CALL AM_EMIT_WORD(APV);
+                    END;
+                    CALL AM_EMIT_OP(OP_CALL);
+                    CALL AM_EMIT_BYTE(EPV);
+                END;
                 ELSE IF (EPT = OE_ARRAY) THEN DO;
                     CALL AM_EMIT_OP(OP_MAKE_ARRAY);
                 END;
-                IF (EPI > 0 AND EPT != OE_ARRREF) THEN
+                IF (EPI > 0 AND EPT != OE_ARRREF AND EPT != OE_FNCALL) THEN
                     CALL AM_EMIT_OP(OP_CONCAT);
                 EPI = EPI + 1;
             END;
@@ -284,6 +302,10 @@ LOWER_STMT: PROC(S INT);
             CALL AM_EMIT_OP(OP_BR_FAIL);
             CALL AM_EMIT_WORD(0);
         END;
+        ELSE IF (S_GTYP(S) = GT_RET) THEN
+            CALL AM_EMIT_OP(OP_RET);
+        ELSE IF (S_GTYP(S) = GT_FRET) THEN
+            CALL AM_EMIT_OP(OP_FRET);
     END;
 
     IF (S_TYP(S) = ST_MATCH) THEN DO;
@@ -392,7 +414,7 @@ FIXUP_GOTOS: PROC;
         ELSE IF (OP = OP_LOAD_INT OR OP = OP_LOAD_STR OR OP = OP_PRINT_STR OR OP = OP_MAKE_SPAN OR OP = OP_MAKE_BREAK OR OP = OP_MAKE_LIT_PAT) THEN DO;
             PC = PC + 3;
         END;
-        ELSE IF (OP = OP_LOAD_VAR OR OP = OP_STORE_VAR OR OP = OP_PRINT_VAR OR OP = OP_PAT_CAP OR OP = OP_PAT_MATCH2 OR OP = OP_ARR_LOAD OR OP = OP_ARR_STORE) THEN DO;
+        ELSE IF (OP = OP_LOAD_VAR OR OP = OP_STORE_VAR OR OP = OP_PRINT_VAR OR OP = OP_PAT_CAP OR OP = OP_PAT_MATCH2 OR OP = OP_ARR_LOAD OR OP = OP_ARR_STORE OR OP = OP_CALL) THEN DO;
             PC = PC + 1;
         END;
         ELSE IF (OP = OP_PAT_MATCH) THEN DO;
@@ -906,6 +928,54 @@ AM_EXEC: PROC;
                 LAST_PUSH_TYP = VTYP_STR;
                 LAST_RESULT = 0;
             END;
+        END;
+        ELSE IF (OP = OP_CALL) THEN DO;
+            /* OP_CALL <fn_idx>: arg already on ESTK; push frame, set param, jump */
+            DCL FNI INT;
+            DCL PSY INT;
+            DCL ARG INT;
+            FNI = AM_CODE(PC);
+            PC = PC + 1;
+            ESP = ESP - 1;
+            ARG = ESTK(ESP);
+            PSY = FN_PARAM(FNI);
+            CSTK_PC(CSTK_TOP) = PC;
+            CSTK_PV(CSTK_TOP) = VARS(PSY);
+            CSTK_FN(CSTK_TOP) = FNI;
+            CSTK_TOP = CSTK_TOP + 1;
+            VARS(PSY) = ARG;
+            VTYP(PSY) = VTYP_INT;
+            /* Also clear function name var so caller sees fresh return */
+            VARS(FN_NAME(FNI)) = 0;
+            VTYP(FN_NAME(FNI)) = VTYP_INT;
+            PC = STMT_ADDR(FN_ENTRY(FNI));
+        END;
+        ELSE IF (OP = OP_RET) THEN DO;
+            DCL FNI2 INT;
+            DCL PSY2 INT;
+            CSTK_TOP = CSTK_TOP - 1;
+            FNI2 = CSTK_FN(CSTK_TOP);
+            PSY2 = FN_PARAM(FNI2);
+            /* Push return value: function name var */
+            ESTK(ESP) = VARS(FN_NAME(FNI2));
+            ESP = ESP + 1;
+            LAST_PUSH_TYP = VTYP(FN_NAME(FNI2));
+            VARS(PSY2) = CSTK_PV(CSTK_TOP);
+            PC = CSTK_PC(CSTK_TOP);
+            LAST_RESULT = 1;
+        END;
+        ELSE IF (OP = OP_FRET) THEN DO;
+            DCL FNI3 INT;
+            DCL PSY3 INT;
+            CSTK_TOP = CSTK_TOP - 1;
+            FNI3 = CSTK_FN(CSTK_TOP);
+            PSY3 = FN_PARAM(FNI3);
+            ESTK(ESP) = 0;
+            ESP = ESP + 1;
+            LAST_PUSH_TYP = VTYP_INT;
+            VARS(PSY3) = CSTK_PV(CSTK_TOP);
+            PC = CSTK_PC(CSTK_TOP);
+            LAST_RESULT = 0;
         END;
         ELSE IF (OP = OP_HALT) THEN DO;
             RETURN;

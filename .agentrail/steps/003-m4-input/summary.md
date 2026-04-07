@@ -1,1 +1,0 @@
-Added INPUT variable that reads lines from data file loaded at 0x090000. READ_INPUT reads one line into SB, returns offset or -1 on EOF. OP_READ_INPUT sets LAST_RESULT=0 on EOF for :F() branching. Run script accepts optional data file. input.sno reads 3 lines and detects EOF. All examples verified.

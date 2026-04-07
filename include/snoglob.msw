@@ -38,6 +38,9 @@
 %DEFINE OE_CAP 8;
 %DEFINE OE_ARRAY 9;
 %DEFINE OE_ARRREF 10;
+%DEFINE OE_FNCALL 11;
+%DEFINE GT_RET 4;
+%DEFINE GT_FRET 5;
 %DEFINE GT_NONE 0;
 %DEFINE GT_UNCOND 1;
 %DEFINE GT_SUCC 2;
@@ -125,6 +128,19 @@ DCL ARR_CNT INT STATIC INIT(0);
 DCL PSTK(16) INT;
 DCL PSTYP(16) INT;
 DCL PSTOP INT STATIC INIT(0);
+
+/* User function table (max 4 single-arg functions) */
+DCL FN_NAME(4) INT;     /* sym idx of function name */
+DCL FN_NAMOFF(4) INT;   /* SB offset of fn name (for label lookup) */
+DCL FN_PARAM(4) INT;    /* sym idx of param var */
+DCL FN_ENTRY(4) INT;    /* statement idx of function entry */
+DCL FN_CNT INT STATIC INIT(0);
+
+/* Call stack: saved PC and saved param value (single-arg) */
+DCL CSTK_PC(16) INT;
+DCL CSTK_PV(16) INT;
+DCL CSTK_FN(16) INT;
+DCL CSTK_TOP INT STATIC INIT(0);
 
 /* Result + special symbols */
 DCL LAST_RESULT INT STATIC INIT(1);

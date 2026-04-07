@@ -236,6 +236,67 @@ END;
  * Parser
 /* ================================================================ */
 
+/* Parse function name and param from a "FNNAME(PARAM)" string in TB
+ * Returns 0 on success. Registers entry in FN table with FN_ENTRY=-1. */
+DEF_PARSE: PROC RETURNS(INT);
+    DCL I INT;
+    DCL J INT;
+    DCL NOFF1 INT;
+    DCL NOFF2 INT;
+    DCL DP PTR;
+    DCL C INT;
+    DCL FNS INT;
+    DCL PRS INT;
+    IF (FN_CNT >= 4) THEN RETURN(0 - 1);
+    /* Copy fn name into SB */
+    NOFF1 = SBPOS;
+    I = 0;
+    C = TB(I);
+    DO WHILE (C != 0 AND C != 40);
+        DP = ADDR(SB) + SBPOS;
+        DP->DTAG = C;
+        SBPOS = SBPOS + 1;
+        I = I + 1;
+        C = TB(I);
+    END;
+    DP = ADDR(SB) + SBPOS;
+    DP->DTAG = 0;
+    SBPOS = SBPOS + 1;
+    IF (C != 40) THEN RETURN(0 - 1);
+    I = I + 1;
+    /* Copy param name */
+    NOFF2 = SBPOS;
+    C = TB(I);
+    DO WHILE (C != 0 AND C != 41);
+        DP = ADDR(SB) + SBPOS;
+        DP->DTAG = C;
+        SBPOS = SBPOS + 1;
+        I = I + 1;
+        C = TB(I);
+    END;
+    DP = ADDR(SB) + SBPOS;
+    DP->DTAG = 0;
+    SBPOS = SBPOS + 1;
+    FNS = SYM_LOOKUP(NOFF1);
+    PRS = SYM_LOOKUP(NOFF2);
+    FN_NAME(FN_CNT) = FNS;
+    FN_NAMOFF(FN_CNT) = NOFF1;
+    FN_PARAM(FN_CNT) = PRS;
+    FN_ENTRY(FN_CNT) = 0 - 1;
+    FN_CNT = FN_CNT + 1;
+    RETURN(0);
+END;
+
+FN_FIND: PROC(SIDX INT) RETURNS(INT);
+    DCL I INT;
+    I = 0;
+    DO WHILE (I < FN_CNT);
+        IF (FN_NAME(I) = SIDX) THEN RETURN(I);
+        I = I + 1;
+    END;
+    RETURN(0 - 1);
+END;
+
 PARSE: PROC;
     DCL S INT;
     DCL NOFF INT;
@@ -243,6 +304,7 @@ PARSE: PROC;
     SBPOS = 0;
     SYMC = 0;
     LBLC = 0;
+    FN_CNT = 0;
     SPOS = 0;
     AT_SOL = 1;
     CALL LEX;
@@ -299,6 +361,28 @@ PARSE: PROC;
                         CALL LEX;
                     END;
                     IF (TT = TK_GT) THEN CALL LEX;
+                END;
+            END;
+
+            /* DEFINE('FNNAME(PARAM)') statement */
+            IF (S_SUBJ(S) >= 0 AND TT = TK_LPAREN) THEN DO;
+                DCL NP2 PTR;
+                NP2 = ADDR(SYMN) + S_SUBJ(S) * 8;
+                IF (NP2->DTAG = 68) THEN DO;
+                    DCL NP3 PTR;
+                    NP3 = NP2 + 1;
+                    IF (NP3->DTAG = 69) THEN DO;
+                        /* "DE..." -- assume DEFINE */
+                        CALL LEX;  /* past ( */
+                        IF (TT = TK_STR) THEN DO;
+                            DCL DR INT;
+                            DR = DEF_PARSE();
+                            CALL LEX;
+                        END;
+                        IF (TT = TK_RPAREN) THEN CALL LEX;
+                        S_TYP(S) = ST_EMPTY;
+                        S_SUBJ(S) = 0 - 1;
+                    END;
                 END;
             END;
 
@@ -440,10 +524,45 @@ PARSE: PROC;
                         END;
                         ELSE DO;
                             DCL SYMIDX INT;
+                            DCL FNIDX INT;
                             SYMIDX = SYM_LOOKUP(NOFF);
                             CALL LEX;
+                            FNIDX = 0 - 1;
+                            IF (TT = TK_LPAREN) THEN
+                                FNIDX = FN_FIND(SYMIDX);
+                            /* Function call: NAME(ARG) */
+                            IF (FNIDX >= 0) THEN DO;
+                                IF (1 = 1) THEN DO;
+                                    CALL LEX;  /* past ( */
+                                    IF (EPI < 4) THEN DO;
+                                        EP_TYP(EPB + EPI) = OE_FNCALL;
+                                        EP_VAL(EPB + EPI) = FNIDX;
+                                        EPI = EPI + 1;
+                                    END;
+                                    /* Single arg: IDENT or INT */
+                                    IF (TT = TK_IDENT) THEN DO;
+                                        DCL ANO INT;
+                                        ANO = SBSAVE();
+                                        IF (EPI < 4) THEN DO;
+                                            EP_TYP(EPB + EPI) = OE_IDENT;
+                                            EP_VAL(EPB + EPI) = SYM_LOOKUP(ANO);
+                                            EPI = EPI + 1;
+                                        END;
+                                        CALL LEX;
+                                    END;
+                                    ELSE IF (TT = TK_INT) THEN DO;
+                                        IF (EPI < 4) THEN DO;
+                                            EP_TYP(EPB + EPI) = OE_INT;
+                                            EP_VAL(EPB + EPI) = TV;
+                                            EPI = EPI + 1;
+                                        END;
+                                        CALL LEX;
+                                    END;
+                                    IF (TT = TK_RPAREN) THEN CALL LEX;
+                                END;
+                            END;
                             /* Check for <index> (array ref in expr) */
-                            IF (TT = TK_LT) THEN DO;
+                            ELSE IF (TT = TK_LT) THEN DO;
                                 CALL LEX;
                                 IF (EPI < 4) THEN DO;
                                     EP_TYP(EPB + EPI) = OE_ARRREF;
@@ -526,8 +645,21 @@ PARSE: PROC;
                 IF (TT = TK_LPAREN) THEN DO;
                     CALL LEX;
                     IF (TT = TK_IDENT) THEN DO;
-                        S_GLBL(S) = SBSAVE();
-                        CALL LEX;
+                        /* Detect :(RETURN) and :(FRETURN) */
+                        IF (TB(0) = 82 AND TB(1) = 69 AND TB(2) = 84 AND TB(3) = 85 AND TB(4) = 82 AND TB(5) = 78 AND TB(6) = 0) THEN DO;
+                            S_GTYP(S) = GT_RET;
+                            S_GLBL(S) = 0 - 1;
+                            CALL LEX;
+                        END;
+                        ELSE IF (TB(0) = 70 AND TB(1) = 82 AND TB(2) = 69 AND TB(3) = 84 AND TB(4) = 85 AND TB(5) = 82 AND TB(6) = 78 AND TB(7) = 0) THEN DO;
+                            S_GTYP(S) = GT_FRET;
+                            S_GLBL(S) = 0 - 1;
+                            CALL LEX;
+                        END;
+                        ELSE DO;
+                            S_GLBL(S) = SBSAVE();
+                            CALL LEX;
+                        END;
                     END;
                     IF (TT = TK_RPAREN) THEN CALL LEX;
                 END;
@@ -542,6 +674,14 @@ PARSE: PROC;
         ELSE DO;
             CALL LEX;
         END;
+    END;
+
+    /* Resolve FN_ENTRY via label lookup */
+    DCL FI INT;
+    FI = 0;
+    DO WHILE (FI < FN_CNT);
+        FN_ENTRY(FI) = LBL_FIND(FN_NAMOFF(FI));
+        FI = FI + 1;
     END;
 END;
 

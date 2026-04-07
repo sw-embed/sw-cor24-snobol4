@@ -1,0 +1,1 @@
+Add SNOBOL4 predicate builtins: IDENT(A,B), DIFFER(A,B), GT(A,B), EQ(A,B), LE(A,B). All return null on success and fail otherwise (used with :S/:F gotos). See docs/m4-pending-steps.md.

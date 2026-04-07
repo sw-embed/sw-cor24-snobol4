@@ -1,1 +1,0 @@
-Saga initialized for M4: richer runtime.

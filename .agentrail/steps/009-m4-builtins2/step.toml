@@ -1,7 +1,0 @@
-number = 9
-slug = "m4-builtins2"
-status = "pending"
-description = "IDENT, DIFFER, GT, EQ, LE builtin functions"
-role = "legacy"
-context_files = []
-created_at = "2026-04-06T15:55:01"

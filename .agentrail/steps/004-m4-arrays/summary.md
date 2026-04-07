@@ -1,1 +1,0 @@
-Added ARRAY() and <> indexed access. ARRAY('1:50') creates array in ARR_DATA pool (4 arrays, 50 elements each). Subject <N> and expression <N> parsing for both variable and literal indices. AM opcodes: MAKE_ARRAY, ARR_LOAD, ARR_STORE. Lowering detects ARRREF before concat. array.sno stores Alice/Bob/Carol and prints them back. Filed plsw#27 (AST pool, fixed).

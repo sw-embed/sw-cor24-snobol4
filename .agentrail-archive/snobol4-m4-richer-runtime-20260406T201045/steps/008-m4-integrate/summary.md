@@ -1,0 +1,1 @@
+Superseded by 011-m4-integrate2. This legacy integration step's prerequisites (functions, continuation lines) are tracked by the v2 steps 008-m4-functions2 / 010-m4-continuation2 / 011-m4-integrate2. No code change in this session — flagging the legacy step as superseded so the saga can advance to functions2, which is the real next actionable item.
