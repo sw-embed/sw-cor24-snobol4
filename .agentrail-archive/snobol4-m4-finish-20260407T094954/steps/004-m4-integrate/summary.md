@@ -1,0 +1,1 @@
+Integration example examples/dating.sno + dating.dat runs end-to-end and exercises INPUT loop, BREAK+REM pattern capture across a continuation line, IDENT predicate, user function via DEFINE/RETURN, and string concatenation. Scoped tight to fit the 256-byte SRC buffer. Output: BIG records get '** ' prefix via HI(X), SMALL passes through bare.

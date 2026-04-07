@@ -1,10 +1,7 @@
-# M4 Finish — pending work from prior saga
+# FizzBuzz demo
 
-The previous M4 saga had duplicate step numbers; pending work,
-deduplicated, is 4 steps. See docs/m4-pending-steps.md for details.
+Get the modular SNOBOL4 interpreter running a FizzBuzz program.
 
 ## Steps
-1. m4-functions  — DEFINE, RETURN, FRETURN (modular build)
-2. m4-builtins   — IDENT, DIFFER, GT, EQ, LE
-3. m4-continuation — + in column 1 continues previous statement
-4. m4-integrate  — dating app subset runs end-to-end
+1. m5-remdr     — Add REMDR(A,B) numeric expression builtin + OP_MOD opcode
+2. m5-fizzbuzz  — examples/fizzbuzz.sno prints classic FizzBuzz 1..15 end-to-end

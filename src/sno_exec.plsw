@@ -216,6 +216,8 @@ LOWER_STMT: PROC(S INT);
                 CALL AM_EMIT_OP(OP_ADD);
             ELSE IF (S_OEOP(S) = TK_STAR) THEN
                 CALL AM_EMIT_OP(OP_MUL);
+            ELSE IF (S_OEOP(S) = 100) THEN
+                CALL AM_EMIT_OP(OP_MOD);
             ELSE
                 CALL AM_EMIT_OP(OP_SUB);
         END;
@@ -592,6 +594,23 @@ AM_EXEC: PROC;
             ESP = ESP - 1;
             ESTK(ESP) = ESTK(ESP) * V2;
             ESP = ESP + 1;
+        END;
+        ELSE IF (OP = OP_MOD) THEN DO;
+            DCL MA INT;
+            DCL MB INT;
+            ESP = ESP - 1;
+            MB = ESTK(ESP);
+            ESP = ESP - 1;
+            MA = ESTK(ESP);
+            IF (MB <= 0) THEN ESTK(ESP) = 0;
+            ELSE DO;
+                DO WHILE (MA >= MB);
+                    MA = MA - MB;
+                END;
+                ESTK(ESP) = MA;
+            END;
+            ESP = ESP + 1;
+            LAST_PUSH_TYP = VTYP_INT;
         END;
         ELSE IF (OP = OP_CONCAT) THEN DO;
             /* Pop two values, concat as strings into SB */

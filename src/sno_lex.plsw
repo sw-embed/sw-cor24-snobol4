@@ -593,8 +593,57 @@ PARSE: PROC;
                     END;
                     ELSE IF (TT = TK_IDENT) THEN DO;
                         NOFF = SBSAVE();
+                        /* Check for REMDR(A,B) -- two-arg numeric mod */
+                        IF (TB(0) = 82 AND TB(1) = 69 AND TB(2) = 77 AND TB(3) = 68 AND TB(4) = 82 AND TB(5) = 0) THEN DO;
+                            CALL LEX;
+                            IF (TT = TK_LPAREN) THEN DO;
+                                CALL LEX;
+                                /* arg1 */
+                                IF (TT = TK_INT) THEN DO;
+                                    IF (EPI < 4) THEN DO;
+                                        EP_TYP(EPB + EPI) = OE_INT;
+                                        EP_VAL(EPB + EPI) = TV;
+                                        EPI = EPI + 1;
+                                    END;
+                                    CALL LEX;
+                                END;
+                                ELSE IF (TT = TK_IDENT) THEN DO;
+                                    DCL RNO1 INT;
+                                    RNO1 = SBSAVE();
+                                    IF (EPI < 4) THEN DO;
+                                        EP_TYP(EPB + EPI) = OE_IDENT;
+                                        EP_VAL(EPB + EPI) = SYM_LOOKUP(RNO1);
+                                        EPI = EPI + 1;
+                                    END;
+                                    CALL LEX;
+                                END;
+                                IF (TT = 17) THEN CALL LEX;
+                                /* arg2 */
+                                IF (TT = TK_INT) THEN DO;
+                                    IF (EPI < 4) THEN DO;
+                                        EP_TYP(EPB + EPI) = OE_INT;
+                                        EP_VAL(EPB + EPI) = TV;
+                                        EPI = EPI + 1;
+                                    END;
+                                    CALL LEX;
+                                END;
+                                ELSE IF (TT = TK_IDENT) THEN DO;
+                                    DCL RNO2 INT;
+                                    RNO2 = SBSAVE();
+                                    IF (EPI < 4) THEN DO;
+                                        EP_TYP(EPB + EPI) = OE_IDENT;
+                                        EP_VAL(EPB + EPI) = SYM_LOOKUP(RNO2);
+                                        EPI = EPI + 1;
+                                    END;
+                                    CALL LEX;
+                                END;
+                                IF (TT = TK_RPAREN) THEN CALL LEX;
+                                /* Mark as REMDR binop (use S_OEOP=100) */
+                                S_OEOP(S) = 100;
+                            END;
+                        END;
                         /* Check for SPAN/ARRAY(...) */
-                        IF (TB(0) = 83 AND TB(1) = 80 AND TB(2) = 65 AND TB(3) = 78 AND TB(4) = 0) THEN DO;
+                        ELSE IF (TB(0) = 83 AND TB(1) = 80 AND TB(2) = 65 AND TB(3) = 78 AND TB(4) = 0) THEN DO;
                             CALL LEX;
                             IF (TT = TK_LPAREN) THEN DO;
                                 CALL LEX;

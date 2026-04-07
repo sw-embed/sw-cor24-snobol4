@@ -1,0 +1,3 @@
+  R = REMDR(7,3)
+  OUTPUT = R
+END

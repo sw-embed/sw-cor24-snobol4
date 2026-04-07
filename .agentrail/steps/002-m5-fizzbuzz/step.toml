@@ -1,0 +1,7 @@
+number = 2
+slug = "m5-fizzbuzz"
+status = "pending"
+description = "Write examples/fizzbuzz.sno that prints classic FizzBuzz for N=1..15 on the m..."
+role = "production"
+context_files = []
+created_at = "2026-04-07T09:50:21"
