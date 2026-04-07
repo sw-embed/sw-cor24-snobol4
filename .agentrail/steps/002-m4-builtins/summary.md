@@ -1,0 +1,1 @@
+Added IDENT, DIFFER, GT, EQ, LE predicate builtins. New ST_BUILTIN stmt type, OP_BLT_IS/OP_BLT_NUM opcodes, BLT_CODE helper, parser path for NAME(arg1,arg2), TK_COMMA in lexer. Fits 256B SRC buffer limit. Factorial regression passes.

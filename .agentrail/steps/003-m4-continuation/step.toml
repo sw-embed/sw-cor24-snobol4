@@ -1,6 +1,6 @@
 number = 3
 slug = "m4-continuation"
-status = "pending"
+status = "in-progress"
 description = "Continuation lines: a source line beginning with '+' (or '.') in column 1 con..."
 role = "production"
 context_files = []
