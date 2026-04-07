@@ -1,0 +1,10 @@
+  DEFINE('HI(X)')
+R L = INPUT :F(E)
+  IDENT(L,'END') :S(E)
+  L BREAK('|') . N
++   '|' REM . T :F(R)
+  IDENT(T,'BIG') :F(R2)
+  OUTPUT = HI(N) :(R)
+R2 OUTPUT = N :(R)
+HI HI = '** ' X :(RETURN)
+E END

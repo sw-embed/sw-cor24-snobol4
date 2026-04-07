@@ -1,0 +1,1 @@
+Continuation lines: lexer peeks after '\n'; if '+' or '.' follows, skips it and recursively re-lexes so parser never sees TK_EOL. examples/continuation.sno concatenates across a continuation. Regressions pass.

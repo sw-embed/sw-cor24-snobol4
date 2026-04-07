@@ -1,6 +1,6 @@
 number = 4
 slug = "m4-integrate"
-status = "pending"
+status = "in-progress"
 description = "Integration: a subset of the student dating app (docs/student-dating-app.txt)..."
 role = "production"
 context_files = []
