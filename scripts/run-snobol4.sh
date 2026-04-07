@@ -2,12 +2,15 @@
 # run-snobol4.sh -- Run a SNOBOL4 program on COR24
 #
 # Usage: ./scripts/run-snobol4.sh program.sno [data.dat]
+#
+# The interpreter is loaded from build/snobol4.bin (modular build).
+# SNOBOL4 source at 0x080000, optional data at 0x090000.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-INTERP_ASM="$PROJECT_DIR/build/snobol4.s"
+INTERP_BIN="$PROJECT_DIR/build/snobol4.bin"
 
 if [ $# -lt 1 ]; then
     echo "Usage: $0 <program.sno> [data.dat]" >&2
@@ -44,30 +47,35 @@ fi
 
 BASENAME=$(basename "$SNO_FILE" .sno)
 
-# Build interpreter (rebuild if source newer than cached asm)
-if [ ! -f "$INTERP_ASM" ] || [ "$PROJECT_DIR/src/snobol4.plsw" -nt "$INTERP_ASM" ]; then
-    echo "=== Building SNOBOL4 interpreter ===" >&2
-    "$PROJECT_DIR/scripts/build.sh" \
-        "$PROJECT_DIR/include/descr.msw" \
-        "$PROJECT_DIR/include/heap.msw" \
-        "$PROJECT_DIR/include/am.msw" \
-        "$PROJECT_DIR/include/pat.msw" \
-        "$PROJECT_DIR/src/snobol4.plsw" >/dev/null 2>&1
+# Build interpreter if needed
+if [ ! -f "$INTERP_BIN" ] || [ "$PROJECT_DIR/src/sno_main.plsw" -nt "$INTERP_BIN" ]; then
+    "$PROJECT_DIR/scripts/build-modular.sh" 2>&1 | grep -v "^\[" >&2
 fi
 
 echo "=== SNOBOL4: $BASENAME ===" >&2
 cat "$SNO_FILE" >&2
 echo "---" >&2
 
+# Find entry address from map
+ENTRY=0
+if [ -f "$PROJECT_DIR/build/mod/snobol4.map" ]; then
+    ENTRY_LINE=$(grep "^_MAIN " "$PROJECT_DIR/build/mod/snobol4.map" 2>/dev/null | head -1)
+    if [ -n "$ENTRY_LINE" ]; then
+        ENTRY=$(echo "$ENTRY_LINE" | awk '{print $2}')
+    fi
+fi
+
 # Run
 if [ -n "$DAT_FILE" ]; then
-    RUN_OUT=$(cor24-run --run "$INTERP_ASM" \
+    RUN_OUT=$(cor24-run --load-binary "$INTERP_BIN"@0 \
         --load-binary "$SNO_FILE"@0x080000 \
         --load-binary "$DAT_FILE"@0x090000 \
+        --entry "0x${ENTRY}" \
         -n 200000000 -t 120 --speed 0 --dump 2>&1)
 else
-    RUN_OUT=$(cor24-run --run "$INTERP_ASM" \
+    RUN_OUT=$(cor24-run --load-binary "$INTERP_BIN"@0 \
         --load-binary "$SNO_FILE"@0x080000 \
+        --entry "0x${ENTRY}" \
         -n 200000000 -t 120 --speed 0 --dump 2>&1)
 fi
 

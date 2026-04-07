@@ -73,10 +73,7 @@ END;
  * Lowering: statement table -> AM bytecode
 /* ================================================================ */
 
-DCL N_OUT(8) CHAR INIT('OUTPUT');
-DCL N_INP(8) CHAR INIT('INPUT');
-DCL OUT_SYM INT STATIC INIT(0);
-DCL INP_SYM INT STATIC INIT(0);
+/* N_OUT, N_INP, OUT_SYM, INP_SYM defined in sno_util + snoglob */
 
 
 LOWER_STMT: PROC(S INT);
