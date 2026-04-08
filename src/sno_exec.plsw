@@ -156,11 +156,21 @@ LOWER_STMT: PROC(S INT);
                     END;
                 END;
                 ELSE IF (EPT = OE_ARRREF) THEN DO;
-                    /* Next part is the index */
+                    DCL APT2 INT;
+                    DCL APV2 INT;
+                    EPI = EPI + 1;
+                    APT2 = EP_TYP(EPB + EPI);
+                    APV2 = EP_VAL(EPB + EPI);
+                    IF (APT2 = OE_IDENT) THEN DO;
+                        CALL AM_EMIT_OP(OP_LOAD_VAR);
+                        CALL AM_EMIT_BYTE(APV2);
+                    END;
+                    ELSE DO;
+                        CALL AM_EMIT_OP(OP_LOAD_INT);
+                        CALL AM_EMIT_WORD(APV2);
+                    END;
                     CALL AM_EMIT_OP(OP_ARR_LOAD);
                     CALL AM_EMIT_BYTE(EPV);
-                    EPI = EPI + 1;
-                    /* Skip the index part -- it's used by ARR_LOAD */
                 END;
                 ELSE IF (EPT = OE_FNCALL) THEN DO;
                     /* Next part is the arg */
@@ -772,7 +782,7 @@ AM_EXEC: PROC;
                 IF (MLEN > 0) THEN DO;
                     MATCHED = 1;
                     /* Store captured substring as string in SB */
-                    IF (CIDX != 0 - 1 AND CIDX < 16) THEN DO;
+                    IF (CIDX != 0 - 1 AND CIDX < 32) THEN DO;
                         /* Copy matched chars to SB */
                         DCL DST INT;
                         DST = SBPOS;

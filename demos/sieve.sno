@@ -1,0 +1,22 @@
+* sieve.sno -- Sieve of Eratosthenes (primes up to 50)
+        C = ARRAY('1:50')
+        I = 4
+E2      GT(I,50) :S(E3)
+        C<I> = 'X'
+        I = I + 2 :(E2)
+E3      I = 9
+E3L     GT(I,50) :S(E5)
+        C<I> = 'X'
+        I = I + 3 :(E3L)
+E5      I = 25
+E5L     GT(I,50) :S(E7)
+        C<I> = 'X'
+        I = I + 5 :(E5L)
+E7      C<49> = 'X'
+        I = 2
+PL      GT(I,50) :S(END)
+        T = C<I>
+        IDENT(T,'X') :S(SK)
+        OUTPUT = I
+SK      I = I + 1 :(PL)
+END

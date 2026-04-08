@@ -191,7 +191,7 @@ END;
  * Label table
 /* ================================================================ */
 
-%DEFINE LBLMAX 8;
+%DEFINE LBLMAX 16;
 
 /* LBLN, LBLS, LBLC declared in snoglob.msw */
 
@@ -237,7 +237,7 @@ END;
  * Statement table (max 16)
 /* ================================================================ */
 
-%DEFINE STMAX 16;
+%DEFINE STMAX 32;
 
 /* S_TYP, S_SUBJ, S_SIDX, S_OETY, S_OEV1, S_OEOP, S_OEV2, S_GTYP, S_GLBL, S_SPTR, STCNT in snoglob.msw */
 
