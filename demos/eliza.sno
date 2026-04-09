@@ -18,6 +18,8 @@
 *   NO              -> resistance probe
 *   (none)          -> generic prompt
 *
+        OUTPUT = 'THE DOCTOR IS IN.  WHAT IS YOUR PROBLEM?'
+        OUTPUT = ' '
 * --- LOOP: read the next patient line ---
 LOOP    S = INPUT :F(BYE)
         OUTPUT = 'P: ' S

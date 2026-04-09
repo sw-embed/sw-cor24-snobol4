@@ -42,4 +42,4 @@ exec cor24-run --terminal \
     --load-binary "$INTERP_BIN"@0 \
     --load-binary "$SNO_FILE"@0x080000 \
     --entry 0 \
-    -n 2000000000 -t 600 --speed 0
+    -n -1 -t -1 --speed 0
