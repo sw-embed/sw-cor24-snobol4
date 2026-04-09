@@ -98,6 +98,7 @@ LOWER_STMT: PROC(S INT);
     DCL TGT INT;
 
     STMT_ADDR(S) = AM_PC;
+    S_GOTO_OFF(S) = 0 - 1;
 
     IF (S_TYP(S) = ST_END) THEN DO;
         CALL AM_EMIT_OP(OP_HALT);
@@ -105,7 +106,33 @@ LOWER_STMT: PROC(S INT);
     END;
 
     IF (S_TYP(S) = ST_EMPTY) THEN DO;
-        CALL AM_EMIT_OP(OP_NOP);
+        IF (S_GTYP(S) = GT_NONE) THEN DO;
+            CALL AM_EMIT_OP(OP_NOP);
+        END;
+        ELSE IF (S_GTYP(S) = GT_UNCOND) THEN DO;
+            CALL AM_EMIT_OP(OP_BR);
+            S_GOTO_OFF(S) = AM_PC;
+            CALL AM_EMIT_WORD(0);
+        END;
+        ELSE IF (S_GTYP(S) = GT_SUCC) THEN DO;
+            CALL AM_EMIT_OP(OP_BR_SUCC);
+            S_GOTO_OFF(S) = AM_PC;
+            CALL AM_EMIT_WORD(0);
+        END;
+        ELSE IF (S_GTYP(S) = GT_FAIL) THEN DO;
+            CALL AM_EMIT_OP(OP_BR_FAIL);
+            S_GOTO_OFF(S) = AM_PC;
+            CALL AM_EMIT_WORD(0);
+        END;
+        ELSE IF (S_GTYP(S) = GT_RET) THEN DO;
+            CALL AM_EMIT_OP(OP_RET);
+        END;
+        ELSE IF (S_GTYP(S) = GT_FRET) THEN DO;
+            CALL AM_EMIT_OP(OP_FRET);
+        END;
+        ELSE DO;
+            CALL AM_EMIT_OP(OP_NOP);
+        END;
         RETURN;
     END;
 
@@ -321,20 +348,25 @@ LOWER_STMT: PROC(S INT);
         /* Goto */
         IF (S_GTYP(S) = GT_UNCOND) THEN DO;
             CALL AM_EMIT_OP(OP_BR);
+            S_GOTO_OFF(S) = AM_PC;
             CALL AM_EMIT_WORD(0);
         END;
         ELSE IF (S_GTYP(S) = GT_SUCC) THEN DO;
             CALL AM_EMIT_OP(OP_BR_SUCC);
+            S_GOTO_OFF(S) = AM_PC;
             CALL AM_EMIT_WORD(0);
         END;
         ELSE IF (S_GTYP(S) = GT_FAIL) THEN DO;
             CALL AM_EMIT_OP(OP_BR_FAIL);
+            S_GOTO_OFF(S) = AM_PC;
             CALL AM_EMIT_WORD(0);
         END;
-        ELSE IF (S_GTYP(S) = GT_RET) THEN
+        ELSE IF (S_GTYP(S) = GT_RET) THEN DO;
             CALL AM_EMIT_OP(OP_RET);
-        ELSE IF (S_GTYP(S) = GT_FRET) THEN
+        END;
+        ELSE IF (S_GTYP(S) = GT_FRET) THEN DO;
             CALL AM_EMIT_OP(OP_FRET);
+        END;
     END;
 
     IF (S_TYP(S) = 4) THEN DO;
@@ -373,14 +405,17 @@ LOWER_STMT: PROC(S INT);
         END;
         IF (S_GTYP(S) = GT_UNCOND) THEN DO;
             CALL AM_EMIT_OP(OP_BR);
+            S_GOTO_OFF(S) = AM_PC;
             CALL AM_EMIT_WORD(0);
         END;
         ELSE IF (S_GTYP(S) = GT_SUCC) THEN DO;
             CALL AM_EMIT_OP(OP_BR_SUCC);
+            S_GOTO_OFF(S) = AM_PC;
             CALL AM_EMIT_WORD(0);
         END;
         ELSE IF (S_GTYP(S) = GT_FAIL) THEN DO;
             CALL AM_EMIT_OP(OP_BR_FAIL);
+            S_GOTO_OFF(S) = AM_PC;
             CALL AM_EMIT_WORD(0);
         END;
     END;
@@ -440,63 +475,42 @@ LOWER_STMT: PROC(S INT);
         /* Goto after match */
         IF (S_GTYP(S) = GT_UNCOND) THEN DO;
             CALL AM_EMIT_OP(OP_BR);
+            S_GOTO_OFF(S) = AM_PC;
             CALL AM_EMIT_WORD(0);
         END;
         ELSE IF (S_GTYP(S) = GT_SUCC) THEN DO;
             CALL AM_EMIT_OP(OP_BR_SUCC);
+            S_GOTO_OFF(S) = AM_PC;
             CALL AM_EMIT_WORD(0);
         END;
         ELSE IF (S_GTYP(S) = GT_FAIL) THEN DO;
             CALL AM_EMIT_OP(OP_BR_FAIL);
+            S_GOTO_OFF(S) = AM_PC;
             CALL AM_EMIT_WORD(0);
         END;
     END;
+
+    IF (S_TYP(S) = 5) THEN DO;
+        CALL AM_EMIT_OP(OP_DUMP);
+        RETURN;
+    END;
 END;
 
-/* Fix up goto targets */
+/* Fix up goto targets using label table (no bytecode scanning) */
 FIXUP_GOTOS: PROC;
     DCL I INT;
-    DCL PC INT;
-    DCL OP INT;
+    DCL OFF INT;
     DCL TGT INT;
-
-    PC = 0;
-    DO WHILE (PC < AM_PC);
-        OP = AM_CODE(PC);
-        PC = PC + 1;
-        IF (OP = OP_BR OR OP = OP_BR_SUCC OR OP = OP_BR_FAIL) THEN DO;
-            /* Check if placeholder (0) needs fixup */
-            TGT = AM_CODE(PC + 2) * 65536 + AM_CODE(PC + 1) * 256 + AM_CODE(PC);
-            IF (TGT = 0) THEN DO;
-                /* Find which statement has this goto */
-                I = 0;
-                DO WHILE (I < STCNT);
-                    IF (S_GTYP(I) != GT_NONE AND S_GLBL(I) >= 0) THEN DO;
-                        /* Check if this branch is for statement I */
-                        /* The branch is at PC-1, find stmt with matching addr range */
-                        IF (STMT_ADDR(I) <= PC - 1) THEN DO;
-                            IF (I + 1 >= STCNT OR STMT_ADDR(I + 1) > PC - 1) THEN DO;
-                                TGT = LBL_FIND(S_GLBL(I));
-                                IF (TGT >= 0) THEN DO;
-                                    CALL AM_PATCH_WORD(PC, STMT_ADDR(TGT));
-                                END;
-                            END;
-                        END;
-                    END;
-                    I = I + 1;
-                END;
+    I = 0;
+    DO WHILE (I < STCNT);
+        OFF = S_GOTO_OFF(I);
+        IF (OFF >= 0 AND S_GLBL(I) >= 0) THEN DO;
+            TGT = LBL_FIND(S_GLBL(I));
+            IF (TGT >= 0) THEN DO;
+                CALL AM_PATCH_WORD(OFF, STMT_ADDR(TGT));
             END;
-            PC = PC + 3;
         END;
-        ELSE IF (OP = OP_LOAD_INT OR OP = OP_LOAD_STR OR OP = OP_PRINT_STR OR OP = OP_MAKE_SPAN OR OP = OP_MAKE_BREAK OR OP = OP_MAKE_LIT_PAT) THEN DO;
-            PC = PC + 3;
-        END;
-        ELSE IF (OP = OP_LOAD_VAR OR OP = OP_STORE_VAR OR OP = OP_PRINT_VAR OR OP = OP_PAT_CAP OR OP = OP_PAT_MATCH2 OR OP = OP_ARR_LOAD OR OP = OP_ARR_STORE OR OP = OP_CALL OR OP = 33 OR OP = 34) THEN DO;
-            PC = PC + 1;
-        END;
-        ELSE IF (OP = OP_PAT_MATCH) THEN DO;
-            PC = PC + 3;
-        END;
+        I = I + 1;
     END;
 END;
 
@@ -985,7 +999,7 @@ AM_EXEC: PROC;
             V = ARR_DATA(ARR_ID * 50 + ARR_IDX);
             ESTK(ESP) = V;
             ESP = ESP + 1;
-            LAST_PUSH_TYP = VTYP_STR;
+            LAST_PUSH_TYP = ARR_TYP(ARR_ID * 50 + ARR_IDX);
         END;
         ELSE IF (OP = OP_ARR_STORE) THEN DO;
             /* ARR_STORE <arr_var>: store val into arr[idx]
@@ -1004,6 +1018,7 @@ AM_EXEC: PROC;
             ESP = ESP - 1;
             AS_VAL = ESTK(ESP);
             ARR_DATA(AS_ARR * 50 + AS_IDX) = AS_VAL;
+            ARR_TYP(AS_ARR * 50 + AS_IDX) = LAST_PUSH_TYP;
         END;
         ELSE IF (OP = OP_READ_INPUT) THEN DO;
             /* Read one line from input data into SB */
@@ -1105,6 +1120,18 @@ AM_EXEC: PROC;
         END;
         ELSE IF (OP = OP_HALT) THEN DO;
             RETURN;
+        END;
+        ELSE IF (OP = OP_DUMP) THEN DO;
+            DCL DV INT;
+            CALL UART_PUTCHAR(123);
+            DV = 0;
+            DO WHILE (DV < SYMC);
+                CALL PUT_DEC(VARS(DV));
+                CALL UART_PUTCHAR(44);
+                DV = DV + 1;
+            END;
+            CALL UART_PUTCHAR(125);
+            CALL UART_PUTCHAR(10);
         END;
     END;
 END;

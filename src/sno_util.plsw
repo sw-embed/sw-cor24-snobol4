@@ -18,7 +18,7 @@ READ_SRC: PROC;
     P = 0;
     RP = SRC_LOAD_ADDR;
     CH = RP->DTAG;
-    DO WHILE (CH != 0 AND P < 510);
+    DO WHILE (CH != 0 AND P < 2040);
         SRC(P) = CH;
         P = P + 1;
         RP = SRC_LOAD_ADDR + P;
@@ -104,6 +104,12 @@ END;
 IS_END: PROC RETURNS(INT);
     IF (TB(0) = 69) THEN IF (TB(1) = 78) THEN IF (TB(2) = 68) THEN
         IF (TB(3) = 0) THEN RETURN(1);
+    RETURN(0);
+END;
+
+IS_DUMP: PROC RETURNS(INT);
+    IF (TB(0) = 68) THEN IF (TB(1) = 85) THEN IF (TB(2) = 77) THEN IF (TB(3) = 80) THEN
+        IF (TB(4) = 0) THEN RETURN(1);
     RETURN(0);
 END;
 

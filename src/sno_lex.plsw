@@ -237,7 +237,7 @@ END;
  * Statement table (max 16)
 /* ================================================================ */
 
-%DEFINE STMAX 32;
+%DEFINE STMAX 64;
 
 /* S_TYP, S_SUBJ, S_SIDX, S_OETY, S_OEV1, S_OEOP, S_OEV2, S_GTYP, S_GLBL, S_SPTR, STCNT in snoglob.msw */
 
@@ -391,6 +391,12 @@ PARSE: PROC;
             IF (TT = TK_EOL) THEN CALL LEX;
             STCNT = STCNT + 1;
         END;
+        ELSE IF (TT = TK_IDENT AND IS_DUMP() != 0) THEN DO;
+            S_TYP(S) = 5;
+            CALL LEX;
+            IF (TT = TK_EOL) THEN CALL LEX;
+            STCNT = STCNT + 1;
+        END;
         ELSE IF (TT = TK_IDENT) THEN DO;
             IF (LHAS_LBL = 1) THEN DO;
                 NOFF = SBSAVE();
@@ -398,7 +404,11 @@ PARSE: PROC;
                 CALL LEX;
             END;
 
-            IF (TT = TK_IDENT) THEN DO;
+            IF (TT = TK_IDENT AND IS_DUMP() != 0) THEN DO;
+                S_TYP(S) = 5;
+                CALL LEX;
+            END;
+            ELSE IF (TT = TK_IDENT) THEN DO;
                 NOFF = SBSAVE();
                 S_SUBJ(S) = SYM_LOOKUP(NOFF);
                 CALL LEX;
@@ -829,6 +839,47 @@ PARSE: PROC;
                 END;
             END;
 
+            DO WHILE (TT != TK_EOL AND TT != TK_EOF);
+                CALL LEX;
+            END;
+            IF (TT = TK_EOL) THEN CALL LEX;
+            STCNT = STCNT + 1;
+        END;
+        ELSE IF (TT = TK_COLON) THEN DO;
+            CALL LEX;
+            IF (TT = TK_IDENT) THEN DO;
+                IF (TB(0) = 83 AND TB(1) = 0) THEN DO;
+                    S_GTYP(S) = GT_SUCC;
+                    CALL LEX;
+                END;
+                ELSE IF (TB(0) = 70 AND TB(1) = 0) THEN DO;
+                    S_GTYP(S) = GT_FAIL;
+                    CALL LEX;
+                END;
+            END;
+            ELSE IF (TT = TK_LPAREN) THEN DO;
+                S_GTYP(S) = GT_UNCOND;
+            END;
+            IF (TT = TK_LPAREN) THEN DO;
+                CALL LEX;
+                IF (TT = TK_IDENT) THEN DO;
+                    IF (TB(0) = 82 AND TB(1) = 69 AND TB(2) = 84 AND TB(3) = 85 AND TB(4) = 82 AND TB(5) = 78 AND TB(6) = 0) THEN DO;
+                        S_GTYP(S) = GT_RET;
+                        S_GLBL(S) = 0 - 1;
+                        CALL LEX;
+                    END;
+                    ELSE IF (TB(0) = 70 AND TB(1) = 82 AND TB(2) = 69 AND TB(3) = 84 AND TB(4) = 85 AND TB(5) = 82 AND TB(6) = 78 AND TB(7) = 0) THEN DO;
+                        S_GTYP(S) = GT_FRET;
+                        S_GLBL(S) = 0 - 1;
+                        CALL LEX;
+                    END;
+                    ELSE DO;
+                        S_GLBL(S) = SBSAVE();
+                        CALL LEX;
+                    END;
+                END;
+                IF (TT = TK_RPAREN) THEN CALL LEX;
+            END;
             DO WHILE (TT != TK_EOL AND TT != TK_EOF);
                 CALL LEX;
             END;

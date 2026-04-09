@@ -1,0 +1,82 @@
+* N-QUEENS DEMO (4x4)
+* -------------------
+* Solves the 4-queens puzzle by backtracking and prints both solutions.
+* Place one queen per row; for row R the queen sits in column Q<R>.
+* A placement is legal when no other queen shares its column or either
+* diagonal. We track which columns/diagonals are occupied with three
+* "used" arrays so each check is O(1):
+*   UC<c>     column c is in use
+*   D1<R+c>   the "/" diagonal R+c is in use      (indices 2..8)
+*   D2<R-c+4> the "\" diagonal R-c is in use      (offset by 4 so it's >=1)
+* Algorithm: at row R try Q<R> = 1,2,3,4 in turn. If a column is legal,
+* mark the three "used" slots and advance to row R+1. If we run past
+* row 4 we have a full solution -- print Q<1..4> and then BACK up. If
+* every column at row R fails, BACK up to row R-1, unmark its slots,
+* and try the next column there. The search ends when we back past row 1.
+* Expected output (the only two 4-queens solutions, column per row):
+*   2 4 1 3
+*   3 1 4 2
+        Q = ARRAY('1:4')
+        UC = ARRAY('1:4')
+        D1 = ARRAY('1:8')
+        D2 = ARRAY('1:7')
+        R = 1
+        Q<1> = 1
+* --- TRY: attempt to place a queen at (R, Q<R>) ---
+TRY     GT(R,4) :S(PRINT)
+        T = Q<R>
+        GT(T,4) :S(BACK)
+* column in use?
+        T = UC<T>
+        EQ(T,1) :S(NXT)
+* "/" diagonal (R + col) in use?
+        T = Q<R>
+        D = R + T
+        T = D1<D>
+        EQ(T,1) :S(NXT)
+* "\" diagonal (R - col, shifted) in use?
+        T = Q<R>
+        D = R - T
+        D = D + 4
+        T = D2<D>
+        EQ(T,1) :S(NXT)
+* legal -- mark column and both diagonals, advance to next row
+        T = Q<R>
+        UC<T> = 1
+        T = Q<R>
+        D = R + T
+        D1<D> = 1
+        T = Q<R>
+        D = R - T
+        D = D + 4
+        D2<D> = 1
+        R = R + 1
+        Q<R> = 1
+        :(TRY)
+* --- NXT: this column failed, try the next one in the same row ---
+NXT     T = Q<R>
+        T = T + 1
+        Q<R> = T
+        :(TRY)
+* --- PRINT: full board found, emit the four column positions ---
+PRINT   OUTPUT = Q<1>
+        OUTPUT = Q<2>
+        OUTPUT = Q<3>
+        OUTPUT = Q<4>
+* --- BACK: undo the placement at row R-1 and keep searching ---
+BACK    R = R - 1
+        EQ(R,0) :S(END)
+        T = Q<R>
+        UC<T> = 0
+        T = Q<R>
+        D = R + T
+        D1<D> = 0
+        T = Q<R>
+        D = R - T
+        D = D + 4
+        D2<D> = 0
+        T = Q<R>
+        T = T + 1
+        Q<R> = T
+        :(TRY)
+END
