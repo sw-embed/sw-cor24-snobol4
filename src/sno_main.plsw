@@ -9,7 +9,12 @@
 %INCLUDE snoglob;
 
 MAIN: PROC;
+    DCL RP PTR;
     CALL READ_SRC;
+    /* Probe input: if no data file is loaded at INP_LOAD_ADDR (first
+     * byte is null), use the live UART for INPUT instead of memory. */
+    RP = INP_LOAD_ADDR;
+    IF (RP->DTAG = 0) THEN INP_TTY = 1;
     CALL PARSE;
     CALL LOWER_ALL;
     CALL AM_EXEC;

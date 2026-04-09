@@ -32,6 +32,46 @@ READ_INPUT: PROC RETURNS(INT);
     DCL RP PTR;
     DCL DP PTR;
     DCL CH INT;
+    DCL DONE INT;
+
+    /* TTY mode: read a line live from UART RX, with local echo and
+     * a tiny line editor (backspace). Ctrl-D (0x04) on an empty line
+     * signals EOF. CR (0x0D) and LF (0x0A) both terminate a line. */
+    IF (INP_TTY = 1) THEN DO;
+        OFF = SBPOS;
+        DONE = 0;
+        DO WHILE (DONE = 0);
+            CH = UART_GETCHAR();
+            IF (CH = 4) THEN DO;
+                /* Ctrl-D: EOF if line empty, else ignore */
+                IF (SBPOS = OFF) THEN RETURN(0 - 1);
+            END;
+            ELSE IF (CH = 13 OR CH = 10) THEN DO;
+                CALL UART_PUTCHAR(10);
+                DONE = 1;
+            END;
+            ELSE IF (CH = 8 OR CH = 127) THEN DO;
+                IF (SBPOS > OFF) THEN DO;
+                    SBPOS = SBPOS - 1;
+                    CALL UART_PUTCHAR(8);
+                    CALL UART_PUTCHAR(32);
+                    CALL UART_PUTCHAR(8);
+                END;
+            END;
+            ELSE DO;
+                DP = ADDR(SB) + SBPOS;
+                DP->DTAG = CH;
+                SBPOS = SBPOS + 1;
+                CALL UART_PUTCHAR(CH);
+            END;
+        END;
+        DP = ADDR(SB) + SBPOS;
+        DP->DTAG = 0;
+        SBPOS = SBPOS + 1;
+        RETURN(OFF);
+    END;
+
+    /* Batch mode: read from data file pre-loaded at INP_LOAD_ADDR. */
     RP = INP_LOAD_ADDR + INP_POS;
     CH = RP->DTAG;
     IF (CH = 0) THEN RETURN(0 - 1);

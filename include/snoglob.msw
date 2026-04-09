@@ -69,6 +69,7 @@ DCL SRC(2048) BYTE;
 DCL INP_POS INT STATIC INIT(0);
 DCL SPOS INT STATIC INIT(0);
 DCL TT INT STATIC INIT(0);
+DCL INP_TTY INT STATIC INIT(0);
 DCL TV INT STATIC INIT(0);
 DCL TB(128) CHAR INIT('                                                                                                                                ');
 DCL TN INT STATIC INIT(0);
