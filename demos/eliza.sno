@@ -1,0 +1,51 @@
+* ELIZA DEMO
+* -----------
+* Tiny Rogerian "psychotherapist" in SNOBOL4. The interpreter has no
+* interactive input, so a handful of "patient" lines are pre-loaded into
+* an array and processed in turn. For each line we look for the first
+* matching keyword and emit a canned response; if nothing matches we
+* fall back to a generic prompt.
+*
+* The lexer caps string literals at 31 characters, so all patient
+* lines and responses are kept short.
+*
+* Keyword priority (first hit wins):
+*   MOTHER / FATHER -> family prompt
+*   SAD             -> sympathy
+*   HAPPY           -> probe
+*   COMPUTER        -> machine deflection
+*   YES             -> certainty probe
+*   NO              -> resistance probe
+*   (none)          -> generic prompt
+*
+        IN = ARRAY('1:5')
+        IN<1> = 'I MISS MY MOTHER'
+        IN<2> = 'I FEEL SAD TODAY'
+        IN<3> = 'COMPUTERS SCARE ME'
+        IN<4> = 'YES I AM HAPPY'
+        IN<5> = 'NO REASON AT ALL'
+        N = 5
+        I = 0
+* --- LOOP: pull the next patient line ---
+LOOP    I = I + 1
+        GT(I,N) :S(END)
+        S = IN<I>
+        OUTPUT = 'P: ' S
+* --- keyword tests, in priority order ---
+        S 'MOTHER' :S(FAM)
+        S 'FATHER' :S(FAM)
+        S 'SAD'    :S(SAD)
+        S 'HAPPY'  :S(HAP)
+        S 'COMPUTER' :S(MAC)
+        S 'YES'    :S(YES)
+        S 'NO'     :S(NO)
+        OUTPUT = 'E: TELL ME MORE.' :(SEP)
+FAM     OUTPUT = 'E: TELL ME ABOUT YOUR FAMILY.' :(SEP)
+SAD     OUTPUT = 'E: I AM SORRY YOU FEEL SAD.' :(SEP)
+HAP     OUTPUT = 'E: WHAT MAKES YOU HAPPY?' :(SEP)
+MAC     OUTPUT = 'E: DO MACHINES WORRY YOU?' :(SEP)
+YES     OUTPUT = 'E: YOU SEEM QUITE SURE.' :(SEP)
+NO      OUTPUT = 'E: WHY NOT?' :(SEP)
+SEP     OUTPUT = ' '
+        :(LOOP)
+END
