@@ -121,7 +121,7 @@ SBSAVE: PROC RETURNS(INT);
     OFF = SBPOS;
     I = 0;
     C = TB(0);
-    DO WHILE (C != 0 AND I < 31);
+    DO WHILE (C != 0 AND I < 127);
         DP = ADDR(SB) + SBPOS;
         DP->DTAG = C;
         SBPOS = SBPOS + 1;

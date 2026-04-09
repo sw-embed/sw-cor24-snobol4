@@ -70,13 +70,13 @@ DCL INP_POS INT STATIC INIT(0);
 DCL SPOS INT STATIC INIT(0);
 DCL TT INT STATIC INIT(0);
 DCL TV INT STATIC INIT(0);
-DCL TB(32) CHAR INIT('                                ');
+DCL TB(128) CHAR INIT('                                                                                                                                ');
 DCL TN INT STATIC INIT(0);
 DCL LHAS_LBL INT STATIC INIT(0);
 DCL AT_SOL INT STATIC INIT(1);
 
 /* String buffer */
-DCL SB(1024) BYTE;
+DCL SB(4096) BYTE;
 DCL SBPOS INT STATIC INIT(0);
 
 /* Symbol table */

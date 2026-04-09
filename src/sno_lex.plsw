@@ -85,7 +85,7 @@ LEX: PROC;
         I = 0;
         C = SRC(SPOS);
         DO WHILE (C != Q AND C != 0 AND C != 10);
-            IF (I < 31) THEN DO; TB(I) = C; I = I + 1; END;
+            IF (I < 127) THEN DO; TB(I) = C; I = I + 1; END;
             SPOS = SPOS + 1;
             C = SRC(SPOS);
         END;
