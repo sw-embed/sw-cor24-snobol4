@@ -383,6 +383,43 @@ END;
 
 /* ---- Output ---- */
 
+/* Render integer V as decimal characters into SB at SBPOS. */
+EMIT_DEC: PROC(V INT);
+    DCL BUF(12) BYTE;
+    DCL POS INT;
+    DCL N INT;
+    DCL D INT;
+    DCL DP PTR;
+    N = V;
+    IF (N = 0) THEN DO;
+        DP = ADDR(SB) + SBPOS;
+        DP->DTAG = 48;
+        SBPOS = SBPOS + 1;
+        RETURN;
+    END;
+    POS = 0;
+    DO WHILE (N > 0);
+        D = N;
+        DO WHILE (D >= 10);
+            D = D - 10;
+        END;
+        BUF(POS) = 48 + D;
+        POS = POS + 1;
+        D = 0;
+        DO WHILE (N >= 10);
+            N = N - 10;
+            D = D + 1;
+        END;
+        N = D;
+    END;
+    DO WHILE (POS > 0);
+        POS = POS - 1;
+        DP = ADDR(SB) + SBPOS;
+        DP->DTAG = BUF(POS);
+        SBPOS = SBPOS + 1;
+    END;
+END;
+
 PUT_DEC: PROC(V INT);
     DCL BUF(12) BYTE;
     DCL POS INT;

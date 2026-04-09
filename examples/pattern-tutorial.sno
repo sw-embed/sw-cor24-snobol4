@@ -1,0 +1,98 @@
+* PATTERN TUTORIAL -- a guided tour of the pattern matching this
+* SNOBOL4 interpreter supports.  Each section is independent and
+* prints what it found.  Read along with the comments.
+*
+* Run:
+*   ./scripts/run-snobol4.sh examples/pattern-tutorial.sno
+*
+* The general form of a pattern-match statement is:
+*
+*       SUBJECT  pattern... :S(label) :F(label)
+*
+* where SUBJECT is a variable holding a string, and `pattern...` is
+* a sequence of pattern parts.  On a successful match the subject's
+* matched portion can be captured into a variable using `. var`.
+*
+* Pattern parts implemented in this interpreter:
+*   'literal'     -- match an exact substring
+*   SPAN(class)   -- consume a maximal run of chars from `class`
+*   BREAK(class)  -- consume up to (not including) any char in `class`
+*   REM           -- consume the remainder of the subject
+*   LEN(N)        -- consume exactly N characters (N may be a var)
+*   . VAR         -- capture the most recent matched span into VAR
+*
+* Branches:
+*   :S(LBL)       -- jump to LBL on successful match
+*   :F(LBL)       -- jump to LBL on failed match
+*   :(LBL)        -- unconditional goto
+*
+        OUTPUT = 'SNOBOL4 pattern tutorial'
+        OUTPUT = ' '
+*
+* ---- 1. Literal substring -------------------------------------
+* Test whether a string contains a fixed substring.
+        S = 'I MISS MY MOTHER'
+        OUTPUT = '1) literal match'
+        OUTPUT = '   subject:   ' S
+        S 'MOTHER' :S(L1OK)
+        OUTPUT = '   no match' :(L1END)
+L1OK    OUTPUT = '   matched MOTHER'
+L1END   OUTPUT = ' '
+*
+* ---- 2. SPAN(class) -------------------------------------------
+* Consume a run of characters drawn from `class`.  Often used to
+* extract a number or a word.
+        S = 'price 4250 dollars'
+        OUTPUT = '2) SPAN(digits) capture'
+        OUTPUT = '   subject:   ' S
+        S SPAN('0123456789') . N :F(L2NO)
+        OUTPUT = '   number:    ' N :(L2END)
+L2NO    OUTPUT = '   no number'
+L2END   OUTPUT = ' '
+*
+* ---- 3. BREAK(class) -------------------------------------------
+* Consume everything up to (but not including) the first char in
+* `class`.  Useful for splitting on a delimiter.
+        S = 'NAME=ALICE'
+        OUTPUT = '3) BREAK to delimiter'
+        OUTPUT = '   subject:   ' S
+        S BREAK('=') . K :F(L3NO)
+        OUTPUT = '   key:       ' K :(L3END)
+L3NO    OUTPUT = '   no = found'
+L3END   OUTPUT = ' '
+*
+* ---- 4. REM ----------------------------------------------------
+* Match the remainder of the subject.  Combine with a literal to
+* split a string into "before" and "after" parts.
+        S = 'I FEEL HAPPY'
+        OUTPUT = '4) literal + REM capture'
+        OUTPUT = '   subject:   ' S
+        S 'I FEEL ' REM . T :F(L4NO)
+        OUTPUT = '   tail:      ' T :(L4END)
+L4NO    OUTPUT = '   no I FEEL'
+L4END   OUTPUT = ' '
+*
+* ---- 5. LEN(N) -------------------------------------------------
+* Match exactly N characters.  N can be a literal int or a variable.
+        S = 'HELLO WORLD'
+        OUTPUT = '5) LEN with literal and variable'
+        OUTPUT = '   subject:   ' S
+        S LEN(5) . A :F(L5NO)
+        OUTPUT = '   first 5:   ' A
+        K = 6
+        S LEN(K) LEN(1) . C :F(L5NO)
+        OUTPUT = '   char[6]:   ' C :(L5END)
+L5NO    OUTPUT = '   no match'
+L5END   OUTPUT = ' '
+*
+* ---- 6. Combining: BREAK + literal + REM -----------------------
+* Parse "key=value" by capturing the part before "=" and the part
+* after "=" in a single match.
+        S = 'COLOR=BLUE'
+        OUTPUT = '6) split key=value'
+        OUTPUT = '   subject:   ' S
+        S BREAK('=') . K '=' REM . V :F(L6NO)
+        OUTPUT = '   key:       ' K
+        OUTPUT = '   value:     ' V :(END)
+L6NO    OUTPUT = '   no ='
+END

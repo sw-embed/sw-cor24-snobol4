@@ -595,6 +595,28 @@ PARSE: PROC;
                             PPI = PPI + 1;
                             CALL LEX;
                         END;
+                        ELSE IF (TB(0) = 76 AND TB(1) = 69 AND TB(2) = 78 AND TB(3) = 0) THEN DO;
+                            /* LEN(<int>) or LEN(<var>) -- match N chars */
+                            CALL LEX;
+                            IF (TT = TK_LPAREN) THEN DO;
+                                CALL LEX;
+                                IF (TT = TK_INT) THEN DO;
+                                    PP_TYP(PPB + PPI) = OE_LEN;
+                                    PP_VAL(PPB + PPI) = TV;
+                                    PPI = PPI + 1;
+                                    CALL LEX;
+                                END;
+                                ELSE IF (TT = TK_IDENT) THEN DO;
+                                    DCL LNOFF INT;
+                                    LNOFF = SBSAVE();
+                                    PP_TYP(PPB + PPI) = OE_LEN_VAR;
+                                    PP_VAL(PPB + PPI) = SYM_LOOKUP(LNOFF);
+                                    PPI = PPI + 1;
+                                    CALL LEX;
+                                END;
+                                IF (TT = TK_RPAREN) THEN CALL LEX;
+                            END;
+                        END;
                         ELSE DO;
                             /* Pattern variable reference */
                             PP_TYP(PPB + PPI) = OE_IDENT;

@@ -1,0 +1,37 @@
+* REVERSE DEMO -- character-level string reversal
+* ------------------------------------------------
+* Walks the input one character at a time using the SNOBOL4 LEN
+* pattern, prepending each char to an accumulator.
+*
+* The trick is the pattern   S LEN(I) LEN(1) . C
+*   - LEN(I) consumes the first I characters (no capture)
+*   - LEN(1) . C captures the single character at position I into C
+* When I reaches the length of S, LEN(I+1) overruns and the match
+* fails, ending the loop.
+*
+* Run:
+*   ./scripts/run-snobol4.sh demos/reverse.sno
+*
+        OUTPUT = 'String reversal demo'
+        OUTPUT = ' '
+*
+        S = 'HELLO WORLD'
+        OUTPUT = 'input:  ' S
+        R = ''
+        I = 0
+RLOOP   S LEN(I) LEN(1) . C :F(RDONE)
+        R = C R
+        I = I + 1 :(RLOOP)
+RDONE   OUTPUT = 'output: ' R
+        OUTPUT = ' '
+*
+* second example
+        S = 'SNOBOL4'
+        OUTPUT = 'input:  ' S
+        R = ''
+        I = 0
+R2LOOP  S LEN(I) LEN(1) . C :F(R2DONE)
+        R = C R
+        I = I + 1 :(R2LOOP)
+R2DONE  OUTPUT = 'output: ' R
+END

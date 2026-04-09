@@ -444,6 +444,14 @@ LOWER_STMT: PROC(S INT);
                 ELSE IF (PPT = OE_REM) THEN DO;
                     CALL AM_EMIT_OP(OP_MAKE_REM);
                 END;
+                ELSE IF (PPT = OE_LEN) THEN DO;
+                    CALL AM_EMIT_OP(OP_MAKE_LEN);
+                    CALL AM_EMIT_WORD(PPV);
+                END;
+                ELSE IF (PPT = OE_LEN_VAR) THEN DO;
+                    CALL AM_EMIT_OP(OP_MAKE_LEN_VAR);
+                    CALL AM_EMIT_BYTE(PPV);
+                END;
                 ELSE IF (PPT = OE_STR) THEN DO;
                     CALL AM_EMIT_OP(OP_MAKE_LIT_PAT);
                     CALL AM_EMIT_WORD(PPV);
@@ -597,6 +605,7 @@ AM_EXEC: PROC;
         IF (OP = OP_LOAD_INT) THEN DO;
             V = AM_CODE(PC + 2) * 65536 + AM_CODE(PC + 1) * 256 + AM_CODE(PC);
             PC = PC + 3;
+            ETYP(ESP) = VTYP_INT;
             ESTK(ESP) = V;
             ESP = ESP + 1;
             LAST_PUSH_TYP = VTYP_INT;
@@ -604,6 +613,7 @@ AM_EXEC: PROC;
         ELSE IF (OP = OP_LOAD_STR) THEN DO;
             V = AM_CODE(PC + 2) * 65536 + AM_CODE(PC + 1) * 256 + AM_CODE(PC);
             PC = PC + 3;
+            ETYP(ESP) = VTYP_STR;
             ESTK(ESP) = V;
             ESP = ESP + 1;
             LAST_PUSH_TYP = VTYP_STR;
@@ -611,6 +621,7 @@ AM_EXEC: PROC;
         ELSE IF (OP = OP_LOAD_VAR) THEN DO;
             IDX = AM_CODE(PC);
             PC = PC + 1;
+            ETYP(ESP) = VTYP(IDX);
             ESTK(ESP) = VARS(IDX);
             ESP = ESP + 1;
             LAST_PUSH_TYP = VTYP(IDX);
@@ -620,28 +631,34 @@ AM_EXEC: PROC;
             PC = PC + 1;
             ESP = ESP - 1;
             VARS(IDX) = ESTK(ESP);
-            VTYP(IDX) = LAST_PUSH_TYP;
+            VTYP(IDX) = ETYP(ESP);
         END;
         ELSE IF (OP = OP_ADD) THEN DO;
             ESP = ESP - 1;
             V2 = ESTK(ESP);
             ESP = ESP - 1;
             ESTK(ESP) = ESTK(ESP) + V2;
+            ETYP(ESP) = VTYP_INT;
             ESP = ESP + 1;
+            LAST_PUSH_TYP = VTYP_INT;
         END;
         ELSE IF (OP = OP_SUB) THEN DO;
             ESP = ESP - 1;
             V2 = ESTK(ESP);
             ESP = ESP - 1;
             ESTK(ESP) = ESTK(ESP) - V2;
+            ETYP(ESP) = VTYP_INT;
             ESP = ESP + 1;
+            LAST_PUSH_TYP = VTYP_INT;
         END;
         ELSE IF (OP = OP_MUL) THEN DO;
             ESP = ESP - 1;
             V2 = ESTK(ESP);
             ESP = ESP - 1;
             ESTK(ESP) = ESTK(ESP) * V2;
+            ETYP(ESP) = VTYP_INT;
             ESP = ESP + 1;
+            LAST_PUSH_TYP = VTYP_INT;
         END;
         ELSE IF (OP = OP_MOD) THEN DO;
             DCL MA INT;
@@ -657,11 +674,13 @@ AM_EXEC: PROC;
                 END;
                 ESTK(ESP) = MA;
             END;
+            ETYP(ESP) = VTYP_INT;
             ESP = ESP + 1;
             LAST_PUSH_TYP = VTYP_INT;
         END;
         ELSE IF (OP = OP_CONCAT) THEN DO;
-            /* Pop two values, concat as strings into SB */
+            /* Pop two values, concat as strings into SB. Operands may
+             * be string offsets or raw ints; ETYP[] tells us which. */
             DCL DST INT;
             DCL A_OFF INT;
             DCL B_OFF INT;
@@ -674,19 +693,22 @@ AM_EXEC: PROC;
 
             ESP = ESP - 1;
             B_OFF = ESTK(ESP);
-            B_TYP = LAST_PUSH_TYP;
+            B_TYP = ETYP(ESP);
             ESP = ESP - 1;
             A_OFF = ESTK(ESP);
-            A_TYP = VTYP_STR;
+            A_TYP = ETYP(ESP);
 
             DST = SBPOS;
 
-            /* Copy first value (A) as string */
-            IF (A_TYP = VTYP_STR OR A_TYP = VTYP_INT) THEN DO;
+            /* Render A */
+            IF (A_TYP = VTYP_INT) THEN DO;
+                CALL EMIT_DEC(A_OFF);
+            END;
+            ELSE DO;
                 CP = ADDR(SB) + A_OFF;
                 CH = CP->DTAG;
                 I = 0;
-                DO WHILE (CH != 0 AND I < 60);
+                DO WHILE (CH != 0 AND I < 120);
                     DP = ADDR(SB) + SBPOS;
                     DP->DTAG = CH;
                     SBPOS = SBPOS + 1;
@@ -696,17 +718,22 @@ AM_EXEC: PROC;
                 END;
             END;
 
-            /* Copy second value (B) as string */
-            CP = ADDR(SB) + B_OFF;
-            CH = CP->DTAG;
-            I = 0;
-            DO WHILE (CH != 0 AND I < 60);
-                DP = ADDR(SB) + SBPOS;
-                DP->DTAG = CH;
-                SBPOS = SBPOS + 1;
-                I = I + 1;
-                CP = ADDR(SB) + B_OFF + I;
+            /* Render B */
+            IF (B_TYP = VTYP_INT) THEN DO;
+                CALL EMIT_DEC(B_OFF);
+            END;
+            ELSE DO;
+                CP = ADDR(SB) + B_OFF;
                 CH = CP->DTAG;
+                I = 0;
+                DO WHILE (CH != 0 AND I < 120);
+                    DP = ADDR(SB) + SBPOS;
+                    DP->DTAG = CH;
+                    SBPOS = SBPOS + 1;
+                    I = I + 1;
+                    CP = ADDR(SB) + B_OFF + I;
+                    CH = CP->DTAG;
+                END;
             END;
 
             /* Null terminate */
@@ -714,6 +741,7 @@ AM_EXEC: PROC;
             DP->DTAG = 0;
             SBPOS = SBPOS + 1;
 
+            ETYP(ESP) = VTYP_STR;
             ESTK(ESP) = DST;
             ESP = ESP + 1;
             LAST_PUSH_TYP = VTYP_STR;
@@ -843,6 +871,20 @@ AM_EXEC: PROC;
             PSTYP(PSTOP) = PK_REM;
             PSTOP = PSTOP + 1;
         END;
+        ELSE IF (OP = OP_MAKE_LEN) THEN DO;
+            V = AM_CODE(PC + 2) * 65536 + AM_CODE(PC + 1) * 256 + AM_CODE(PC);
+            PC = PC + 3;
+            PSTK(PSTOP) = V;
+            PSTYP(PSTOP) = PK_LEN;
+            PSTOP = PSTOP + 1;
+        END;
+        ELSE IF (OP = OP_MAKE_LEN_VAR) THEN DO;
+            IDX = AM_CODE(PC);
+            PC = PC + 1;
+            PSTK(PSTOP) = VARS(IDX);
+            PSTYP(PSTOP) = PK_LEN;
+            PSTOP = PSTOP + 1;
+        END;
         ELSE IF (OP = OP_MAKE_LIT_PAT) THEN DO;
             V = AM_CODE(PC + 2) * 65536 + AM_CODE(PC + 1) * 256 + AM_CODE(PC);
             PC = PC + 3;
@@ -943,6 +985,15 @@ AM_EXEC: PROC;
                         CAPSTART = CPOS;
                         CPOS = SUBJ_LEN2;
                     END;
+                    ELSE IF (PT = PK_LEN) THEN DO;
+                        /* LEN(N): match exactly N chars from current pos */
+                        IF (CPOS + PV > SUBJ_LEN2) THEN
+                            MATCHED2 = 0;
+                        ELSE DO;
+                            CAPSTART = CPOS;
+                            CPOS = CPOS + PV;
+                        END;
+                    END;
                     ELSE IF (PT = PK_LIT) THEN DO;
                         /* Literal match */
                         DCL LLEN INT;
@@ -988,44 +1039,40 @@ AM_EXEC: PROC;
             LAST_PUSH_TYP = VTYP_ARR;
         END;
         ELSE IF (OP = OP_ARR_LOAD) THEN DO;
-            /* ARR_LOAD <arr_var>: load arr[idx] where idx is in next LOAD_VAR.
-             * Actually: arr_var tells which var holds the array ID.
-             * The index comes from the NEXT instruction (LOAD_VAR for the index var).
-             * Simpler: read arr_var, then read next byte as index_var. */
+            /* ARR_LOAD <arr_var>: load arr[idx]; idx is on the eval stack. */
             DCL ARR_ID INT;
             DCL ARR_IDX INT;
             DCL ARR_VAR INT;
-            DCL IDX_VAR INT;
+            DCL ARR_VTY INT;
             ARR_VAR = AM_CODE(PC);
             PC = PC + 1;
             ARR_ID = VARS(ARR_VAR);
-            /* Index comes from eval stack (LOAD_VAR pushed it) */
             ESP = ESP - 1;
             ARR_IDX = ESTK(ESP);
-            /* Load element */
             V = ARR_DATA(ARR_ID * 50 + ARR_IDX);
+            ARR_VTY = ARR_TYP(ARR_ID * 50 + ARR_IDX);
+            ETYP(ESP) = ARR_VTY;
             ESTK(ESP) = V;
             ESP = ESP + 1;
-            LAST_PUSH_TYP = ARR_TYP(ARR_ID * 50 + ARR_IDX);
+            LAST_PUSH_TYP = ARR_VTY;
         END;
         ELSE IF (OP = OP_ARR_STORE) THEN DO;
-            /* ARR_STORE <arr_var>: store val into arr[idx]
-             * Stack: val, idx (idx on top from LOAD_VAR) */
+            /* ARR_STORE <arr_var>: stack is [val, idx] with idx on top. */
             DCL AS_ARR INT;
             DCL AS_IDX INT;
             DCL AS_VAL INT;
             DCL AS_VAR INT;
+            DCL AS_VTY INT;
             AS_VAR = AM_CODE(PC);
             PC = PC + 1;
             AS_ARR = VARS(AS_VAR);
-            /* Pop index */
             ESP = ESP - 1;
             AS_IDX = ESTK(ESP);
-            /* Pop value */
             ESP = ESP - 1;
             AS_VAL = ESTK(ESP);
+            AS_VTY = ETYP(ESP);
             ARR_DATA(AS_ARR * 50 + AS_IDX) = AS_VAL;
-            ARR_TYP(AS_ARR * 50 + AS_IDX) = LAST_PUSH_TYP;
+            ARR_TYP(AS_ARR * 50 + AS_IDX) = AS_VTY;
         END;
         ELSE IF (OP = OP_READ_INPUT) THEN DO;
             /* Read one line from input data into SB */
