@@ -191,7 +191,7 @@ END;
  * Label table
 /* ================================================================ */
 
-%DEFINE LBLMAX 16;
+%DEFINE LBLMAX 32;
 
 /* LBLN, LBLS, LBLC declared in snoglob.msw */
 

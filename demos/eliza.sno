@@ -1,28 +1,35 @@
-* ELIZA DEMO (interactive via INPUT)
-* -----------------------------------
-* Tiny Rogerian "psychotherapist" in SNOBOL4. Reads one "patient" line
-* per LINE = INPUT call from the data file passed on the command line
-* (loaded at 0x090000). On end-of-file the loop exits.
+* ELIZA DEMO (interactive, with reflection + variation)
+* ------------------------------------------------------
+* A small Rogerian psychotherapist.  READ_INPUT auto-uppercases user
+* input, so keyword matching is case-insensitive.
 *
-* Run with:
+* Run interactive (live UART):
+*   ./scripts/run-snobol4-tty.sh demos/eliza.sno
+*
+* Run batch (data file):
 *   ./scripts/run-snobol4.sh demos/eliza.sno demos/eliza.dat
 *
-* Edit demos/eliza.dat to feed ELIZA different lines.
-*
-* Keyword priority (first hit wins):
-*   MOTHER / FATHER -> family prompt
-*   SAD             -> sympathy
-*   HAPPY           -> probe
-*   COMPUTER        -> machine deflection
-*   YES             -> certainty probe
-*   NO              -> resistance probe
-*   (none)          -> generic prompt
+* On each turn we:
+*   1. Try a few "I FEEL X" / "I AM X" / "I WANT X" / "I HAVE X"
+*      reflection patterns that capture the tail and quote it back,
+*      so the response includes the user's own words.
+*   2. Otherwise look for keywords (MOTHER/FATHER/SAD/HAPPY/COMPUTER/
+*      YES/NO) and emit a canned probe.
+*   3. Otherwise rotate among 4 generic prompts so we don't sound
+*      like a broken record.
 *
         OUTPUT = 'THE DOCTOR IS IN.  WHAT IS YOUR PROBLEM?'
         OUTPUT = ' '
+        N = 0
 * --- LOOP: read the next patient line ---
 LOOP    S = INPUT :F(BYE)
         OUTPUT = 'P: ' S
+        N = N + 1
+* --- reflection patterns (capture tail, quote it back) ---
+        S 'I FEEL ' REM . T :S(RFEEL)
+        S 'I AM ' REM . T :S(RAM)
+        S 'I WANT ' REM . T :S(RWANT)
+        S 'I HAVE ' REM . T :S(RHAVE)
 * --- keyword tests, in priority order ---
         S 'MOTHER' :S(FAM)
         S 'FATHER' :S(FAM)
@@ -31,14 +38,28 @@ LOOP    S = INPUT :F(BYE)
         S 'COMPUTER' :S(MAC)
         S 'YES'    :S(YES)
         S 'NO'     :S(NO)
-        OUTPUT = 'E: PLEASE TELL ME MORE.' :(SEP)
+* --- default: rotate through 4 generic prompts ---
+        C = REMDR(N,4)
+        EQ(C,0) :S(D0)
+        EQ(C,1) :S(D1)
+        EQ(C,2) :S(D2)
+        OUTPUT = 'E: CAN YOU ELABORATE ON THAT?' :(SEP)
+D0      OUTPUT = 'E: PLEASE GO ON.' :(SEP)
+D1      OUTPUT = 'E: HOW DOES THAT MAKE YOU FEEL?' :(SEP)
+D2      OUTPUT = 'E: WHY DO YOU SAY THAT?' :(SEP)
+* --- reflection responses ---
+RFEEL   OUTPUT = 'E: WHY DO YOU FEEL ' T '?' :(SEP)
+RAM     OUTPUT = 'E: HOW LONG HAVE YOU BEEN ' T '?' :(SEP)
+RWANT   OUTPUT = 'E: WHAT WOULD IT MEAN TO YOU IF YOU GOT ' T '?' :(SEP)
+RHAVE   OUTPUT = 'E: TELL ME MORE ABOUT ' T '.' :(SEP)
+* --- keyword responses ---
 FAM     OUTPUT = 'E: TELL ME MORE ABOUT YOUR FAMILY.' :(SEP)
-SAD     OUTPUT = 'E: I AM SORRY TO HEAR THAT YOU FEEL SAD.' :(SEP)
+SAD     OUTPUT = 'E: I AM SORRY YOU FEEL THAT WAY.' :(SEP)
 HAP     OUTPUT = 'E: WHAT MAKES YOU FEEL HAPPY?' :(SEP)
 MAC     OUTPUT = 'E: DO MACHINES WORRY YOU?' :(SEP)
 YES     OUTPUT = 'E: YOU SEEM QUITE SURE.' :(SEP)
 NO      OUTPUT = 'E: WHY NOT?' :(SEP)
 SEP     OUTPUT = ' '
         :(LOOP)
-BYE     OUTPUT = 'E: GOODBYE.'
+BYE     OUTPUT = 'E: OUR TIME IS UP.  GOODBYE.'
 END

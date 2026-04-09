@@ -18,7 +18,7 @@ READ_SRC: PROC;
     P = 0;
     RP = SRC_LOAD_ADDR;
     CH = RP->DTAG;
-    DO WHILE (CH != 0 AND P < 2040);
+    DO WHILE (CH != 0 AND P < 8184);
         SRC(P) = CH;
         P = P + 1;
         RP = SRC_LOAD_ADDR + P;
@@ -59,6 +59,9 @@ READ_INPUT: PROC RETURNS(INT);
                 END;
             END;
             ELSE DO;
+                /* Auto-uppercase ASCII a-z so keyword matching is
+                 * case-insensitive (classic SNOBOL4 convention). */
+                IF (CH >= 97) THEN IF (CH <= 122) THEN CH = CH - 32;
                 DP = ADDR(SB) + SBPOS;
                 DP->DTAG = CH;
                 SBPOS = SBPOS + 1;
@@ -77,6 +80,7 @@ READ_INPUT: PROC RETURNS(INT);
     IF (CH = 0) THEN RETURN(0 - 1);
     OFF = SBPOS;
     DO WHILE (CH != 10 AND CH != 0);
+        IF (CH >= 97) THEN IF (CH <= 122) THEN CH = CH - 32;
         DP = ADDR(SB) + SBPOS;
         DP->DTAG = CH;
         SBPOS = SBPOS + 1;

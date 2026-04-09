@@ -65,7 +65,7 @@
 /* Shared globals -- declared in every module.
  * Assembler uses first definition (from main module). */
 
-DCL SRC(2048) BYTE;
+DCL SRC(8192) BYTE;
 DCL INP_POS INT STATIC INIT(0);
 DCL SPOS INT STATIC INIT(0);
 DCL TT INT STATIC INIT(0);
@@ -87,8 +87,8 @@ DCL SYMC INT STATIC INIT(0);
 DCL VTYP(24) INT;
 
 /* Label table */
-DCL LBLN(128) BYTE;
-DCL LBLS(16) INT;
+DCL LBLN(256) BYTE;
+DCL LBLS(32) INT;
 DCL LBLC INT STATIC INIT(0);
 
 /* Statement table */
