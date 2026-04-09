@@ -157,6 +157,209 @@ IS_DUMP: PROC RETURNS(INT);
     RETURN(0);
 END;
 
+IS_REFLECT: PROC RETURNS(INT);
+    IF (TB(0) = 82) THEN IF (TB(1) = 69) THEN IF (TB(2) = 70) THEN IF (TB(3) = 76) THEN
+        IF (TB(4) = 69) THEN IF (TB(5) = 67) THEN IF (TB(6) = 84) THEN IF (TB(7) = 0) THEN
+            RETURN(1);
+    RETURN(0);
+END;
+
+/* REFLECT_STR -- pronoun-swap a string in place (for ELIZA-style reflection).
+ * Walks the source word-by-word and writes a new copy into SB with each word
+ * swapped per the table below. Words are runs of non-space chars. Returns
+ * the SB offset of the new (null-terminated) string.
+ *
+ * Map (case-insensitive in input; output is uppercase):
+ *   I/ME       -> YOU
+ *   MY/MINE    -> YOUR / YOURS
+ *   AM         -> ARE
+ *   YOU        -> I        (heuristic; cannot disambiguate subj/obj)
+ *   YOUR       -> MY
+ *   YOURS      -> MINE
+ *   ARE        -> AM
+ *   WAS        -> WERE
+ *   WERE       -> WAS
+ *   I'M        -> YOU ARE
+ *   I'VE       -> YOU HAVE
+ *   YOU'RE     -> I AM
+ *   YOU'VE     -> I HAVE
+ * All other words pass through unchanged.
+ */
+REFLECT_STR: PROC(SRCOFF INT) RETURNS(INT);
+    DCL OFF INT;
+    DCL SP PTR;
+    DCL DP PTR;
+    DCL CH INT;
+    DCL I INT;
+    DCL WLEN INT;
+    DCL WBUF(16) BYTE;
+    DCL FIRST INT;
+
+    OFF = SBPOS;
+    I = 0;
+    FIRST = 1;
+
+    DO WHILE (1 = 1);
+        /* Skip spaces */
+        SP = ADDR(SB) + SRCOFF + I;
+        CH = SP->DTAG;
+        DO WHILE (CH = 32);
+            I = I + 1;
+            SP = ADDR(SB) + SRCOFF + I;
+            CH = SP->DTAG;
+        END;
+        IF (CH = 0) THEN DO;
+            DP = ADDR(SB) + SBPOS;
+            DP->DTAG = 0;
+            SBPOS = SBPOS + 1;
+            RETURN(OFF);
+        END;
+
+        /* Collect a word into WBUF (cap 15 chars) */
+        WLEN = 0;
+        DO WHILE (CH != 0 AND CH != 32);
+            IF (WLEN < 15) THEN DO;
+                WBUF(WLEN) = CH;
+                WLEN = WLEN + 1;
+            END;
+            I = I + 1;
+            SP = ADDR(SB) + SRCOFF + I;
+            CH = SP->DTAG;
+        END;
+        WBUF(WLEN) = 0;
+
+        /* Emit a leading space between words */
+        IF (FIRST = 0) THEN DO;
+            DP = ADDR(SB) + SBPOS;
+            DP->DTAG = 32;
+            SBPOS = SBPOS + 1;
+        END;
+        FIRST = 0;
+
+        /* Match WBUF against the swap table; emit either the swap or
+         * the original word into SB at SBPOS. */
+        CALL EMIT_REFLECT_WORD(ADDR(WBUF), WLEN);
+    END;
+END;
+
+/* Helper: write the reflected form of word WP (length WL) into SB. */
+EMIT_REFLECT_WORD: PROC(WP PTR, WL INT);
+    DCL C0 INT;
+    DCL C1 INT;
+    DCL C2 INT;
+    DCL C3 INT;
+    DCL C4 INT;
+    DCL Q PTR;
+
+    Q = WP;
+    C0 = Q->DTAG;
+    Q = WP + 1;
+    C1 = Q->DTAG;
+    Q = WP + 2;
+    C2 = Q->DTAG;
+    Q = WP + 3;
+    C3 = Q->DTAG;
+    Q = WP + 4;
+    C4 = Q->DTAG;
+
+    /* I -> YOU */
+    IF (WL = 1 AND C0 = 73) THEN DO;
+        CALL PUTS3(89, 79, 85);
+        RETURN;
+    END;
+    /* ME -> YOU */
+    IF (WL = 2 AND C0 = 77 AND C1 = 69) THEN DO;
+        CALL PUTS3(89, 79, 85);
+        RETURN;
+    END;
+    /* MY -> YOUR */
+    IF (WL = 2 AND C0 = 77 AND C1 = 89) THEN DO;
+        CALL PUTS4(89, 79, 85, 82);
+        RETURN;
+    END;
+    /* MINE -> YOURS */
+    IF (WL = 4 AND C0 = 77 AND C1 = 73 AND C2 = 78 AND C3 = 69) THEN DO;
+        CALL PUTS5(89, 79, 85, 82, 83);
+        RETURN;
+    END;
+    /* AM -> ARE */
+    IF (WL = 2 AND C0 = 65 AND C1 = 77) THEN DO;
+        CALL PUTS3(65, 82, 69);
+        RETURN;
+    END;
+    /* YOU -> I */
+    IF (WL = 3 AND C0 = 89 AND C1 = 79 AND C2 = 85) THEN DO;
+        CALL SBPUT(73);
+        RETURN;
+    END;
+    /* YOUR -> MY */
+    IF (WL = 4 AND C0 = 89 AND C1 = 79 AND C2 = 85 AND C3 = 82) THEN DO;
+        CALL PUTS2(77, 89);
+        RETURN;
+    END;
+    /* YOURS -> MINE */
+    IF (WL = 5 AND C0 = 89 AND C1 = 79 AND C2 = 85 AND C3 = 82 AND C4 = 83) THEN DO;
+        CALL PUTS4(77, 73, 78, 69);
+        RETURN;
+    END;
+    /* ARE -> AM */
+    IF (WL = 3 AND C0 = 65 AND C1 = 82 AND C2 = 69) THEN DO;
+        CALL PUTS2(65, 77);
+        RETURN;
+    END;
+    /* WAS -> WERE */
+    IF (WL = 3 AND C0 = 87 AND C1 = 65 AND C2 = 83) THEN DO;
+        CALL PUTS4(87, 69, 82, 69);
+        RETURN;
+    END;
+    /* WERE -> WAS */
+    IF (WL = 4 AND C0 = 87 AND C1 = 69 AND C2 = 82 AND C3 = 69) THEN DO;
+        CALL PUTS3(87, 65, 83);
+        RETURN;
+    END;
+    /* Default: pass through unchanged */
+    DCL K INT;
+    DCL CP PTR;
+    DCL CC INT;
+    K = 0;
+    DO WHILE (K < WL);
+        CP = WP + K;
+        CC = CP->DTAG;
+        CALL SBPUT(CC);
+        K = K + 1;
+    END;
+END;
+
+/* Tiny SB-emit helpers used by EMIT_REFLECT_WORD. */
+SBPUT: PROC(C INT);
+    DCL DP PTR;
+    DP = ADDR(SB) + SBPOS;
+    DP->DTAG = C;
+    SBPOS = SBPOS + 1;
+END;
+PUTS2: PROC(A INT, B INT);
+    CALL SBPUT(A);
+    CALL SBPUT(B);
+END;
+PUTS3: PROC(A INT, B INT, C INT);
+    CALL SBPUT(A);
+    CALL SBPUT(B);
+    CALL SBPUT(C);
+END;
+PUTS4: PROC(A INT, B INT, C INT, D INT);
+    CALL SBPUT(A);
+    CALL SBPUT(B);
+    CALL SBPUT(C);
+    CALL SBPUT(D);
+END;
+PUTS5: PROC(A INT, B INT, C INT, D INT, E INT);
+    CALL SBPUT(A);
+    CALL SBPUT(B);
+    CALL SBPUT(C);
+    CALL SBPUT(D);
+    CALL SBPUT(E);
+END;
+
 SBSAVE: PROC RETURNS(INT);
     DCL OFF INT;
     DCL I INT;

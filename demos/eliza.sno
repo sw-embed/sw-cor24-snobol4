@@ -1,5 +1,5 @@
-* ELIZA DEMO (interactive, with reflection + variation)
-* ------------------------------------------------------
+* ELIZA DEMO (interactive, with reflection + memory)
+* ----------------------------------------------------
 * A small Rogerian psychotherapist.  READ_INPUT auto-uppercases user
 * input, so keyword matching is case-insensitive.
 *
@@ -9,18 +9,22 @@
 * Run batch (data file):
 *   ./scripts/run-snobol4.sh demos/eliza.sno demos/eliza.dat
 *
-* On each turn we:
-*   1. Try a few "I FEEL X" / "I AM X" / "I WANT X" / "I HAVE X"
-*      reflection patterns that capture the tail and quote it back,
-*      so the response includes the user's own words.
+* Each turn we:
+*   1. Try "I FEEL X" / "I AM X" / "I WANT X" / "I HAVE X" reflection
+*      patterns that capture the tail and quote it back AFTER swapping
+*      pronouns (REFLECT statement: I->YOU, MY->YOUR, AM->ARE, etc.).
 *   2. Otherwise look for keywords (MOTHER/FATHER/SAD/HAPPY/COMPUTER/
 *      YES/NO) and emit a canned probe.
-*   3. Otherwise rotate among 4 generic prompts so we don't sound
-*      like a broken record.
+*   3. Otherwise rotate among 4 generic prompts.  On the 4th rotation
+*      slot, if we have enough history, recall something the user said
+*      a few turns earlier.
+* After each turn we save the (already-reflected) input into a 3-slot
+* ring buffer so we can quote it back later.
 *
         OUTPUT = 'THE DOCTOR IS IN.  WHAT IS YOUR PROBLEM?'
         OUTPUT = ' '
         N = 0
+        H = ARRAY('1:3')
 * --- LOOP: read the next patient line ---
 LOOP    S = INPUT :F(BYE)
         OUTPUT = 'P: ' S
@@ -43,15 +47,25 @@ LOOP    S = INPUT :F(BYE)
         EQ(C,0) :S(D0)
         EQ(C,1) :S(D1)
         EQ(C,2) :S(D2)
-        OUTPUT = 'E: CAN YOU ELABORATE ON THAT?' :(SEP)
+* C=3: try to recall something from a few turns back
+        GT(N,3) :F(D3FB)
+        K = N - 3
+        K = REMDR(K,3) + 1
+        R = H<K>
+        OUTPUT = 'E: EARLIER YOU MENTIONED ' R '.' :(SEP)
+D3FB    OUTPUT = 'E: CAN YOU ELABORATE ON THAT?' :(SEP)
 D0      OUTPUT = 'E: PLEASE GO ON.' :(SEP)
 D1      OUTPUT = 'E: HOW DOES THAT MAKE YOU FEEL?' :(SEP)
 D2      OUTPUT = 'E: WHY DO YOU SAY THAT?' :(SEP)
-* --- reflection responses ---
-RFEEL   OUTPUT = 'E: WHY DO YOU FEEL ' T '?' :(SEP)
-RAM     OUTPUT = 'E: HOW LONG HAVE YOU BEEN ' T '?' :(SEP)
-RWANT   OUTPUT = 'E: WHAT WOULD IT MEAN TO YOU IF YOU GOT ' T '?' :(SEP)
-RHAVE   OUTPUT = 'E: TELL ME MORE ABOUT ' T '.' :(SEP)
+* --- reflection responses (after pronoun swap) ---
+RFEEL   REFLECT T
+        OUTPUT = 'E: WHY DO YOU FEEL ' T '?' :(SEP)
+RAM     REFLECT T
+        OUTPUT = 'E: HOW LONG HAVE YOU BEEN ' T '?' :(SEP)
+RWANT   REFLECT T
+        OUTPUT = 'E: WHAT WOULD IT MEAN IF YOU GOT ' T '?' :(SEP)
+RHAVE   REFLECT T
+        OUTPUT = 'E: TELL ME MORE ABOUT ' T '.' :(SEP)
 * --- keyword responses ---
 FAM     OUTPUT = 'E: TELL ME MORE ABOUT YOUR FAMILY.' :(SEP)
 SAD     OUTPUT = 'E: I AM SORRY YOU FEEL THAT WAY.' :(SEP)
@@ -59,7 +73,11 @@ HAP     OUTPUT = 'E: WHAT MAKES YOU FEEL HAPPY?' :(SEP)
 MAC     OUTPUT = 'E: DO MACHINES WORRY YOU?' :(SEP)
 YES     OUTPUT = 'E: YOU SEEM QUITE SURE.' :(SEP)
 NO      OUTPUT = 'E: WHY NOT?' :(SEP)
+* --- end of turn: save reflected form of input into history ring ---
 SEP     OUTPUT = ' '
+        REFLECT S
+        K = REMDR(N,3) + 1
+        H<K> = S
         :(LOOP)
 BYE     OUTPUT = 'E: OUR TIME IS UP.  GOODBYE.'
 END

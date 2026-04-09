@@ -237,9 +237,8 @@ END;
  * Statement table (max 16)
 /* ================================================================ */
 
-%DEFINE STMAX 64;
-
-/* S_TYP, S_SUBJ, S_SIDX, S_OETY, S_OEV1, S_OEOP, S_OEV2, S_GTYP, S_GLBL, S_SPTR, STCNT in snoglob.msw */
+/* STMAX defined in snoglob.msw.
+ * S_TYP, S_SUBJ, S_SIDX, S_OETY, S_OEV1, S_OEOP, S_OEV2, S_GTYP, S_GLBL, S_SPTR, STCNT in snoglob.msw */
 
 /* Expression parts for concatenation: up to 4 parts per statement.
  * S_EPCNT(s) = number of parts (0 = use S_OETY/S_OEV1 as before).
@@ -397,6 +396,18 @@ PARSE: PROC;
             IF (TT = TK_EOL) THEN CALL LEX;
             STCNT = STCNT + 1;
         END;
+        ELSE IF (TT = TK_IDENT AND IS_REFLECT() != 0) THEN DO;
+            /* "REFLECT VAR" -- in-place pronoun-swap on VAR */
+            S_TYP(S) = 6;
+            CALL LEX;
+            IF (TT = TK_IDENT) THEN DO;
+                NOFF = SBSAVE();
+                S_SUBJ(S) = SYM_LOOKUP(NOFF);
+                CALL LEX;
+            END;
+            IF (TT = TK_EOL) THEN CALL LEX;
+            STCNT = STCNT + 1;
+        END;
         ELSE IF (TT = TK_IDENT) THEN DO;
             IF (LHAS_LBL = 1) THEN DO;
                 NOFF = SBSAVE();
@@ -407,6 +418,16 @@ PARSE: PROC;
             IF (TT = TK_IDENT AND IS_DUMP() != 0) THEN DO;
                 S_TYP(S) = 5;
                 CALL LEX;
+            END;
+            ELSE IF (TT = TK_IDENT AND IS_REFLECT() != 0) THEN DO;
+                /* labeled "REFLECT VAR" */
+                S_TYP(S) = 6;
+                CALL LEX;
+                IF (TT = TK_IDENT) THEN DO;
+                    NOFF = SBSAVE();
+                    S_SUBJ(S) = SYM_LOOKUP(NOFF);
+                    CALL LEX;
+                END;
             END;
             ELSE IF (TT = TK_IDENT) THEN DO;
                 NOFF = SBSAVE();

@@ -494,6 +494,13 @@ LOWER_STMT: PROC(S INT);
         CALL AM_EMIT_OP(OP_DUMP);
         RETURN;
     END;
+
+    IF (S_TYP(S) = 6) THEN DO;
+        /* REFLECT <var> -- pronoun-swap a string variable in place */
+        CALL AM_EMIT_OP(OP_REFLECT);
+        CALL AM_EMIT_BYTE(S_SUBJ(S));
+        RETURN;
+    END;
 END;
 
 /* Fix up goto targets using label table (no bytecode scanning) */
@@ -1132,6 +1139,16 @@ AM_EXEC: PROC;
             END;
             CALL UART_PUTCHAR(125);
             CALL UART_PUTCHAR(10);
+        END;
+        ELSE IF (OP = OP_REFLECT) THEN DO;
+            /* In-place pronoun-swap on a string variable. */
+            DCL RIDX INT;
+            DCL RNEW INT;
+            RIDX = AM_CODE(PC);
+            PC = PC + 1;
+            RNEW = REFLECT_STR(VARS(RIDX));
+            VARS(RIDX) = RNEW;
+            VTYP(RIDX) = VTYP_STR;
         END;
     END;
 END;
