@@ -1,0 +1,28 @@
+* RECURSIVE FACTORIAL
+* -------------------
+* Classic recursive definition: FACT(N) = N * FACT(N-1), FACT(0) = 1.
+* DEFINE'd functions in this interpreter take a single argument and
+* save only that argument across recursive calls, so the body has
+* to compute its sub-expression BEFORE the recursive call (we
+* can't rely on locals surviving the call).
+*
+* Run:
+*   ./scripts/run-snobol4.sh demos/factorial.sno
+*
+        DEFINE('FACT(N)')
+*
+        OUTPUT = 'Recursive factorial'
+        OUTPUT = ' '
+        I = 0
+LOOP    GT(I,8) :S(END)
+        V = FACT(I)
+        OUTPUT = '  ' I '! = ' V
+        I = I + 1 :(LOOP)
+*
+* FACT(N) -- N must be >= 0
+FACT    LE(N,0) :S(FZERO)
+        K = N - 1
+        K = FACT(K)
+        FACT = N * K :(RETURN)
+FZERO   FACT = 1 :(RETURN)
+END

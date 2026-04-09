@@ -1,0 +1,63 @@
+* DEFINE TUTORIAL -- user-defined functions
+* -----------------------------------------
+* This interpreter supports DEFINE'd functions with these rules:
+*   - Single parameter only.  DEFINE('FOO(X)') is fine.
+*   - The function body starts at a label whose name matches the
+*     function name.
+*   - Inside the body, the function name is also a variable -- you
+*     return a value by assigning to it, then jumping :(RETURN).
+*   - :(RETURN) returns successfully; :(FRETURN) returns as a
+*     failed match (so the caller's :F branch fires).
+*   - The call stack is 16 frames deep, so recursion is allowed
+*     up to that depth.
+*   - **Only the parameter is saved/restored across calls.** Other
+*     globals you touch inside the body get clobbered if the body
+*     calls itself, so recompute everything you need before each
+*     recursive call.
+*
+* Run:
+*   ./scripts/run-snobol4.sh examples/define-tutorial.sno
+*
+        DEFINE('SQR(N)')
+        DEFINE('SHOUT(S)')
+        DEFINE('SAFEDIV(P)')
+*
+        OUTPUT = 'DEFINE tutorial'
+        OUTPUT = ' '
+*
+* --- 1. simple value-returning function ---
+        OUTPUT = '1) SQR(7) = ' SQR(7)
+        OUTPUT = ' '
+*
+* --- 2. function on a string ---
+        OUTPUT = "2) SHOUT('hi there') = " SHOUT('hi there')
+        OUTPUT = ' '
+*
+* --- 3. failure return: SAFEDIV uses :(FRETURN) on divide-by-zero ---
+        OUTPUT = '3) SAFEDIV demo'
+        Q = SAFEDIV(40)         :F(Q1F)
+        OUTPUT = '   40/8 = ' Q :(Q2)
+Q1F     OUTPUT = '   40 case failed'
+Q2      Q = SAFEDIV(0)          :F(Q2F)
+        OUTPUT = '   0 case = ' Q :(END)
+Q2F     OUTPUT = '   0 case failed (good -- :F fired)'
+        :(END)
+*
+* --- function bodies ---
+SQR     SQR = N * N :(RETURN)
+*
+* SHOUT just slaps a banner on the front of S.
+SHOUT   SHOUT = '** ' S ' **' :(RETURN)
+*
+* SAFEDIV(P): return P/8 if P > 0, else FRETURN.  Demonstrates the
+* failure return path.  We compute P/8 the long way since there is
+* no division operator -- this is a tutorial, after all.
+SAFEDIV LE(P,0) :S(SDFAIL)
+        D = 0
+        R = P
+SDLP    LE(R,7) :S(SDLPD)
+        R = R - 8
+        D = D + 1 :(SDLP)
+SDLPD   SAFEDIV = D :(RETURN)
+SDFAIL  SAFEDIV = 0 :(FRETURN)
+END

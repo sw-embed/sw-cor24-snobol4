@@ -1,0 +1,33 @@
+* I/O TUTORIAL -- reading lines from INPUT
+* -----------------------------------------
+* The same program reads lines two ways depending on how you run it:
+*
+* Batch mode:
+*   ./scripts/run-snobol4.sh examples/io-tutorial.sno examples/io-tutorial.dat
+*   INPUT comes from the data file pre-loaded at memory 0x090000.
+*
+* Interactive mode (live UART, type lines yourself):
+*   ./scripts/run-snobol4-tty.sh examples/io-tutorial.sno
+*   INPUT blocks on real keystrokes.  Backspace works.  Ctrl-D on
+*   an empty line signals EOF.
+*
+* The interpreter picks the mode automatically at startup based on
+* whether anything is loaded at 0x090000.  Either way, lines are
+* uppercased on read so pattern matching with literal keywords is
+* case-insensitive.
+*
+* The :F(EOF) branch on `LINE = INPUT` is the standard end-of-input
+* idiom: when there's nothing more to read, INPUT fails and we exit
+* the loop cleanly.
+*
+        OUTPUT = 'I/O tutorial -- echoing lines until EOF'
+        OUTPUT = '(Ctrl-D in interactive mode, end of file in batch.)'
+        OUTPUT = ' '
+        N = 0
+LOOP    LINE = INPUT :F(BYE)
+        N = N + 1
+        OUTPUT = 'line ' N ': ' LINE
+        :(LOOP)
+BYE     OUTPUT = ' '
+        OUTPUT = 'read ' N ' lines.'
+END

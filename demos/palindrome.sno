@@ -1,0 +1,52 @@
+* PALINDROME DEMO -- character-level palindrome check
+* ----------------------------------------------------
+* Walks two cursors toward the middle: I from the left, J from the
+* right (J = length - 1 - I).  At each step extract one character
+* from each end via LEN(I) LEN(1) . C and compare.  If any pair
+* differs, fail; otherwise, when the cursors meet, succeed.
+*
+* Length is found by walking once with LEN(N) growing N until the
+* match fails -- there's no SIZE() builtin in this interpreter.
+*
+* Run:
+*   ./scripts/run-snobol4.sh demos/palindrome.sno
+*
+        OUTPUT = 'Palindrome check'
+        OUTPUT = ' '
+*
+        S = 'RACECAR' :(GO)
+RETRY   S = 'HELLO'  :(GO)
+RETRY2  S = 'ABCBA'  :(GO)
+RETRY3  S = 'ABCDE'  :(END)
+*
+GO      OUTPUT = 'input: ' S
+*
+* --- find length: smallest L for which LEN(L) fails ---
+        L = 0
+LLOOP   S LEN(L) :F(LDONE)
+        L = L + 1 :(LLOOP)
+LDONE   L = L - 1
+*
+* --- compare from both ends ---
+        I = 0
+CMPL    J = L - I
+        J = J - 1
+        GT(I,J) :S(YES)
+        S LEN(I) LEN(1) . CA
+        S LEN(J) LEN(1) . CB
+        IDENT(CA,CB) :F(NO)
+        I = I + 1 :(CMPL)
+*
+YES     OUTPUT = '  -> palindrome'
+        OUTPUT = ' '
+        IDENT(S,'RACECAR') :S(RETRY)
+        IDENT(S,'HELLO')   :S(RETRY2)
+        IDENT(S,'ABCBA')   :S(RETRY3)
+        :(END)
+NO      OUTPUT = '  -> not a palindrome'
+        OUTPUT = ' '
+        IDENT(S,'RACECAR') :S(RETRY)
+        IDENT(S,'HELLO')   :S(RETRY2)
+        IDENT(S,'ABCBA')   :S(RETRY3)
+        :(END)
+END

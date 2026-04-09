@@ -756,7 +756,7 @@ PARSE: PROC;
                                         EP_VAL(EPB + EPI) = FNIDX;
                                         EPI = EPI + 1;
                                     END;
-                                    /* Single arg: IDENT or INT */
+                                    /* Single arg: IDENT, INT, or STR */
                                     IF (TT = TK_IDENT) THEN DO;
                                         DCL ANO INT;
                                         ANO = SBSAVE();
@@ -771,6 +771,14 @@ PARSE: PROC;
                                         IF (EPI < 4) THEN DO;
                                             EP_TYP(EPB + EPI) = OE_INT;
                                             EP_VAL(EPB + EPI) = TV;
+                                            EPI = EPI + 1;
+                                        END;
+                                        CALL LEX;
+                                    END;
+                                    ELSE IF (TT = TK_STR) THEN DO;
+                                        IF (EPI < 4) THEN DO;
+                                            EP_TYP(EPB + EPI) = OE_STR;
+                                            EP_VAL(EPB + EPI) = SBSAVE();
                                             EPI = EPI + 1;
                                         END;
                                         CALL LEX;

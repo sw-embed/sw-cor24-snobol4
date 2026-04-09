@@ -1,0 +1,27 @@
+* FIBONACCI DEMO -- iterative
+* ----------------------------
+* Walks a pair (A, B) up to N, printing each term.
+*
+* A truly recursive FIB(N) = FIB(N-1) + FIB(N-2) is awkward in this
+* interpreter because DEFINE'd functions only save the parameter
+* across calls -- any other locals (like the partial sum) get
+* clobbered by the inner recursive call.  Recursion that needs more
+* than the single saved parameter has to pack everything into that
+* parameter.  See demos/factorial.sno for a single-accumulator
+* example that works fine.
+*
+* Run:
+*   ./scripts/run-snobol4.sh demos/fibonacci.sno
+*
+        OUTPUT = 'Fibonacci (first 16 terms)'
+        OUTPUT = ' '
+        A = 0
+        B = 1
+        I = 0
+LOOP    GT(I,15) :S(END)
+        OUTPUT = '  fib(' I ') = ' A
+        T = A + B
+        A = B
+        B = T
+        I = I + 1 :(LOOP)
+END

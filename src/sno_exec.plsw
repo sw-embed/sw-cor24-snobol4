@@ -160,9 +160,12 @@ LOWER_STMT: PROC(S INT);
             CALL AM_EMIT_BYTE(EP_VAL(EPB));
         END;
         ELSE IF (S_EPCNT(S) >= 2 AND S_OEOP(S) = 0) THEN DO;
-            /* Concatenation: emit parts with CONCAT between them */
+            /* Concatenation: emit each part as a value-producing op,
+             * then OP_CONCAT after every part except the first. */
+            DCL N_PARTS INT;
             EPB = S * 4;
             EPI = 0;
+            N_PARTS = 0;
             DO WHILE (EPI < S_EPCNT(S));
                 EPT = EP_TYP(EPB + EPI);
                 EPV = EP_VAL(EPB + EPI);
@@ -210,6 +213,10 @@ LOWER_STMT: PROC(S INT);
                         CALL AM_EMIT_OP(OP_LOAD_VAR);
                         CALL AM_EMIT_BYTE(APV);
                     END;
+                    ELSE IF (APT = OE_STR) THEN DO;
+                        CALL AM_EMIT_OP(OP_LOAD_STR);
+                        CALL AM_EMIT_WORD(APV);
+                    END;
                     ELSE DO;
                         CALL AM_EMIT_OP(OP_LOAD_INT);
                         CALL AM_EMIT_WORD(APV);
@@ -220,8 +227,9 @@ LOWER_STMT: PROC(S INT);
                 ELSE IF (EPT = OE_ARRAY) THEN DO;
                     CALL AM_EMIT_OP(OP_MAKE_ARRAY);
                 END;
-                IF (EPI > 0 AND EPT != OE_ARRREF AND EPT != OE_FNCALL) THEN
+                IF (N_PARTS > 0) THEN
                     CALL AM_EMIT_OP(OP_CONCAT);
+                N_PARTS = N_PARTS + 1;
                 EPI = EPI + 1;
             END;
         END;
@@ -1078,6 +1086,7 @@ AM_EXEC: PROC;
             /* Read one line from input data into SB */
             V = READ_INPUT();
             IF (V >= 0) THEN DO;
+                ETYP(ESP) = VTYP_STR;
                 ESTK(ESP) = V;
                 ESP = ESP + 1;
                 LAST_PUSH_TYP = VTYP_STR;
@@ -1085,6 +1094,7 @@ AM_EXEC: PROC;
             END;
             ELSE DO;
                 /* EOF -- push empty, set failure */
+                ETYP(ESP) = VTYP_STR;
                 ESTK(ESP) = 0;
                 ESP = ESP + 1;
                 LAST_PUSH_TYP = VTYP_STR;
@@ -1096,17 +1106,19 @@ AM_EXEC: PROC;
             DCL FNI INT;
             DCL PSY INT;
             DCL ARG INT;
+            DCL ARG_TY INT;
             FNI = AM_CODE(PC);
             PC = PC + 1;
             ESP = ESP - 1;
             ARG = ESTK(ESP);
+            ARG_TY = ETYP(ESP);
             PSY = FN_PARAM(FNI);
             CSTK_PC(CSTK_TOP) = PC;
             CSTK_PV(CSTK_TOP) = VARS(PSY);
             CSTK_FN(CSTK_TOP) = FNI;
             CSTK_TOP = CSTK_TOP + 1;
             VARS(PSY) = ARG;
-            VTYP(PSY) = VTYP_INT;
+            VTYP(PSY) = ARG_TY;
             /* Also clear function name var so caller sees fresh return */
             VARS(FN_NAME(FNI)) = 0;
             VTYP(FN_NAME(FNI)) = VTYP_INT;
@@ -1119,6 +1131,7 @@ AM_EXEC: PROC;
             FNI2 = CSTK_FN(CSTK_TOP);
             PSY2 = FN_PARAM(FNI2);
             /* Push return value: function name var */
+            ETYP(ESP) = VTYP(FN_NAME(FNI2));
             ESTK(ESP) = VARS(FN_NAME(FNI2));
             ESP = ESP + 1;
             LAST_PUSH_TYP = VTYP(FN_NAME(FNI2));
@@ -1132,6 +1145,7 @@ AM_EXEC: PROC;
             CSTK_TOP = CSTK_TOP - 1;
             FNI3 = CSTK_FN(CSTK_TOP);
             PSY3 = FN_PARAM(FNI3);
+            ETYP(ESP) = VTYP_INT;
             ESTK(ESP) = 0;
             ESP = ESP + 1;
             LAST_PUSH_TYP = VTYP_INT;
