@@ -1,0 +1,6 @@
+        OUTPUT = 'SIZE(HELLO)=' SIZE('HELLO')
+        OUTPUT = 'SUBSTR(ABC,1,1)=' SUBSTR('ABC', 1, 1)
+        OUTPUT = 'SUBSTR(ABC,2,2)=' SUBSTR('ABC', 2, 2)
+        OUTPUT = 'CHAR(39)=' CHAR(39)
+        OUTPUT = 'CHAR(65)=' CHAR(65)
+        END

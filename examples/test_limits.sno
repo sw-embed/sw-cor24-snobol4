@@ -1,0 +1,56 @@
+        ARGS = INPUT :F(NOARGS)
+        DMPLN = 0
+        ARGS '-DUMP-LINES' :S(HASDMPL)
+        :(RDLN)
+HASDMPL  DMPLN = 1
+RDLN     STL = ARRAY('1:30')
+        STR = ARRAY('1:30')
+        STLAB = ARRAY('1:30')
+        STTXT = ARRAY('1:30')
+        SP = SPAN(' ')
+        DG = SPAN('0123456789')
+        STCT = 0
+        LINECT = 0
+RLINE   LINECT = LINECT + 1
+        GT(LINECT,100) :S(STOP)
+        LINE = INPUT :F(RDONE)
+        IDENT(LINE,'') :S(RLINE)
+        C1 = ' '
+        LINE LEN(1) . C1 REM . TAIL :F(RLINE)
+        IDENT(C1,'C') :S(RLINE)
+        IDENT(C1,'*') :S(RLINE)
+        C6 = ' '
+        REST = ''
+        TAIL LEN(4) . DUM LEN(1) . C6 REM . REST :F(NOSIX)
+        :(HAVECOL)
+NOSIX   REST = TAIL
+HAVECOL  DIFFER(C6,' ') :F(NEWST)
+        GT(STCT,0) :F(NLERR)
+        STR<STCT> = LINECT
+        STTXT<STCT> = STTXT<STCT> ' ' REST :(RLINE)
+NEWST   GT(STCT,0) :F(FIRST)
+        STR<STCT> = LINECT
+FIRST   STCT = STCT + 1
+        GT(STCT,30) :S(STOP)
+        STL<STCT> = LINECT
+        STR<STCT> = LINECT
+        STLAB<STCT> = ''
+        STTXT<STCT> = REST
+        LABEL = ''
+        LINE SP . X DG . LABEL ' ' REM :F(NOLAB)
+        DIFFER(LABEL,'') :F(NOLAB)
+        STLAB<STCT> = LABEL
+NOLAB   :(RLINE)
+NLERR   OUTPUT = 'Err: continuation without stmt' :(STOP)
+RDONE   LE(STCT,0) :S(STOP)
+        STR<STCT> = LINECT
+        OUTPUT = 'STCT=' STCT
+        J = 0
+LOOP    J = J + 1
+        OUTPUT = 'J=' J
+        GT(J,STCT) :S(STOP)
+        :(LOOP)
+STOP    OUTPUT = 'done'
+        END
+NOARGS  OUTPUT = 'Error: no input'
+        END

@@ -88,7 +88,7 @@ test-pmatch:
     ./scripts/build.sh include/descr.msw include/heap.msw include/pat.msw src/test_pmatch.plsw
 
 # Run all tests
-test: test-am test-lower test-exec test-amdump test-pat test-cursor test-pmatch
+test: test-am test-lower test-exec test-amdump test-pat test-cursor test-pmatch test-limits
     ./scripts/build.sh include/descr.msw include/heap.msw include/trace.msw src/test_descr.plsw
     ./scripts/build.sh include/descr.msw include/heap.msw src/test_snolib.plsw
     ./scripts/build.sh include/descr.msw include/heap.msw src/test_snolib2.plsw
@@ -96,3 +96,7 @@ test: test-am test-lower test-exec test-amdump test-pat test-cursor test-pmatch
     ./scripts/build.sh include/descr.msw include/heap.msw src/test_lexer.plsw
     ./scripts/build.sh include/descr.msw include/heap.msw src/test_parser.plsw
     ./scripts/build.sh include/descr.msw include/heap.msw src/test_symtab.plsw
+
+# Regression test for size limits (catches VARS/SYMMAX mismatches, issue #3)
+test-limits:
+    bash scripts/run-snobol4.sh examples/test_limits.sno examples/test_limits.dat

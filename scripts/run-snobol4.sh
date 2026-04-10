@@ -47,8 +47,10 @@ fi
 
 BASENAME=$(basename "$SNO_FILE" .sno)
 
-# Build interpreter if needed
-if [ ! -f "$INTERP_BIN" ] || [ "$PROJECT_DIR/src/sno_main.plsw" -nt "$INTERP_BIN" ]; then
+# Build interpreter if needed (build-modular.sh checks dep staleness)
+if [ ! -f "$INTERP_BIN" ]; then
+    "$PROJECT_DIR/scripts/build-modular.sh" 2>&1 | grep -v "^\[" >&2
+else
     "$PROJECT_DIR/scripts/build-modular.sh" 2>&1 | grep -v "^\[" >&2
 fi
 
