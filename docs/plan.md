@@ -647,11 +647,12 @@ interpreter from the new three-file layout. The runtime library
 (`snolib.plsw`) compiles cleanly as a standalone library that could
 be linked into a compiled .sno -> .bin output.
 
-### 13.5 Deferred: FORTRAN compiler in SNOBOL4
+### 13.5 Deferred: FORTRAN compiler prerequisites
 
-A FORTRAN compiler written in SNOBOL4 is a stated future direction
-but is not on the active critical path. Four interpreter features are
-prerequisites for a non-trivial FORTRAN compiler:
+A FORTRAN compiler written in SNOBOL4 is an active stated direction
+(see `sw-embed/sw-cor24-fortran`, currently in the FTI-0 milestone).
+The runtime-split saga is not blocking it. Four interpreter features
+are prerequisites for a non-trivial FORTRAN compiler:
 
 1. Pattern-replacement assignment (`S pat = repl`) -- the canonical
    SNOBOL4 idiom for source rewriting.
@@ -663,8 +664,158 @@ prerequisites for a non-trivial FORTRAN compiler:
    would currently get only 64 named variables and 256 statements
    to work with).
 
-These are not blocking the runtime-split saga, and the runtime-split
-saga is not blocking them. Pick them up when the time comes.
+These features are not prerequisites for the runtime-split saga.
+Schedule them as their own saga after the split lands, or earlier if
+sw-cor24-fortran needs them.
+
+### 13.6 Cleanup status (2026-04-11)
+
+All six cleanup phases complete.
+
+- Phase 0 snapshot commit: `c6f8ac4`, tagged `fallback-pre-cleanup`.
+- Phases A - D executed as separate commits with tests green at each.
+- Phase C commit `ba0ebaf` tagged `v0-modular-stable` -- the
+  architectural baseline.
+- Phase E started the `snobol4-runtime-split` saga in commit
+  `74caf80`; step 1 (`snolib` extraction) defined, not yet started.
+- The eight cleanup commits were retroactively claimed by a
+  `snobol4-modular-cleanup` saga (amended in commit `c96a16c` after
+  the first attempt recorded short commit hashes that didn't
+  audit-match; see section 14.3).
+- `agentrail audit` reports a single irreducible orphan: the
+  amendment commit itself.
+
+The interpreter now has a single canonical build path (`just build`
+-> `scripts/build-modular.sh` -> `build/snobol4.bin`), a tracked
+modular source layout (`src/sno_main` / `sno_util` / `sno_lex` /
+`sno_exec.plsw`), blocked monolith filenames in `.gitignore`, and
+prominent CLAUDE.md sections covering the modular rule and the
+agentrail safety protocol.
+
+## 14. Open issues and near-term fixes
+
+Three bugs and one upstream issue were filed during or uncovered by
+the April 2026 cleanup. None block the runtime-split saga itself, but
+#6 and #7 block `sw-embed/sw-cor24-fortran` FTI-0 work.
+
+### 14.1 Issue #6 -- REM . REST silently empty (array + statement-count interaction)
+
+**Filed**: sw-embed/sw-cor24-snobol4#6 (open).
+
+**Symptom**. In a program with multiple `ARRAY()` declarations + SPAN
+variables + a `LEN/REM . REST` capture pattern, adding ANY extra
+statement above the array block causes `REM . REST` to silently
+return empty on every successful match. The pattern still matches
+(no `:F`), but the captured remainder is lost.
+
+**Clue**. "Count-sensitive rather than statement-specific" -- the
+reporter tried multiple variants of the extra statement and all
+triggered it; deleting any one init statement restored correctness.
+
+**Likely cause**. Some buffer index or offset computed from the
+statement count is off-by-one or wrapping. Candidates, ordered by
+likelihood:
+
+1. Pattern-part (PP) slot indexing in the executor. `PP_TYP` and
+   `PP_VAL` are sized `STMAX * EPSLOTS`; the per-statement base is
+   `S * EPSLOTS`. If a recent change changed the meaning of that
+   index without updating all call sites, adding a statement shifts
+   every subsequent statement's PP base.
+2. Array-pool indexing. `ARR_DATA(arr_id * ARR_ELEMS + idx)` -- if
+   `arr_id` is computed from something count-dependent, adding a
+   statement could shuffle which array a variable resolves to.
+3. String-buffer offset capture. `REM . REST` stores the captured
+   span as (SB offset, length). If the SB offset is captured before
+   being saved and the SB advances in between, the stored offset
+   points at stale or reused storage.
+
+**Suggested approach**.
+
+1. Reproduce on the current `main` with the minimal `diag_bad.sno`
+   from the issue body.
+2. Add executor trace output around the pattern capture path to
+   print the captured SB offset and length at the moment of the
+   `.` binding, and again at the moment `REST` is read.
+3. If those differ, you have an SB-aliasing bug -- look at `SBSAVE`
+   in `sno_util.plsw` for whether it copies or just records an
+   offset.
+4. If they agree but `REST` still prints empty, the bug is in the
+   OUTPUT concat path -- suspect overlap with issue #7.
+
+**Related**. Issue #4 (`000381f`) fixed a related SPAN/BREAK-vs-REM
+corruption. The reporter suspects #6 is a residual of the same area.
+
+### 14.2 Issue #7 -- OUTPUT drops literal prefix when concatenated with array subscript
+
+**Filed**: sw-embed/sw-cor24-snobol4#7 (open).
+
+**Symptom**. `OUTPUT = 'prefix: ' A<1>` prints only `HELLO` (the
+array contents). `OUTPUT = 'prefix [' A<1> '] suffix'` prints
+`HELLO] suffix` -- leading literal dropped, trailing literal kept.
+Workaround: `X = A<1>` then `OUTPUT = 'prefix: ' X` works correctly.
+
+**Likely cause**. In `sno_exec.plsw`, the concat lowering path for
+`'literal' <array-ref>` (`OE_STR` followed by `OE_ARRREF`) mis-emits
+the first literal. The working path `'literal' <var>` (`OE_STR`
+followed by `OE_IDENT`) is fine. Grep for `OE_ARRREF` in the
+lowering/emit routines:
+
+```
+grep -n "OE_ARRREF\|ARR_REF\|OP_ARR_GET" src/sno_exec.plsw
+```
+
+Suspect an early-return or special-case branch in the concat-emit
+loop that was added for the case where an array reference is the
+only operand, and that branch fires when an array reference appears
+anywhere -- even as the second operand. The fix is probably a
+one-line condition.
+
+**Suggested approach**.
+
+1. Write a minimal `examples/test_concat_arr.sno` reproducing the
+   issue.
+2. Dump the emitted AM opcode stream for the
+   `OUTPUT = 'prefix: ' A<1>` statement, compare to
+   `OUTPUT = 'prefix: ' X` (the working workaround).
+3. The divergence point is the bug.
+
+**Related**. #6 may share an upstream cause -- both involve array
+element access in the executor, both landed after issue #4. Worth
+investigating together.
+
+### 14.3 Upstream: agentrail short commit hash audit mismatch
+
+**Filed**: sw-vibe-coding/agentrail-rs#1 (open, first issue on that
+repo).
+
+**Symptom**. `agentrail add --commit <short-hash>` accepts short
+commit hashes (7 - 9 chars) without error but writes them verbatim
+into `step.toml`. `agentrail audit` does strict full-SHA comparison
+against git history, so those short hashes never match -- claimed
+commits appear as "orphan commits" anyway.
+
+**Fix options** (documented in upstream issue body):
+
+1. Normalize at `add` time via `git rev-parse` -- cleanest, fail-fast.
+2. Prefix-match at `audit` time -- tolerant of legacy data.
+3. Both.
+
+**Local workaround until fixed**. Always pass full 40-char SHAs when
+using `agentrail add --commit`:
+
+```bash
+git log --format=%H <range>  # copy the 40-char hashes directly
+```
+
+Never use `git log --oneline` as the source of commit hashes for
+`agentrail add --commit` -- the truncated output format will produce
+ghost steps that silently don't audit.
+
+**Related**. The cleanup saga in section 13.6 hit this bug on its
+first retroactive reconstruction attempt (commit `db7492b`) before
+being amended with full hashes in `c96a16c`. The broken first-attempt
+archive `snobol4-modular-cleanup-20260411T111246` remains as a
+historical artifact -- do NOT hand-edit it to match the amendment.
 
 Working examples (just demos):
 - hello.sno -- OUTPUT = 'Hello, World!'
