@@ -1,8 +1,12 @@
 # SNOBOL4 on PL/SW for COR24
 
-# Build the SNOBOL4 interpreter
+# Build the SNOBOL4 interpreter (modular: sno_main + sno_util + sno_lex + sno_exec)
 build:
-    ./scripts/build.sh include/descr.msw include/heap.msw include/am.msw include/pat.msw src/snobol4.plsw
+    bash scripts/build-modular.sh
+
+# Force a full rebuild of the interpreter, ignoring the dep manifest
+rebuild:
+    bash scripts/build-modular.sh -f
 
 # Run a SNOBOL4 program
 run file:
