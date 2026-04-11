@@ -1,0 +1,1 @@
+agentrail init created .agentrail/saga.toml + .agentrail/plan.md for snobol4-runtime-split. Plan sketches the 5 planned steps (snolib, sno-engine, snobol4-main, linker, validate). Pre-commit safety net: agentrail snapshot taken at refs/agentrail/snapshots/20260411T104625 per the new CLAUDE.md rules.

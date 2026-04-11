@@ -1,0 +1,1 @@
+Capture all working-tree state (dead interpreter files, reconstructed agentrail archives, plan.md update) before any deletions. Tag fallback-pre-cleanup for resurrection.

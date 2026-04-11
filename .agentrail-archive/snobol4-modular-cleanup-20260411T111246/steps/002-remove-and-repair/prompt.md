@@ -1,0 +1,1 @@
+git rm the three dead .plsw files (preserved in fallback-pre-cleanup tag). Repair just build target to call scripts/build-modular.sh. Add just rebuild for force-rebuild.

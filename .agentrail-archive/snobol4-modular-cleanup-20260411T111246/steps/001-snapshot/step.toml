@@ -1,0 +1,14 @@
+number = 1
+slug = "snapshot"
+status = "completed"
+description = "Capture all working-tree state (dead interpreter files, reconstructed agentra..."
+role = "production"
+context_files = []
+created_at = "2026-04-11T11:12:13"
+completed_at = "2026-04-11T11:12:13"
+commits = [
+    "fb9aca21d",
+    "e5b21cae5",
+    "c6f8ac4",
+    "74caf800feaed95707dc8d210fd9df093d38194a",
+]

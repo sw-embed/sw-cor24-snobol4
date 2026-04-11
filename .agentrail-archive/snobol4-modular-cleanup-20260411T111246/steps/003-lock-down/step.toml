@@ -1,0 +1,13 @@
+number = 3
+slug = "lock-down"
+status = "completed"
+description = "Make modular layout explicit and irreversible: refresh stale limits in langua..."
+role = "production"
+context_files = []
+created_at = "2026-04-11T11:12:35"
+completed_at = "2026-04-11T11:12:35"
+commits = [
+    "ba0ebaf",
+    "c21f012",
+    "74caf800feaed95707dc8d210fd9df093d38194a",
+]

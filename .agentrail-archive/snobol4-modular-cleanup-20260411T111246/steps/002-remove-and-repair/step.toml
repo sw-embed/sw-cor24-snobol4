@@ -1,0 +1,13 @@
+number = 2
+slug = "remove-and-repair"
+status = "completed"
+description = "git rm the three dead .plsw files (preserved in fallback-pre-cleanup tag). Re..."
+role = "production"
+context_files = []
+created_at = "2026-04-11T11:12:24"
+completed_at = "2026-04-11T11:12:24"
+commits = [
+    "54ec884",
+    "fbfe796",
+    "74caf800feaed95707dc8d210fd9df093d38194a",
+]

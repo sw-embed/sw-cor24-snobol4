@@ -1,0 +1,1 @@
+Phase A removed src/snobol4.plsw, src/sno_engine.plsw, src/snolib.plsw via git rm (4064 lines deleted). Phase B replaced the just build target with bash scripts/build-modular.sh and added a just rebuild target with -f. Both demos and tests pass after each commit.

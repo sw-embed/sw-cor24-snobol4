@@ -1,0 +1,12 @@
+number = 4
+slug = "init-runtime-split"
+status = "completed"
+description = "Initialize the next architectural saga, snobol4-runtime-split, with the plan ..."
+role = "production"
+context_files = []
+created_at = "2026-04-11T11:12:43"
+completed_at = "2026-04-11T11:12:43"
+commits = [
+    "74caf80",
+    "74caf800feaed95707dc8d210fd9df093d38194a",
+]

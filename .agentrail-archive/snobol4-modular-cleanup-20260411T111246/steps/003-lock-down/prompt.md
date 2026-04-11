@@ -1,0 +1,1 @@
+Make modular layout explicit and irreversible: refresh stale limits in language-reference.md, add 4-module list, add CLAUDE.md CRITICAL section forbidding monolith creation, gitignore the three dead filenames. Tag v0-modular-stable. Then add agentrail safety rules to CLAUDE.md (snapshot, audit, prohibition on hand-editing .agentrail/).

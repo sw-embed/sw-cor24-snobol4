@@ -1,0 +1,1 @@
+Initialize the next architectural saga, snobol4-runtime-split, with the plan from docs/plan.md section 13.4.
