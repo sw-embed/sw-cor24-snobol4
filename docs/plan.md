@@ -492,11 +492,179 @@ device binding (UART, GPIO, file)
 - Future: unit-number I/O for LED/switch (unit 242, text "0"/"1")
 - Future: multi-file input (directory + profiles for dating app)
 
-## 12. Current state
+## 12. Current state (April 2026)
 
-Completed: M0, M1, M2, M3
-Next: M4 (richer runtime)
-Target demo: M5 (dating app)
+Completed: M0 - M5 plus a substantial post-M5 expansion (sieve, n-queens,
+ELIZA, palindrome, fibonacci, factorial, gcd, reverse, plus tutorials).
+SIZE / SUBSTR / CHAR builtins added (issue #1), SYMMAX / STMAX /
+LBL_MAX / ESTK / ARR_POOL bumped, silent-memory-corruption regression
+fixed (issues #2 / #3), SPAN/BREAK pattern variable corruption of REM
+matching with arrays fixed (issue #4), executor refactored to
+SELECT/WHEN dispatch, interactive UART INPUT, REFLECT, DUMP, all
+shipping in the modular interpreter.
+
+The interpreter is **modular**. It is built from four PL/SW source
+modules:
+
+```
+src/sno_main.plsw   -- driver: MAIN, calls READ_SRC, PARSE, LOWER_ALL, AM_EXEC
+src/sno_util.plsw   -- I/O helpers, READ_SRC, READ_INPUT
+src/sno_lex.plsw    -- lexer + parser + AM emit
+src/sno_exec.plsw   -- lowering + executor + pattern matching + builtins
+```
+
+Plus the shared globals header `include/snoglob.msw` and the
+runtime headers `include/{descr,heap,am,pat}.msw`. The build pipeline
+is `scripts/build-modular.sh` which produces `build/snobol4.bin`.
+Every demo, every tutorial, the TTY runner, `scripts/run-snobol4.sh`,
+and `just build` all use this modular binary.
+
+There are no monolithic single-file interpreter sources in the repo
+going forward. See section 13 for the cleanup that established this.
+
+## 13. Modular cleanup and runtime-split plan (April 2026)
+
+### 13.1 Background
+
+A series of agent sessions in early-to-mid April 2026 left the working
+tree with confusing state: an untracked stale single-file interpreter
+copy `src/snobol4.plsw` (predates SIZE/SUBSTR/CHAR), an unfinished
+3-module refactor draft `src/sno_engine.plsw` + `src/snolib.plsw`,
+and a `justfile build:` target pointing at the dead monolith. None of
+these were used by the actual demos -- the tracked 4-module split has
+always been the working interpreter. But the arrangement was misleading
+enough that a fresh reader could reasonably conclude the working
+interpreter was the monolith.
+
+In addition, agentrail saga records for the snobol4-demos saga
+(sieve / nqueens / ELIZA, Apr 8) and the post-demos work
+(planned-demos doc + two demo batches + issues #1-#4 + executor
+refactor) had been deleted. The saga.toml + plan.md for snobol4-demos
+were recovered from a git stash; the rest was reconstructed from
+commit history via `agentrail audit`.
+
+### 13.2 Reconstruction (already done)
+
+Three retroactive sagas were rebuilt by `agentrail audit` and the
+new `agentrail add --commit` flag, and archived:
+
+- `snobol4-fizzbuzz` (m5): m5-remdr, m5-fizzbuzz, m5-polish
+- `snobol4-demos`: sieve, nqueens, eliza
+- `snobol4-cleanup`: demos, bugfixes, executor-refactor
+
+`agentrail audit` reports zero gaps between git history and saga history.
+
+### 13.3 Cleanup phases
+
+Each phase commits separately so tests pass at every commit. The
+intent is that any phase can be reverted or cherry-picked individually.
+
+**Phase 0 -- snapshot.** Commit everything currently in the working
+tree (including the dead untracked `snobol4.plsw`, the unfinished
+`sno_engine.plsw` + `snolib.plsw`, the new `.agentrail-archive`
+directories, and this plan.md update) so nothing is at risk of being
+lost. Tag the resulting commit `fallback pre-cleanup`. This commit is
+the only place those dead files will live going forward; later phases
+remove them from the tip.
+
+**Phase A -- remove dead code.** `git rm src/snobol4.plsw
+src/sno_engine.plsw src/snolib.plsw`. The files are preserved in the
+`fallback pre-cleanup` tag for resurrection or cherry-pick. Tests
+re-run; they pass because nothing in the build pipeline ever depended
+on these files.
+
+**Phase B -- repair `just build`.** The current `justfile build:`
+target invokes `scripts/build.sh` against the dead monolith. Replace
+with the modular build so `just build` produces the actual interpreter.
+The user-facing surface stays `just build`; no need to add a separate
+`just build-modular` target.
+
+**Phase C -- make modular explicit and irreversible.** Update
+`CLAUDE.md` with a prominent note that the interpreter is modular and
+that agents must not create monolithic single-file interpreter sources.
+Add `src/snobol4.plsw`, `src/sno_engine.plsw`, `src/snolib.plsw` to
+`.gitignore` so they cannot accidentally re-enter the tree as
+untracked files. Refresh the stale limits table in
+`docs/language-reference.md` (STMAX 128->256, SYMMAX 24->64, LBL_MAX
+32->64, ESTK 128->256, ARR_POOL 200->400) and replace the
+"interpreter source lives in `src/sno_*.plsw`" sentence with an
+explicit list of the four files and what each holds. Fix the stale
+`docs/quickstart.md` reference if needed.
+
+**Phase D -- tag stable point.** Tag the post-Phase-C commit
+`v0-modular-stable`. This is the known-good reference for the modular
+interpreter before any further refactoring. The runtime-split saga
+(section 13.4) starts from here.
+
+**Phase E -- start the runtime-split saga.** Initialize a new active
+agentrail saga, `snobol4-runtime-split`, to begin the next architectural
+work.
+
+### 13.4 The snobol4-runtime-split saga (next)
+
+**Motivation.** The current 4-module split is layered by *function*:
+util, lex, exec, main. The next architectural improvement is to
+re-split along a different axis -- *runtime helpers vs compiler
+engine vs driver* -- so that the runtime portion (descriptor and
+heap helpers, basic primitives) can be linked into compiled SNOBOL4
+programs without dragging in the lexer, parser, and executor. This
+prepares the ground for standalone compiled .sno -> .bin output.
+
+**Target shape.**
+
+```
+src/snolib.plsw     -- runtime library: descriptors, heap, helpers
+                       (linkable into compiled SNOBOL4 programs)
+src/sno_engine.plsw -- compiler + executor library: lexer, parser,
+                       AM emit, lowering, executor, pattern matching
+src/snobol4.plsw    -- driver: MAIN, wires snolib + sno_engine
+```
+
+The names match the dormant unfinished drafts that lived in the working
+tree before Phase A removed them, and the `fallback pre-cleanup` tag
+preserves those drafts as a starting reference. The runtime-split saga
+may cherry-pick from them or start fresh.
+
+**Plan (sketch -- will be refined when the saga is initialized).**
+
+1. snolib -- extract runtime library from `sno_util.plsw` + the
+   helpers in `sno_exec.plsw`. Tests via existing test_snolib /
+   test_snolib2 suites.
+2. sno-engine -- consolidate `sno_lex.plsw` + the executor portion of
+   `sno_exec.plsw` into a single linkable engine module that compiles
+   cleanly stripped of the runtime library.
+3. snobol4-main -- new top-level `snobol4.plsw` driver that wires
+   snolib + sno_engine; existing demos still run end-to-end via
+   `scripts/run-snobol4.sh`.
+4. linker -- update `scripts/build-modular.sh` (or successor) for the
+   new module layout; verify the strip step.
+5. validate -- run the full demo suite (fizzbuzz, sieve, nqueens,
+   eliza, palindrome, factorial, etc.) against the new build.
+
+**Exit criteria.** All existing tests and demos pass against the
+re-split layout. `scripts/build-modular.sh` produces a working
+interpreter from the new three-file layout. The runtime library
+(`snolib.plsw`) compiles cleanly as a standalone library that could
+be linked into a compiled .sno -> .bin output.
+
+### 13.5 Deferred: FORTRAN compiler in SNOBOL4
+
+A FORTRAN compiler written in SNOBOL4 is a stated future direction
+but is not on the active critical path. Four interpreter features are
+prerequisites for a non-trivial FORTRAN compiler:
+
+1. Pattern-replacement assignment (`S pat = repl`) -- the canonical
+   SNOBOL4 idiom for source rewriting.
+2. `TABLE` (associative arrays) -- to build a symbol table of
+   FORTRAN identifiers without parallel-array workarounds.
+3. Multi-arg user functions -- so a code generator can write
+   `EMIT(opcode, operand)` cleanly.
+4. Higher SNOBOL4-program-side limits (the FORTRAN compiler itself
+   would currently get only 64 named variables and 256 statements
+   to work with).
+
+These are not blocking the runtime-split saga, and the runtime-split
+saga is not blocking them. Pick them up when the time comes.
 
 Working examples (just demos):
 - hello.sno -- OUTPUT = 'Hello, World!'
