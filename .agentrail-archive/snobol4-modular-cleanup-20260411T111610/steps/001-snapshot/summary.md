@@ -1,0 +1,1 @@
+Three commits: docs/plan.md update with sections 12+13 documenting modular state and cleanup plan; agentrail-archive of three reconstructed sagas (fizzbuzz/demos/cleanup); snapshot of three dead interpreter files (snobol4.plsw, sno_engine.plsw, snolib.plsw) tagged fallback-pre-cleanup.

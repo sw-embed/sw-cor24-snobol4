@@ -1,0 +1,12 @@
+number = 4
+slug = "init-runtime-split"
+status = "completed"
+description = "Initialize the snobol4-runtime-split saga from docs/plan.md section 13.4."
+role = "production"
+context_files = []
+created_at = "2026-04-11T11:16:07"
+completed_at = "2026-04-11T11:16:07"
+commits = [
+    "74caf800feaed95707dc8d210fd9df093d38194a",
+    "db7492b48557e41bfa9e6cf407d744107267b675",
+]

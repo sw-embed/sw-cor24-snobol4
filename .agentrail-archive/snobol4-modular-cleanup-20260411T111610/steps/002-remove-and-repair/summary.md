@@ -1,0 +1,1 @@
+Phase A removed three dead .plsw files via git rm (4064 lines deleted, preserved in fallback-pre-cleanup tag). Phase B replaced just build with bash scripts/build-modular.sh, added just rebuild. just demos and just test pass after each commit.

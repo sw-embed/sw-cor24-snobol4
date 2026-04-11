@@ -1,0 +1,1 @@
+Phase E: agentrail init created saga.toml + plan.md for snobol4-runtime-split with the 5-step sketch (snolib, sno-engine, snobol4-main, linker, validate). Pre-commit safety net via agentrail snapshot. Followed by db7492b which made an initial retroactive cleanup-claim attempt with short hashes that did not audit-match; this saga is the corrected re-do.

@@ -1,0 +1,1 @@
+Phase C: CLAUDE.md gained CRITICAL modular section, .gitignore blocked dead filenames, language-reference.md got refreshed limits + explicit 4-module list, tagged v0-modular-stable. Phase D addendum: CLAUDE.md gained agentrail safety rules extracted from agentrail gen-agents-doc; AGENTS.example.md committed.

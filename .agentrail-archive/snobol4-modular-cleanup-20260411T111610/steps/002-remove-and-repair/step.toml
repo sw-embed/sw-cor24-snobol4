@@ -1,0 +1,13 @@
+number = 2
+slug = "remove-and-repair"
+status = "completed"
+description = "git rm the three dead .plsw files. Repair just build target. Add just rebuild."
+role = "production"
+context_files = []
+created_at = "2026-04-11T11:15:46"
+completed_at = "2026-04-11T11:15:46"
+commits = [
+    "54ec884bc2f4cf749ebe4cc6c53abbc92be5c3ef",
+    "fbfe79688adb32338637102671a382cc9c7b80fd",
+    "db7492b48557e41bfa9e6cf407d744107267b675",
+]
