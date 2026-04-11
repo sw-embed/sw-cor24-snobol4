@@ -302,7 +302,7 @@ LOWER_STMT: PROC(S INT);
                         WHEN (EPT = OE_ARRAY)
                             CALL AM_EMIT_OP(OP_MAKE_ARRAY);
                     END;
-                    IF (N_PARTS > 0 AND EPT != OE_ARRREF AND EPT != OE_ARRAY AND EPT != OE_FNCALL) THEN
+                    IF (N_PARTS > 0 AND EPT != OE_ARRAY AND EPT != OE_FNCALL) THEN
                         CALL AM_EMIT_OP(OP_CONCAT);
                     N_PARTS = N_PARTS + 1;
                     EPI = EPI + 1;
@@ -1033,7 +1033,7 @@ EXEC_PAT_MATCH_LEGACY: PROC;
         MLEN = EXEC_SPAN(ADDR(SB) + SUBJ_OFF, SUBJ_LEN, TRYPOS, ADDR(SB) + PAT_OFF);
         IF (MLEN > 0) THEN DO;
             MATCHED = 1;
-            IF (CIDX != 0 - 1 AND CIDX < 32) THEN DO;
+            IF (CIDX != 0 - 1 AND CIDX < SYMMAX) THEN DO;
                 DCL DST INT;
                 DST = SBPOS;
                 I = 0;
@@ -1091,7 +1091,7 @@ EXEC_PAT_MATCH2: PROC;
 
             SELECT;
                 WHEN (PT = PK_CAP) DO;
-                    IF (PV >= 0 AND PV < 16) THEN DO;
+                    IF (PV >= 0 AND PV < SYMMAX) THEN DO;
                         DCL DST2 INT;
                         DCL J INT;
                         DCL SP3 PTR;
