@@ -1,2 +1,11 @@
 build/
 build/.build-deps
+
+# Blocked monolith / alternate-split experiments. The interpreter is
+# modular -- src/sno_main.plsw + sno_util.plsw + sno_lex.plsw +
+# sno_exec.plsw. These three filenames were used by abandoned drafts
+# preserved in the fallback-pre-cleanup tag, and must not return to
+# the working tree. See CLAUDE.md and docs/plan.md section 13.
+src/snobol4.plsw
+src/sno_engine.plsw
+src/snolib.plsw

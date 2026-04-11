@@ -2,6 +2,35 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## CRITICAL: The interpreter is modular -- do NOT create monolithic sources
+
+The SNOBOL4 interpreter is built from four PL/SW modules:
+
+```
+src/sno_main.plsw   -- driver: MAIN, calls READ_SRC / PARSE / LOWER_ALL / AM_EXEC
+src/sno_util.plsw   -- I/O helpers, READ_SRC, READ_INPUT
+src/sno_lex.plsw    -- lexer + parser + AM emit
+src/sno_exec.plsw   -- lowering + executor + pattern matching + builtins
+```
+
+Plus shared globals in `include/snoglob.msw` and runtime headers in
+`include/{descr,heap,am,pat}.msw`. Built by `scripts/build-modular.sh`
+into `build/snobol4.bin`. Invoke via `just build` (or `just rebuild`
+to bypass the dep cache).
+
+**Do not create `src/snobol4.plsw`, `src/sno_engine.plsw`, or
+`src/snolib.plsw`.** Those names belonged to abandoned single-file
+or alternate-split experiments and are blocked in `.gitignore`. The
+abandoned files are preserved in the `fallback-pre-cleanup` git tag
+for cherry-picking, but they must not return to the working tree.
+
+If you want to refactor the module split, that is the
+`snobol4-runtime-split` saga (see `docs/plan.md` section 13.4) and
+must happen as a deliberate saga -- never as a silent monolith
+revival. Edit the four files above for any feature, fix, or test
+work. The whole demo suite, the tutorials, the TTY runner, and the
+FORTRAN compiler project (when it arrives) all depend on this layout.
+
 ## CRITICAL: AgentRail Session Protocol (MUST follow exactly)
 
 This project uses AgentRail. Every session follows this exact sequence:

@@ -6,10 +6,20 @@ statement forms, builtins, pattern primitives, and limits the
 interpreter currently supports. Use it as a cheat sheet when writing
 or porting `.sno` programs.
 
-The interpreter source lives in `src/sno_*.plsw`; opcode definitions
-are in `include/am.msw`; shared globals and limits in
-`include/snoglob.msw`. When you suspect something isn't supported,
-grep those files first.
+The interpreter is built from four PL/SW modules:
+
+- `src/sno_main.plsw` -- driver: `MAIN`, calls `READ_SRC` /
+  `PARSE` / `LOWER_ALL` / `AM_EXEC`.
+- `src/sno_util.plsw` -- I/O helpers: `READ_SRC`, `READ_INPUT`.
+- `src/sno_lex.plsw` -- lexer + parser + AM emit.
+- `src/sno_exec.plsw` -- lowering + executor + pattern matching +
+  builtins.
+
+Plus opcode definitions in `include/am.msw`, shared globals and
+limits in `include/snoglob.msw`, and runtime headers in
+`include/{descr,heap,pat}.msw`. Built by `scripts/build-modular.sh`
+into `build/snobol4.bin`. When you suspect something isn't supported,
+grep `src/sno_*.plsw` and `include/*.msw` first.
 
 ## Lexical rules
 
@@ -49,9 +59,9 @@ LBL     VAR = expr
 - `REMDR(A, B)` -- integer modulo (the only multi-arg arithmetic
   builtin)
 - `INPUT` -- reads one line; fails (`:F`) at end of input
-- A concatenation: `'P: ' S` -- juxtaposed parts (max 4 parts per
-  statement). Concat operands may mix strings and ints; ints are
-  rendered as decimal.
+- A concatenation: `'P: ' S` -- juxtaposed parts (max 8 parts per
+  statement, same `EPSLOTS` budget as pattern parts). Concat operands
+  may mix strings and ints; ints are rendered as decimal.
 - `ARRAY('1:N')` -- allocate an array with integer indices 1..N
 - An array element: `NAMES<I>` or `NAMES<3>`
 - A user function call: `FOO(X)` (after `DEFINE('FOO(X)')`)
@@ -232,19 +242,21 @@ runtime-allocated.
 | Source buffer (`SRC`)       | 8192 B    | one program file               |
 | String literal length       | 127       | per literal                    |
 | Identifier length           | 7         | effective; longer = collision  |
-| Statements (`STMAX`)        | 128       | each comment line uses 1 slot  |
-| Labels (`LBLMAX`)           | 32        |                                |
-| Symbol table (`SYMMAX`)     | 24        | named variables in scope       |
+| Statements (`STMAX`)        | 256       | each comment line uses 1 slot  |
+| Labels (`LBL_MAX`)          | 64        |                                |
+| Symbol table (`SYMMAX`)     | 64        | named variables in scope       |
 | String buffer (`SB`)        | 4096 B    | grows during execution         |
 | Token buffer (`TB`)         | 128       | per-token scratch              |
-| Eval stack (`ESTK`)         | 128       | expression evaluation          |
-| Pattern parts per stmt      | 8         | `PP_TYP/PP_VAL` slots          |
-| Concat parts per stmt       | 4         | `EP_TYP/EP_VAL` slots          |
+| Eval stack (`ESTK_DEPTH`)   | 256       | expression evaluation          |
+| AM bytecode (`AM_CODE_SIZE`)| 4096 B    | compiled code buffer           |
+| Pattern parts per stmt      | 8         | `PP_TYP/PP_VAL` slots (`EPSLOTS`) |
+| Concat parts per stmt       | 8         | `EP_TYP/EP_VAL` slots (`EPSLOTS`) |
 | User functions (`FN_*`)     | 4         | total `DEFINE`'d               |
 | Call stack (`CSTK_*`)       | 16        | recursion depth                |
-| Arrays (`ARR_DATA`)         | 200 elem  | total across all `ARRAY()`     |
-| Pattern stack (`PSTK`)      | 16        | depth during one match         |
+| Arrays (`ARR_MAX`)          | 8         | total `ARRAY()` allocations    |
 | Array element capacity      | 50/array  | `ARR_DATA(arr_id*50 + idx)`    |
+| Array pool (`ARR_POOL`)     | 400       | `ARR_MAX * ARR_ELEMS`          |
+| Pattern stack (`PSTK`)      | 16        | depth during one match         |
 
 ## What's missing vs. classic SNOBOL4
 
