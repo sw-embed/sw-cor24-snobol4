@@ -368,7 +368,7 @@ PARSE: PROC;
         S_OETY(S) = OE_NONE;
         S_OEV1(S) = 0;
         S_OEOP(S) = 0;
-        S_OEV2(S) = 0;
+        S_OEV2(S) = 0 - 1;
         S_GTYP(S) = GT_NONE;
         S_GLBL(S) = 0 - 1;
         S_SPTR(S) = 0 - 1;
@@ -873,6 +873,22 @@ PARSE: PROC;
                                 IF (TT = TK_RPAREN) THEN CALL LEX;
                             END;
                         END;
+                        /* Check for BREAK(...) in expression */
+                        ELSE IF (TB(0) = 66 AND TB(1) = 82 AND TB(2) = 69 AND TB(3) = 65 AND TB(4) = 75 AND TB(5) = 0) THEN DO;
+                            CALL LEX;
+                            IF (TT = TK_LPAREN) THEN DO;
+                                CALL LEX;
+                                IF (TT = TK_STR) THEN DO;
+                                    IF (EPI < EPSLOTS) THEN DO;
+                                        EP_TYP(EPB + EPI) = OE_BREAK;
+                                        EP_VAL(EPB + EPI) = SBSAVE();
+                                        EPI = EPI + 1;
+                                    END;
+                                    CALL LEX;
+                                END;
+                                IF (TT = TK_RPAREN) THEN CALL LEX;
+                            END;
+                        END;
                         ELSE IF (TB(0) = 65 AND TB(1) = 82 AND TB(2) = 82 AND TB(3) = 65 AND TB(4) = 89 AND TB(5) = 0) THEN DO;
                             /* ARRAY('1:50') */
                             CALL LEX;
@@ -985,7 +1001,7 @@ PARSE: PROC;
                 IF (EPI = 1) THEN DO;
                     S_OETY(S) = EP_TYP(EPB);
                     S_OEV1(S) = EP_VAL(EPB);
-                    IF (S_OETY(S) = OE_STR OR S_OETY(S) = OE_SPAN) THEN
+                    IF (S_OETY(S) = OE_STR OR S_OETY(S) = OE_SPAN OR S_OETY(S) = OE_BREAK) THEN
                         S_SPTR(S) = EP_VAL(EPB);
                 END;
                 ELSE IF (EPI = 2 AND S_OEOP(S) != 0) THEN DO;

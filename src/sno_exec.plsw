@@ -368,8 +368,11 @@ LOWER_STMT: PROC(S INT);
             ELSE
                 CALL AM_EMIT_OP(OP_SUB);
         END;
-        ELSE IF (S_OETY(S) = OE_SPAN) THEN DO;
-            CALL AM_EMIT_OP(OP_MAKE_SPAN);
+        ELSE IF (S_OETY(S) = OE_SPAN OR S_OETY(S) = OE_BREAK) THEN DO;
+            IF (S_OETY(S) = OE_SPAN) THEN
+                CALL AM_EMIT_OP(OP_MAKE_SPAN);
+            ELSE
+                CALL AM_EMIT_OP(OP_MAKE_BREAK);
             CALL AM_EMIT_WORD(S_SPTR(S));
         END;
         ELSE IF (S_EPCNT(S) = 1) THEN DO;
@@ -378,6 +381,10 @@ LOWER_STMT: PROC(S INT);
             EPV = EP_VAL(EPB);
             IF (EPT = OE_SPAN) THEN DO;
                 CALL AM_EMIT_OP(OP_MAKE_SPAN);
+                CALL AM_EMIT_WORD(EPV);
+            END;
+            ELSE IF (EPT = OE_BREAK) THEN DO;
+                CALL AM_EMIT_OP(OP_MAKE_BREAK);
                 CALL AM_EMIT_WORD(EPV);
             END;
             ELSE IF (EPT = OE_ARRAY) THEN DO;
@@ -550,8 +557,8 @@ LOWER_STMT: PROC(S INT);
                     CALL AM_EMIT_WORD(PPV);
                 END;
                 ELSE IF (PPT = OE_IDENT) THEN DO;
-                    /* Load pattern var value */
-                    CALL AM_EMIT_OP(OP_LOAD_VAR);
+                    /* Load pattern variable onto pattern stack */
+                    CALL AM_EMIT_OP(OP_PAT_VAR);
                     CALL AM_EMIT_BYTE(PPV);
                 END;
                 ELSE IF (PPT = OE_CAP) THEN DO;
@@ -725,6 +732,9 @@ AM_EXEC: PROC;
             ESP = ESP - 1;
             VARS(IDX) = ESTK(ESP);
             VTYP(IDX) = ETYP(ESP);
+            /* Clear pattern stack after storing pattern values
+             * to prevent stale PSTK entries from MAKE_SPAN/BREAK */
+            PSTOP = 0;
         END;
         ELSE IF (OP = OP_ADD) THEN DO;
             ESP = ESP - 1;
@@ -955,10 +965,11 @@ AM_EXEC: PROC;
         ELSE IF (OP = OP_MAKE_SPAN) THEN DO;
             V = AM_CODE(PC + 2) * 65536 + AM_CODE(PC + 1) * 256 + AM_CODE(PC);
             PC = PC + 3;
-            /* Push to eval stack (for DIGITS = SPAN assignment) */
+            /* Push to eval stack (for SP = SPAN('...') assignment) */
             ESTK(ESP) = V;
+            ETYP(ESP) = VTYP_PAT_SPAN;
             ESP = ESP + 1;
-            LAST_PUSH_TYP = VTYP_PAT;
+            LAST_PUSH_TYP = VTYP_PAT_SPAN;
             /* Also push to pattern stack (for compound match) */
             PSTK(PSTOP) = V;
             PSTYP(PSTOP) = PK_SPAN;
@@ -1028,11 +1039,15 @@ AM_EXEC: PROC;
         ELSE IF (OP = OP_MAKE_BREAK) THEN DO;
             V = AM_CODE(PC + 2) * 65536 + AM_CODE(PC + 1) * 256 + AM_CODE(PC);
             PC = PC + 3;
+            /* Push to eval stack (for BK = BREAK('...') assignment) */
+            ESTK(ESP) = V;
+            ETYP(ESP) = VTYP_PAT_BREAK;
+            ESP = ESP + 1;
+            LAST_PUSH_TYP = VTYP_PAT_BREAK;
             /* Push (kind=BREAK, class_offset=V) onto pattern stack */
             PSTK(PSTOP) = V;
             PSTYP(PSTOP) = PK_BREAK;
             PSTOP = PSTOP + 1;
-            LAST_PUSH_TYP = VTYP_PAT;
         END;
         ELSE IF (OP = OP_MAKE_REM) THEN DO;
             PSTK(PSTOP) = 0;
@@ -1058,6 +1073,19 @@ AM_EXEC: PROC;
             PC = PC + 3;
             PSTK(PSTOP) = V;
             PSTYP(PSTOP) = PK_LIT;
+            PSTOP = PSTOP + 1;
+        END;
+        ELSE IF (OP = OP_PAT_VAR) THEN DO;
+            /* Push a pattern variable's value onto pattern stack */
+            IDX = AM_CODE(PC);
+            PC = PC + 1;
+            PSTK(PSTOP) = VARS(IDX);
+            IF (VTYP(IDX) = VTYP_PAT_SPAN) THEN
+                PSTYP(PSTOP) = PK_SPAN;
+            ELSE IF (VTYP(IDX) = VTYP_PAT_BREAK) THEN
+                PSTYP(PSTOP) = PK_BREAK;
+            ELSE
+                PSTYP(PSTOP) = PK_LIT;
             PSTOP = PSTOP + 1;
         END;
         ELSE IF (OP = OP_PAT_CONCAT) THEN DO;
