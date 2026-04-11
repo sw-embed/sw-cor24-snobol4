@@ -67,3 +67,101 @@ Any changes after complete are untracked and invisible to the next session.
 If you see more work to do, it belongs in the NEXT step, not this session.
 
 Do NOT skip any of these steps. The next session depends on your trajectory recording.
+
+## CRITICAL: Rules for .agentrail/ (do NOT violate)
+
+The `.agentrail/` and `.agentrail-archive/` directories are the durable
+record of saga and step history. Treat them like source code.
+
+### Always track them in git
+
+- `.agentrail/` and `.agentrail-archive/` **must** be tracked in git.
+  Never add them to `.gitignore`. If you inherit a repo where they are
+  ignored, that is a bug — unignore them and commit existing contents
+  first.
+- Commit step artifacts as each step completes, in the same commit as
+  your code changes.
+
+### Never edit or delete files under .agentrail/ by hand
+
+- **Do not** `rm`, `rm -rf`, `mv`, or use `Write` / `Edit` on any file
+  under `.agentrail/` or `.agentrail-archive/`.
+- Always go through agentrail subcommands: `init`, `add`, `begin`,
+  `complete`, `abort`, `archive`, `plan`, `audit`, `snapshot`.
+- Direct deletion of **untracked** step files is **unrecoverable** —
+  git reflog cannot restore blobs that were never staged. This has
+  happened before in this repo and lost saga history (see docs/plan.md
+  section 13.1). The reconstruction relied on a fortunate `git stash`
+  catching part of the deleted state — there is no general recovery.
+
+### Commit order matters
+
+Work → `git add` → `git commit` → `agentrail complete`. In that order.
+Completing before committing means the step's `commits` field is empty
+and `agentrail audit` can't link the step back to its commit.
+
+## Safety net: agentrail snapshot
+
+Before any risky operation that touches `.agentrail/` (a big agent run,
+a rebase, cleaning up untracked files, switching branches with
+uncommitted saga state), run:
+
+```bash
+agentrail snapshot
+```
+
+This creates a git commit under `refs/agentrail/snapshots/<timestamp>`
+containing a copy of `.agentrail/` and `.agentrail-archive/`. It uses a
+throwaway temp index, so your real `.git/index` is never touched. The
+snapshot survives `git gc` because a named ref holds it.
+
+Restore from a snapshot with a normal git command:
+
+```bash
+git restore --source=refs/agentrail/snapshots/<timestamp> \
+    -- .agentrail .agentrail-archive
+```
+
+List existing snapshots with `agentrail snapshot --list`.
+
+**Run `agentrail snapshot` proactively** when you create new saga or
+step files but have not yet committed them. It is cheap, leaves no
+working-tree side effects, and is the only thing that protects
+not-yet-staged saga state from a stray `rm` or `git clean`. This is a
+safety net, not a substitute for normal commits — commit your saga
+files in the same commit as your code changes, and use snapshot as
+belt-and-suspenders insurance for the window between creating and
+committing them.
+
+## Recovering from gaps: agentrail audit
+
+If saga history and git history get out of sync — commits without a
+matching `agentrail complete`, or steps whose recorded commit isn't in
+the current history, or a fresh repo where you want a retroactive saga
+on top of existing commits — use the audit command.
+
+```bash
+agentrail audit                     # human-readable markdown report
+agentrail audit --emit-commands     # shell script of suggested add lines
+agentrail audit --since <revision>  # limit to commits after a revision
+```
+
+The report has four sections: matched commits, orphan commits (no
+step), orphan steps (no commit), and uncommitted working-tree changes.
+With `--emit-commands` it prints a shell script of `agentrail add
+--commit <hash>` lines for each orphan, with slugs and prompts seeded
+from commit subjects. **Review and edit the script before running** —
+the seeded slugs and prompts always need human judgment.
+
+For retroactive bootstrapping of an old repo:
+
+```bash
+agentrail audit --emit-commands > rebuild.sh
+# Edit rebuild.sh: reword slugs and prompts, group commits into coherent steps
+sh rebuild.sh
+```
+
+The script begins with `agentrail init --retroactive --name ...` when
+no saga exists and adds one step per historical commit. Retroactive
+sagas are flagged in `saga.toml` so future audits know those commits
+are claimed.
