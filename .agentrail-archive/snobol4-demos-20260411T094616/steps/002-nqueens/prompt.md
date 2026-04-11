@@ -1,0 +1,1 @@
+Write demos/nqueens.sno (N-queens for small board) and fix interpreter bugs blocking it.

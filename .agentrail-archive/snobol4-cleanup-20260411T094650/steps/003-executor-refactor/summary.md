@@ -1,0 +1,1 @@
+Executor refactored to SELECT/WHEN dispatch with grouped handler procedures; behavior unchanged.

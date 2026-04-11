@@ -1,0 +1,1 @@
+Write demos/eliza.sno (psychotherapist) plus interpreter extensions: TABLE/pattern alternation/string scanning, interactive INPUT via UART RX, lifted string-literal cap, banner, case-insensitive reflection, response variation, pronoun-swap REFLECT, history recall, table-size bumps.

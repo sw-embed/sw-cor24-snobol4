@@ -1,0 +1,14 @@
+number = 1
+slug = "demos"
+status = "completed"
+description = "Demo backlog doc (planned-demos.md) plus first two demo batches: palindrome, ..."
+role = "production"
+context_files = []
+created_at = "2026-04-11T09:46:39"
+completed_at = "2026-04-11T09:46:39"
+commits = [
+    "78c6f0400df2e8063c079c34ab6d7d81bd4d5678",
+    "679d910e43c79cc4c06c5eeb46d8dccbb719cfe4",
+    "3b28c6d1d9fc366bb25f86d8c072592d28cc2ee8",
+    "6ad17199455c7d61b0b35a6d50784b34494f520f",
+]

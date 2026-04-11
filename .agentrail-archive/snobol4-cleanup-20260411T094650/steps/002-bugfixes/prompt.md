@@ -1,0 +1,1 @@
+Issues #1-#3: SIZE/SUBSTR/CHAR builtins and silent memory corruption fixes. Issue #4: SPAN/BREAK pattern variables corrupting REM matching with arrays.

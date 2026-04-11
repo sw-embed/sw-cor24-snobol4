@@ -1,0 +1,1 @@
+Polish FizzBuzz output formatting, halt workaround handling, and add detailed README

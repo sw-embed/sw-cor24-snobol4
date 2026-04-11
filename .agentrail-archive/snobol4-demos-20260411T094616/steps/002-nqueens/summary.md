@@ -1,0 +1,1 @@
+demos/nqueens.sno runs 4-queens; fixed interpreter bugs blocking it.

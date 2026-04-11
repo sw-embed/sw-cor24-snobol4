@@ -1,0 +1,1 @@
+Retroactively reconstructed: FizzBuzz output cleanup, inline ASM halt workaround later removed when plsw#31 landed, and detailed README. Folded into the snobol4-fizzbuzz saga during audit reconstruction.

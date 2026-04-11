@@ -1,0 +1,1 @@
+demos/sieve.sno computes primes up to 50 via sieve of eratosthenes; bumped interpreter limits to fit.

@@ -1,0 +1,1 @@
+Issues #1-#4 fixed: SIZE/SUBSTR/CHAR builtins added, silent memory corruption resolved, SPAN/BREAK pattern variable corruption of REM matching with arrays fixed.

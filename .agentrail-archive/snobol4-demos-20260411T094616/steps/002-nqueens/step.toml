@@ -1,0 +1,12 @@
+number = 2
+slug = "nqueens"
+status = "completed"
+description = "Write demos/nqueens.sno (N-queens for small board) and fix interpreter bugs b..."
+role = "production"
+context_files = []
+created_at = "2026-04-11T09:45:59"
+completed_at = "2026-04-11T09:45:59"
+commits = [
+    "77d19c4529d814ee79a32ef62c01f9fe8d3a9530",
+    "6ad17199455c7d61b0b35a6d50784b34494f520f",
+]
