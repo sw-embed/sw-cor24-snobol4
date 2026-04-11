@@ -106,32 +106,26 @@ LOWER_STMT: PROC(S INT);
     END;
 
     IF (S_TYP(S) = ST_EMPTY) THEN DO;
-        IF (S_GTYP(S) = GT_NONE) THEN DO;
-            CALL AM_EMIT_OP(OP_NOP);
-        END;
-        ELSE IF (S_GTYP(S) = GT_UNCOND) THEN DO;
-            CALL AM_EMIT_OP(OP_BR);
-            S_GOTO_OFF(S) = AM_PC;
-            CALL AM_EMIT_WORD(0);
-        END;
-        ELSE IF (S_GTYP(S) = GT_SUCC) THEN DO;
-            CALL AM_EMIT_OP(OP_BR_SUCC);
-            S_GOTO_OFF(S) = AM_PC;
-            CALL AM_EMIT_WORD(0);
-        END;
-        ELSE IF (S_GTYP(S) = GT_FAIL) THEN DO;
-            CALL AM_EMIT_OP(OP_BR_FAIL);
-            S_GOTO_OFF(S) = AM_PC;
-            CALL AM_EMIT_WORD(0);
-        END;
-        ELSE IF (S_GTYP(S) = GT_RET) THEN DO;
-            CALL AM_EMIT_OP(OP_RET);
-        END;
-        ELSE IF (S_GTYP(S) = GT_FRET) THEN DO;
-            CALL AM_EMIT_OP(OP_FRET);
-        END;
-        ELSE DO;
-            CALL AM_EMIT_OP(OP_NOP);
+        SELECT;
+            WHEN (S_GTYP(S) = GT_NONE)   CALL AM_EMIT_OP(OP_NOP);
+            WHEN (S_GTYP(S) = GT_UNCOND) DO;
+                CALL AM_EMIT_OP(OP_BR);
+                S_GOTO_OFF(S) = AM_PC;
+                CALL AM_EMIT_WORD(0);
+            END;
+            WHEN (S_GTYP(S) = GT_SUCC) DO;
+                CALL AM_EMIT_OP(OP_BR_SUCC);
+                S_GOTO_OFF(S) = AM_PC;
+                CALL AM_EMIT_WORD(0);
+            END;
+            WHEN (S_GTYP(S) = GT_FAIL) DO;
+                CALL AM_EMIT_OP(OP_BR_FAIL);
+                S_GOTO_OFF(S) = AM_PC;
+                CALL AM_EMIT_WORD(0);
+            END;
+            WHEN (S_GTYP(S) = GT_RET)    CALL AM_EMIT_OP(OP_RET);
+            WHEN (S_GTYP(S) = GT_FRET)   CALL AM_EMIT_OP(OP_FRET);
+            OTHERWISE        CALL AM_EMIT_OP(OP_NOP);
         END;
         RETURN;
     END;
@@ -236,14 +230,10 @@ LOWER_STMT: PROC(S INT);
                     EPI = EPI + 1;
                 END;
                 EPT = EP_TYP(EPB + BLT_IDX);
-                IF (EPT = OE_SIZE) THEN DO;
-                    CALL AM_EMIT_OP(OP_SIZE);
-                END;
-                ELSE IF (EPT = OE_SUBSTR) THEN DO;
-                    CALL AM_EMIT_OP(OP_SUBSTR);
-                END;
-                ELSE IF (EPT = OE_CHAR) THEN DO;
-                    CALL AM_EMIT_OP(OP_CHAR);
+                SELECT;
+                    WHEN (EPT = OE_SIZE)   CALL AM_EMIT_OP(OP_SIZE);
+                    WHEN (EPT = OE_SUBSTR) CALL AM_EMIT_OP(OP_SUBSTR);
+                    WHEN (EPT = OE_CHAR)   CALL AM_EMIT_OP(OP_CHAR);
                 END;
                 IF (BLT_ARG > 0) THEN
                     CALL AM_EMIT_OP(OP_CONCAT);
@@ -254,62 +244,63 @@ LOWER_STMT: PROC(S INT);
                 DO WHILE (EPI < S_EPCNT(S));
                     EPT = EP_TYP(EPB + EPI);
                     EPV = EP_VAL(EPB + EPI);
-                    IF (EPT = OE_INT) THEN DO;
-                        CALL AM_EMIT_OP(OP_LOAD_INT);
-                        CALL AM_EMIT_WORD(EPV);
-                    END;
-                    ELSE IF (EPT = OE_STR) THEN DO;
-                        CALL AM_EMIT_OP(OP_LOAD_STR);
-                        CALL AM_EMIT_WORD(EPV);
-                    END;
-                    ELSE IF (EPT = OE_IDENT) THEN DO;
-                        IF (EPV = INP_SYM AND INP_SYM >= 0) THEN
-                            CALL AM_EMIT_OP(OP_READ_INPUT);
-                        ELSE DO;
-                            CALL AM_EMIT_OP(OP_LOAD_VAR);
+                    SELECT;
+                        WHEN (EPT = OE_INT) DO;
+                            CALL AM_EMIT_OP(OP_LOAD_INT);
+                            CALL AM_EMIT_WORD(EPV);
+                        END;
+                        WHEN (EPT = OE_STR) DO;
+                            CALL AM_EMIT_OP(OP_LOAD_STR);
+                            CALL AM_EMIT_WORD(EPV);
+                        END;
+                        WHEN (EPT = OE_IDENT) DO;
+                            IF (EPV = INP_SYM AND INP_SYM >= 0) THEN
+                                CALL AM_EMIT_OP(OP_READ_INPUT);
+                            ELSE DO;
+                                CALL AM_EMIT_OP(OP_LOAD_VAR);
+                                CALL AM_EMIT_BYTE(EPV);
+                            END;
+                        END;
+                        WHEN (EPT = OE_ARRREF) DO;
+                            DCL APT2 INT;
+                            DCL APV2 INT;
+                            EPI = EPI + 1;
+                            APT2 = EP_TYP(EPB + EPI);
+                            APV2 = EP_VAL(EPB + EPI);
+                            IF (APT2 = OE_IDENT) THEN DO;
+                                CALL AM_EMIT_OP(OP_LOAD_VAR);
+                                CALL AM_EMIT_BYTE(APV2);
+                            END;
+                            ELSE DO;
+                                CALL AM_EMIT_OP(OP_LOAD_INT);
+                                CALL AM_EMIT_WORD(APV2);
+                            END;
+                            CALL AM_EMIT_OP(OP_ARR_LOAD);
                             CALL AM_EMIT_BYTE(EPV);
                         END;
-                    END;
-                    ELSE IF (EPT = OE_ARRREF) THEN DO;
-                        DCL APT2 INT;
-                        DCL APV2 INT;
-                        EPI = EPI + 1;
-                        APT2 = EP_TYP(EPB + EPI);
-                        APV2 = EP_VAL(EPB + EPI);
-                        IF (APT2 = OE_IDENT) THEN DO;
-                            CALL AM_EMIT_OP(OP_LOAD_VAR);
-                            CALL AM_EMIT_BYTE(APV2);
+                        WHEN (EPT = OE_FNCALL) DO;
+                            DCL APT INT;
+                            DCL APV INT;
+                            EPI = EPI + 1;
+                            APT = EP_TYP(EPB + EPI);
+                            APV = EP_VAL(EPB + EPI);
+                            IF (APT = OE_IDENT) THEN DO;
+                                CALL AM_EMIT_OP(OP_LOAD_VAR);
+                                CALL AM_EMIT_BYTE(APV);
+                            END;
+                            ELSE IF (APT = OE_STR) THEN DO;
+                                CALL AM_EMIT_OP(OP_LOAD_STR);
+                                CALL AM_EMIT_WORD(APV);
+                            END;
+                            ELSE DO;
+                                CALL AM_EMIT_OP(OP_LOAD_INT);
+                                CALL AM_EMIT_WORD(APV);
+                            END;
+                            CALL AM_EMIT_OP(OP_CALL);
+                            CALL AM_EMIT_BYTE(EPV);
                         END;
-                        ELSE DO;
-                            CALL AM_EMIT_OP(OP_LOAD_INT);
-                            CALL AM_EMIT_WORD(APV2);
-                        END;
-                        CALL AM_EMIT_OP(OP_ARR_LOAD);
-                        CALL AM_EMIT_BYTE(EPV);
-                    END;
-                    ELSE IF (EPT = OE_FNCALL) THEN DO;
-                        DCL APT INT;
-                        DCL APV INT;
-                        EPI = EPI + 1;
-                        APT = EP_TYP(EPB + EPI);
-                        APV = EP_VAL(EPB + EPI);
-                        IF (APT = OE_IDENT) THEN DO;
-                            CALL AM_EMIT_OP(OP_LOAD_VAR);
-                            CALL AM_EMIT_BYTE(APV);
-                        END;
-                        ELSE IF (APT = OE_STR) THEN DO;
-                            CALL AM_EMIT_OP(OP_LOAD_STR);
-                            CALL AM_EMIT_WORD(APV);
-                        END;
-                        ELSE DO;
-                            CALL AM_EMIT_OP(OP_LOAD_INT);
-                            CALL AM_EMIT_WORD(APV);
-                        END;
-                        CALL AM_EMIT_OP(OP_CALL);
-                        CALL AM_EMIT_BYTE(EPV);
-                    END;
-                    ELSE IF (EPT = OE_ARRAY) THEN DO;
-                        CALL AM_EMIT_OP(OP_MAKE_ARRAY);
+                        WHEN (EPT = OE_ARRAY)
+                            CALL AM_EMIT_OP(OP_MAKE_ARRAY);
                     END;
                     IF (N_PARTS > 0 AND EPT != OE_ARRREF AND EPT != OE_ARRAY AND EPT != OE_FNCALL) THEN
                         CALL AM_EMIT_OP(OP_CONCAT);
@@ -359,14 +350,12 @@ LOWER_STMT: PROC(S INT);
                 CALL AM_EMIT_WORD(EPV);
             END;
             /* Emit operator */
-            IF (S_OEOP(S) = TK_PLUS) THEN
-                CALL AM_EMIT_OP(OP_ADD);
-            ELSE IF (S_OEOP(S) = TK_STAR) THEN
-                CALL AM_EMIT_OP(OP_MUL);
-            ELSE IF (S_OEOP(S) = 100) THEN
-                CALL AM_EMIT_OP(OP_MOD);
-            ELSE
-                CALL AM_EMIT_OP(OP_SUB);
+            SELECT;
+                WHEN (S_OEOP(S) = TK_PLUS) CALL AM_EMIT_OP(OP_ADD);
+                WHEN (S_OEOP(S) = TK_STAR) CALL AM_EMIT_OP(OP_MUL);
+                WHEN (S_OEOP(S) = 100)     CALL AM_EMIT_OP(OP_MOD);
+                OTHERWISE      CALL AM_EMIT_OP(OP_SUB);
+            END;
         END;
         ELSE IF (S_OETY(S) = OE_SPAN OR S_OETY(S) = OE_BREAK) THEN DO;
             IF (S_OETY(S) = OE_SPAN) THEN
@@ -379,16 +368,17 @@ LOWER_STMT: PROC(S INT);
             EPB = S * EPSLOTS;
             EPT = EP_TYP(EPB);
             EPV = EP_VAL(EPB);
-            IF (EPT = OE_SPAN) THEN DO;
-                CALL AM_EMIT_OP(OP_MAKE_SPAN);
-                CALL AM_EMIT_WORD(EPV);
-            END;
-            ELSE IF (EPT = OE_BREAK) THEN DO;
-                CALL AM_EMIT_OP(OP_MAKE_BREAK);
-                CALL AM_EMIT_WORD(EPV);
-            END;
-            ELSE IF (EPT = OE_ARRAY) THEN DO;
-                CALL AM_EMIT_OP(OP_MAKE_ARRAY);
+            SELECT;
+                WHEN (EPT = OE_SPAN) DO;
+                    CALL AM_EMIT_OP(OP_MAKE_SPAN);
+                    CALL AM_EMIT_WORD(EPV);
+                END;
+                WHEN (EPT = OE_BREAK) DO;
+                    CALL AM_EMIT_OP(OP_MAKE_BREAK);
+                    CALL AM_EMIT_WORD(EPV);
+                END;
+                WHEN (EPT = OE_ARRAY)
+                    CALL AM_EMIT_OP(OP_MAKE_ARRAY);
             END;
         END;
         ELSE IF (S_EPCNT(S) = 2 AND EP_TYP(S * EPSLOTS) = OE_ARRREF) THEN DO;
@@ -446,27 +436,7 @@ LOWER_STMT: PROC(S INT);
         END;
 
         /* Goto */
-        IF (S_GTYP(S) = GT_UNCOND) THEN DO;
-            CALL AM_EMIT_OP(OP_BR);
-            S_GOTO_OFF(S) = AM_PC;
-            CALL AM_EMIT_WORD(0);
-        END;
-        ELSE IF (S_GTYP(S) = GT_SUCC) THEN DO;
-            CALL AM_EMIT_OP(OP_BR_SUCC);
-            S_GOTO_OFF(S) = AM_PC;
-            CALL AM_EMIT_WORD(0);
-        END;
-        ELSE IF (S_GTYP(S) = GT_FAIL) THEN DO;
-            CALL AM_EMIT_OP(OP_BR_FAIL);
-            S_GOTO_OFF(S) = AM_PC;
-            CALL AM_EMIT_WORD(0);
-        END;
-        ELSE IF (S_GTYP(S) = GT_RET) THEN DO;
-            CALL AM_EMIT_OP(OP_RET);
-        END;
-        ELSE IF (S_GTYP(S) = GT_FRET) THEN DO;
-            CALL AM_EMIT_OP(OP_FRET);
-        END;
+        CALL EMIT_GOTO(S);
     END;
 
     IF (S_TYP(S) = 4) THEN DO;
@@ -503,27 +473,12 @@ LOWER_STMT: PROC(S INT);
             CALL AM_EMIT_OP(34);
             CALL AM_EMIT_BYTE(BCODE);
         END;
-        IF (S_GTYP(S) = GT_UNCOND) THEN DO;
-            CALL AM_EMIT_OP(OP_BR);
-            S_GOTO_OFF(S) = AM_PC;
-            CALL AM_EMIT_WORD(0);
-        END;
-        ELSE IF (S_GTYP(S) = GT_SUCC) THEN DO;
-            CALL AM_EMIT_OP(OP_BR_SUCC);
-            S_GOTO_OFF(S) = AM_PC;
-            CALL AM_EMIT_WORD(0);
-        END;
-        ELSE IF (S_GTYP(S) = GT_FAIL) THEN DO;
-            CALL AM_EMIT_OP(OP_BR_FAIL);
-            S_GOTO_OFF(S) = AM_PC;
-            CALL AM_EMIT_WORD(0);
-        END;
+        CALL EMIT_GOTO(S);
     END;
 
     IF (S_TYP(S) = ST_MATCH) THEN DO;
         IF (S_PPCNT(S) > 0) THEN DO;
-            /* Compound pattern: emit build ops for each part,
-             * then PAT_MATCH2 <subj_var> */
+            /* Compound pattern: emit build ops for each part */
             DCL PPI2 INT;
             DCL PPB2 INT;
             DCL PPT INT;
@@ -533,37 +488,37 @@ LOWER_STMT: PROC(S INT);
             DO WHILE (PPI2 < S_PPCNT(S));
                 PPT = PP_TYP(PPB2 + PPI2);
                 PPV = PP_VAL(PPB2 + PPI2);
-                IF (PPT = OE_SPAN) THEN DO;
-                    CALL AM_EMIT_OP(OP_MAKE_SPAN);
-                    CALL AM_EMIT_WORD(PPV);
-                END;
-                ELSE IF (PPT = OE_BREAK) THEN DO;
-                    CALL AM_EMIT_OP(OP_MAKE_BREAK);
-                    CALL AM_EMIT_WORD(PPV);
-                END;
-                ELSE IF (PPT = OE_REM) THEN DO;
-                    CALL AM_EMIT_OP(OP_MAKE_REM);
-                END;
-                ELSE IF (PPT = OE_LEN) THEN DO;
-                    CALL AM_EMIT_OP(OP_MAKE_LEN);
-                    CALL AM_EMIT_WORD(PPV);
-                END;
-                ELSE IF (PPT = OE_LEN_VAR) THEN DO;
-                    CALL AM_EMIT_OP(OP_MAKE_LEN_VAR);
-                    CALL AM_EMIT_BYTE(PPV);
-                END;
-                ELSE IF (PPT = OE_STR) THEN DO;
-                    CALL AM_EMIT_OP(OP_MAKE_LIT_PAT);
-                    CALL AM_EMIT_WORD(PPV);
-                END;
-                ELSE IF (PPT = OE_IDENT) THEN DO;
-                    /* Load pattern variable onto pattern stack */
-                    CALL AM_EMIT_OP(OP_PAT_VAR);
-                    CALL AM_EMIT_BYTE(PPV);
-                END;
-                ELSE IF (PPT = OE_CAP) THEN DO;
-                    CALL AM_EMIT_OP(OP_PAT_CAP);
-                    CALL AM_EMIT_BYTE(PPV);
+                SELECT;
+                    WHEN (PPT = OE_SPAN) DO;
+                        CALL AM_EMIT_OP(OP_MAKE_SPAN);
+                        CALL AM_EMIT_WORD(PPV);
+                    END;
+                    WHEN (PPT = OE_BREAK) DO;
+                        CALL AM_EMIT_OP(OP_MAKE_BREAK);
+                        CALL AM_EMIT_WORD(PPV);
+                    END;
+                    WHEN (PPT = OE_REM)
+                        CALL AM_EMIT_OP(OP_MAKE_REM);
+                    WHEN (PPT = OE_LEN) DO;
+                        CALL AM_EMIT_OP(OP_MAKE_LEN);
+                        CALL AM_EMIT_WORD(PPV);
+                    END;
+                    WHEN (PPT = OE_LEN_VAR) DO;
+                        CALL AM_EMIT_OP(OP_MAKE_LEN_VAR);
+                        CALL AM_EMIT_BYTE(PPV);
+                    END;
+                    WHEN (PPT = OE_STR) DO;
+                        CALL AM_EMIT_OP(OP_MAKE_LIT_PAT);
+                        CALL AM_EMIT_WORD(PPV);
+                    END;
+                    WHEN (PPT = OE_IDENT) DO;
+                        CALL AM_EMIT_OP(OP_PAT_VAR);
+                        CALL AM_EMIT_BYTE(PPV);
+                    END;
+                    WHEN (PPT = OE_CAP) DO;
+                        CALL AM_EMIT_OP(OP_PAT_CAP);
+                        CALL AM_EMIT_BYTE(PPV);
+                    END;
                 END;
                 IF (PPI2 > 0 AND PPT != OE_CAP) THEN
                     CALL AM_EMIT_OP(OP_PAT_CONCAT);
@@ -581,21 +536,7 @@ LOWER_STMT: PROC(S INT);
         END;
 
         /* Goto after match */
-        IF (S_GTYP(S) = GT_UNCOND) THEN DO;
-            CALL AM_EMIT_OP(OP_BR);
-            S_GOTO_OFF(S) = AM_PC;
-            CALL AM_EMIT_WORD(0);
-        END;
-        ELSE IF (S_GTYP(S) = GT_SUCC) THEN DO;
-            CALL AM_EMIT_OP(OP_BR_SUCC);
-            S_GOTO_OFF(S) = AM_PC;
-            CALL AM_EMIT_WORD(0);
-        END;
-        ELSE IF (S_GTYP(S) = GT_FAIL) THEN DO;
-            CALL AM_EMIT_OP(OP_BR_FAIL);
-            S_GOTO_OFF(S) = AM_PC;
-            CALL AM_EMIT_WORD(0);
-        END;
+        CALL EMIT_GOTO(S);
     END;
 
     IF (S_TYP(S) = 5) THEN DO;
@@ -604,10 +545,32 @@ LOWER_STMT: PROC(S INT);
     END;
 
     IF (S_TYP(S) = 6) THEN DO;
-        /* REFLECT <var> -- pronoun-swap a string variable in place */
         CALL AM_EMIT_OP(OP_REFLECT);
         CALL AM_EMIT_BYTE(S_SUBJ(S));
         RETURN;
+    END;
+END;
+
+/* Emit goto branch for a statement */
+EMIT_GOTO: PROC(S INT);
+    SELECT;
+        WHEN (S_GTYP(S) = GT_UNCOND) DO;
+            CALL AM_EMIT_OP(OP_BR);
+            S_GOTO_OFF(S) = AM_PC;
+            CALL AM_EMIT_WORD(0);
+        END;
+        WHEN (S_GTYP(S) = GT_SUCC) DO;
+            CALL AM_EMIT_OP(OP_BR_SUCC);
+            S_GOTO_OFF(S) = AM_PC;
+            CALL AM_EMIT_WORD(0);
+        END;
+        WHEN (S_GTYP(S) = GT_FAIL) DO;
+            CALL AM_EMIT_OP(OP_BR_FAIL);
+            S_GOTO_OFF(S) = AM_PC;
+            CALL AM_EMIT_WORD(0);
+        END;
+        WHEN (S_GTYP(S) = GT_RET)  CALL AM_EMIT_OP(OP_RET);
+        WHEN (S_GTYP(S) = GT_FRET) CALL AM_EMIT_OP(OP_FRET);
     END;
 END;
 
@@ -642,10 +605,27 @@ LOWER_ALL: PROC;
 END;
 
 /* ================================================================
- * AM Executor
+ * AM Executor -- split into grouped handler procedures
+ *
+ * X_PC, X_OP, X_V, X_IDX are declared in snoglob.msw for cross-handler
+ * access. Each handler dispatches via SELECT/WHEN on X_OP.
 /* ================================================================ */
 
-/* ESTK, ESP, VARS, ARR_DATA, ARR_CNT, LAST_PUSH_TYP, NL declared in snoglob.msw */
+/* Read a 3-byte word from AM_CODE at X_PC, advance X_PC */
+AM_READ_WORD: PROC RETURNS(INT);
+    DCL W INT;
+    W = AM_CODE(X_PC + 2) * 65536 + AM_CODE(X_PC + 1) * 256 + AM_CODE(X_PC);
+    X_PC = X_PC + 3;
+    RETURN(W);
+END;
+
+/* Read a 1-byte value from AM_CODE at X_PC, advance X_PC */
+AM_READ_BYTE: PROC RETURNS(INT);
+    DCL B INT;
+    B = AM_CODE(X_PC);
+    X_PC = X_PC + 1;
+    RETURN(B);
+END;
 
 EXEC_SPAN: PROC(SUBJ PTR, SLEN2 INT, START INT, CLASS PTR) RETURNS(INT);
     DCL POS INT;
@@ -666,8 +646,6 @@ EXEC_SPAN: PROC(SUBJ PTR, SLEN2 INT, START INT, CLASS PTR) RETURNS(INT);
     RETURN(POS - START);
 END;
 
-/* EXEC_BREAK: match up to (not including) first char in class.
- * Returns number of chars consumed (0 is valid for BREAK). Fails if no class char found. */
 EXEC_BREAK: PROC(SUBJ PTR, SLEN2 INT, START INT, CLASS PTR) RETURNS(INT);
     DCL POS INT;
     DCL C INT;
@@ -680,63 +658,42 @@ EXEC_BREAK: PROC(SUBJ PTR, SLEN2 INT, START INT, CLASS PTR) RETURNS(INT);
             RETURN(POS - START);
         POS = POS + 1;
     END;
-    /* No class char found = failure */
     RETURN(0 - 1);
 END;
 
-/* Pattern stack for building compound patterns at runtime.
- * Each entry is an (kind, oper, next) triple stored as offsets. */
-/* PSTK, PSTYP, PSTOP, LAST_RESULT declared in snoglob.msw */
-
-AM_EXEC: PROC;
-    DCL PC INT;
-    DCL OP INT;
-    DCL V INT;
+/* --- Handler: stack and variable operations --- */
+EXEC_STACK: PROC;
     DCL V2 INT;
-    DCL IDX INT;
-
-    PC = 0;
-    ESP = 0;
-
-    DO WHILE (PC < AM_PC);
-        OP = AM_CODE(PC);
-        PC = PC + 1;
-
-        IF (OP = OP_LOAD_INT) THEN DO;
-            V = AM_CODE(PC + 2) * 65536 + AM_CODE(PC + 1) * 256 + AM_CODE(PC);
-            PC = PC + 3;
+    SELECT;
+        WHEN (X_OP = OP_LOAD_INT) DO;
+            X_V = AM_READ_WORD();
             ETYP(ESP) = VTYP_INT;
-            ESTK(ESP) = V;
+            ESTK(ESP) = X_V;
             ESP = ESP + 1;
             LAST_PUSH_TYP = VTYP_INT;
         END;
-        ELSE IF (OP = OP_LOAD_STR) THEN DO;
-            V = AM_CODE(PC + 2) * 65536 + AM_CODE(PC + 1) * 256 + AM_CODE(PC);
-            PC = PC + 3;
+        WHEN (X_OP = OP_LOAD_STR) DO;
+            X_V = AM_READ_WORD();
             ETYP(ESP) = VTYP_STR;
-            ESTK(ESP) = V;
+            ESTK(ESP) = X_V;
             ESP = ESP + 1;
             LAST_PUSH_TYP = VTYP_STR;
         END;
-        ELSE IF (OP = OP_LOAD_VAR) THEN DO;
-            IDX = AM_CODE(PC);
-            PC = PC + 1;
-            ETYP(ESP) = VTYP(IDX);
-            ESTK(ESP) = VARS(IDX);
+        WHEN (X_OP = OP_LOAD_VAR) DO;
+            X_IDX = AM_READ_BYTE();
+            ETYP(ESP) = VTYP(X_IDX);
+            ESTK(ESP) = VARS(X_IDX);
             ESP = ESP + 1;
-            LAST_PUSH_TYP = VTYP(IDX);
+            LAST_PUSH_TYP = VTYP(X_IDX);
         END;
-        ELSE IF (OP = OP_STORE_VAR) THEN DO;
-            IDX = AM_CODE(PC);
-            PC = PC + 1;
+        WHEN (X_OP = OP_STORE_VAR) DO;
+            X_IDX = AM_READ_BYTE();
             ESP = ESP - 1;
-            VARS(IDX) = ESTK(ESP);
-            VTYP(IDX) = ETYP(ESP);
-            /* Clear pattern stack after storing pattern values
-             * to prevent stale PSTK entries from MAKE_SPAN/BREAK */
+            VARS(X_IDX) = ESTK(ESP);
+            VTYP(X_IDX) = ETYP(ESP);
             PSTOP = 0;
         END;
-        ELSE IF (OP = OP_ADD) THEN DO;
+        WHEN (X_OP = OP_ADD) DO;
             ESP = ESP - 1;
             V2 = ESTK(ESP);
             ESP = ESP - 1;
@@ -745,7 +702,7 @@ AM_EXEC: PROC;
             ESP = ESP + 1;
             LAST_PUSH_TYP = VTYP_INT;
         END;
-        ELSE IF (OP = OP_SUB) THEN DO;
+        WHEN (X_OP = OP_SUB) DO;
             ESP = ESP - 1;
             V2 = ESTK(ESP);
             ESP = ESP - 1;
@@ -754,7 +711,7 @@ AM_EXEC: PROC;
             ESP = ESP + 1;
             LAST_PUSH_TYP = VTYP_INT;
         END;
-        ELSE IF (OP = OP_MUL) THEN DO;
+        WHEN (X_OP = OP_MUL) DO;
             ESP = ESP - 1;
             V2 = ESTK(ESP);
             ESP = ESP - 1;
@@ -763,7 +720,7 @@ AM_EXEC: PROC;
             ESP = ESP + 1;
             LAST_PUSH_TYP = VTYP_INT;
         END;
-        ELSE IF (OP = OP_MOD) THEN DO;
+        WHEN (X_OP = OP_MOD) DO;
             DCL MA INT;
             DCL MB INT;
             ESP = ESP - 1;
@@ -781,7 +738,108 @@ AM_EXEC: PROC;
             ESP = ESP + 1;
             LAST_PUSH_TYP = VTYP_INT;
         END;
-        ELSE IF (OP = OP_SIZE) THEN DO;
+        WHEN (X_OP = OP_CONCAT) DO;
+            DCL DST INT;
+            DCL A_OFF INT;
+            DCL B_OFF INT;
+            DCL A_TYP INT;
+            DCL B_TYP INT;
+            DCL CP PTR;
+            DCL DP PTR;
+            DCL I INT;
+            DCL CH INT;
+            ESP = ESP - 1;
+            B_OFF = ESTK(ESP);
+            B_TYP = ETYP(ESP);
+            ESP = ESP - 1;
+            A_OFF = ESTK(ESP);
+            A_TYP = ETYP(ESP);
+            DST = SBPOS;
+            IF (A_TYP = VTYP_INT) THEN
+                CALL EMIT_DEC(A_OFF);
+            ELSE DO;
+                CP = ADDR(SB) + A_OFF;
+                CH = CP->DTAG;
+                I = 0;
+                DO WHILE (CH != 0 AND I < 120);
+                    DP = ADDR(SB) + SBPOS;
+                    DP->DTAG = CH;
+                    SBPOS = SBPOS + 1;
+                    I = I + 1;
+                    CP = ADDR(SB) + A_OFF + I;
+                    CH = CP->DTAG;
+                END;
+            END;
+            IF (B_TYP = VTYP_INT) THEN
+                CALL EMIT_DEC(B_OFF);
+            ELSE DO;
+                CP = ADDR(SB) + B_OFF;
+                CH = CP->DTAG;
+                I = 0;
+                DO WHILE (CH != 0 AND I < 120);
+                    DP = ADDR(SB) + SBPOS;
+                    DP->DTAG = CH;
+                    SBPOS = SBPOS + 1;
+                    I = I + 1;
+                    CP = ADDR(SB) + B_OFF + I;
+                    CH = CP->DTAG;
+                END;
+            END;
+            DP = ADDR(SB) + SBPOS;
+            DP->DTAG = 0;
+            SBPOS = SBPOS + 1;
+            ETYP(ESP) = VTYP_STR;
+            ESTK(ESP) = DST;
+            ESP = ESP + 1;
+            LAST_PUSH_TYP = VTYP_STR;
+        END;
+    END;
+END;
+
+/* --- Handler: I/O operations --- */
+EXEC_IO: PROC;
+    SELECT;
+        WHEN (X_OP = OP_PRINT_INT) DO;
+            ESP = ESP - 1;
+            CALL PUT_DEC(ESTK(ESP));
+        END;
+        WHEN (X_OP = OP_PRINT_STR) DO;
+            X_V = AM_READ_WORD();
+            CALL PUT_SBSTR(X_V);
+        END;
+        WHEN (X_OP = OP_PRINT_NL)
+            CALL UART_PUTCHAR(10);
+        WHEN (X_OP = OP_PRINT_VAR) DO;
+            X_IDX = AM_READ_BYTE();
+            IF (VTYP(X_IDX) = VTYP_STR) THEN
+                CALL PUT_SBSTR(VARS(X_IDX));
+            ELSE
+                CALL PUT_DEC(VARS(X_IDX));
+        END;
+        WHEN (X_OP = OP_READ_INPUT) DO;
+            X_V = READ_INPUT();
+            IF (X_V >= 0) THEN DO;
+                ETYP(ESP) = VTYP_STR;
+                ESTK(ESP) = X_V;
+                ESP = ESP + 1;
+                LAST_PUSH_TYP = VTYP_STR;
+                LAST_RESULT = 1;
+            END;
+            ELSE DO;
+                ETYP(ESP) = VTYP_STR;
+                ESTK(ESP) = 0;
+                ESP = ESP + 1;
+                LAST_PUSH_TYP = VTYP_STR;
+                LAST_RESULT = 0;
+            END;
+        END;
+    END;
+END;
+
+/* --- Handler: builtin functions (SIZE, SUBSTR, CHAR) --- */
+EXEC_BUILTIN: PROC;
+    SELECT;
+        WHEN (X_OP = OP_SIZE) DO;
             DCL SZ_OFF INT;
             DCL SZ_LEN INT;
             DCL SZ_P PTR;
@@ -798,7 +856,7 @@ AM_EXEC: PROC;
             ESP = ESP + 1;
             LAST_PUSH_TYP = VTYP_INT;
         END;
-        ELSE IF (OP = OP_SUBSTR) THEN DO;
+        WHEN (X_OP = OP_SUBSTR) DO;
             DCL SS_STR INT;
             DCL SS_POS INT;
             DCL SS_LEN INT;
@@ -838,7 +896,7 @@ AM_EXEC: PROC;
             ESP = ESP + 1;
             LAST_PUSH_TYP = VTYP_STR;
         END;
-        ELSE IF (OP = OP_CHAR) THEN DO;
+        WHEN (X_OP = OP_CHAR) DO;
             DCL CH_CODE INT;
             DCL CH_DST INT;
             DCL CH_DP PTR;
@@ -856,528 +914,7 @@ AM_EXEC: PROC;
             ESP = ESP + 1;
             LAST_PUSH_TYP = VTYP_STR;
         END;
-        ELSE IF (OP = OP_CONCAT) THEN DO;
-            /* Pop two values, concat as strings into SB. Operands may
-             * be string offsets or raw ints; ETYP[] tells us which. */
-            DCL DST INT;
-            DCL A_OFF INT;
-            DCL B_OFF INT;
-            DCL A_TYP INT;
-            DCL B_TYP INT;
-            DCL CP PTR;
-            DCL DP PTR;
-            DCL I INT;
-            DCL CH INT;
-
-            ESP = ESP - 1;
-            B_OFF = ESTK(ESP);
-            B_TYP = ETYP(ESP);
-            ESP = ESP - 1;
-            A_OFF = ESTK(ESP);
-            A_TYP = ETYP(ESP);
-
-            DST = SBPOS;
-
-            /* Render A */
-            IF (A_TYP = VTYP_INT) THEN DO;
-                CALL EMIT_DEC(A_OFF);
-            END;
-            ELSE DO;
-                CP = ADDR(SB) + A_OFF;
-                CH = CP->DTAG;
-                I = 0;
-                DO WHILE (CH != 0 AND I < 120);
-                    DP = ADDR(SB) + SBPOS;
-                    DP->DTAG = CH;
-                    SBPOS = SBPOS + 1;
-                    I = I + 1;
-                    CP = ADDR(SB) + A_OFF + I;
-                    CH = CP->DTAG;
-                END;
-            END;
-
-            /* Render B */
-            IF (B_TYP = VTYP_INT) THEN DO;
-                CALL EMIT_DEC(B_OFF);
-            END;
-            ELSE DO;
-                CP = ADDR(SB) + B_OFF;
-                CH = CP->DTAG;
-                I = 0;
-                DO WHILE (CH != 0 AND I < 120);
-                    DP = ADDR(SB) + SBPOS;
-                    DP->DTAG = CH;
-                    SBPOS = SBPOS + 1;
-                    I = I + 1;
-                    CP = ADDR(SB) + B_OFF + I;
-                    CH = CP->DTAG;
-                END;
-            END;
-
-            /* Null terminate */
-            DP = ADDR(SB) + SBPOS;
-            DP->DTAG = 0;
-            SBPOS = SBPOS + 1;
-
-            ETYP(ESP) = VTYP_STR;
-            ESTK(ESP) = DST;
-            ESP = ESP + 1;
-            LAST_PUSH_TYP = VTYP_STR;
-        END;
-        ELSE IF (OP = OP_PRINT_INT) THEN DO;
-            ESP = ESP - 1;
-            CALL PUT_DEC(ESTK(ESP));
-        END;
-        ELSE IF (OP = OP_PRINT_STR) THEN DO;
-            V = AM_CODE(PC + 2) * 65536 + AM_CODE(PC + 1) * 256 + AM_CODE(PC);
-            PC = PC + 3;
-            CALL PUT_SBSTR(V);
-        END;
-        ELSE IF (OP = OP_PRINT_NL) THEN DO;
-            CALL UART_PUTCHAR(10);
-        END;
-        ELSE IF (OP = OP_BR) THEN DO;
-            V = AM_CODE(PC + 2) * 65536 + AM_CODE(PC + 1) * 256 + AM_CODE(PC);
-            PC = V;
-        END;
-        ELSE IF (OP = OP_BR_SUCC) THEN DO;
-            V = AM_CODE(PC + 2) * 65536 + AM_CODE(PC + 1) * 256 + AM_CODE(PC);
-            IF (LAST_RESULT = 1) THEN
-                PC = V;
-            ELSE
-                PC = PC + 3;
-        END;
-        ELSE IF (OP = OP_BR_FAIL) THEN DO;
-            V = AM_CODE(PC + 2) * 65536 + AM_CODE(PC + 1) * 256 + AM_CODE(PC);
-            IF (LAST_RESULT = 0) THEN
-                PC = V;
-            ELSE
-                PC = PC + 3;
-        END;
-        ELSE IF (OP = OP_PRINT_VAR) THEN DO;
-            IDX = AM_CODE(PC);
-            PC = PC + 1;
-            IF (VTYP(IDX) = VTYP_STR) THEN
-                CALL PUT_SBSTR(VARS(IDX));
-            ELSE
-                CALL PUT_DEC(VARS(IDX));
-        END;
-        ELSE IF (OP = OP_MAKE_SPAN) THEN DO;
-            V = AM_CODE(PC + 2) * 65536 + AM_CODE(PC + 1) * 256 + AM_CODE(PC);
-            PC = PC + 3;
-            /* Push to eval stack (for SP = SPAN('...') assignment) */
-            ESTK(ESP) = V;
-            ETYP(ESP) = VTYP_PAT_SPAN;
-            ESP = ESP + 1;
-            LAST_PUSH_TYP = VTYP_PAT_SPAN;
-            /* Also push to pattern stack (for compound match) */
-            PSTK(PSTOP) = V;
-            PSTYP(PSTOP) = PK_SPAN;
-            PSTOP = PSTOP + 1;
-        END;
-        ELSE IF (OP = OP_PAT_MATCH) THEN DO;
-            /* PAT_MATCH <subj_var> <pat_var> <cap_var> */
-            DCL SIDX INT;
-            DCL PIDX INT;
-            DCL CIDX INT;
-            DCL SUBJ_OFF INT;
-            DCL PAT_OFF INT;
-            DCL SUBJ_LEN INT;
-            DCL MATCHED INT;
-            DCL TRYPOS INT;
-            DCL MLEN INT;
-            DCL SP2 PTR;
-            DCL I INT;
-
-            SIDX = AM_CODE(PC);
-            PIDX = AM_CODE(PC + 1);
-            CIDX = AM_CODE(PC + 2);
-            PC = PC + 3;
-
-            /* Subject is a string offset in SB */
-            SUBJ_OFF = VARS(SIDX);
-            /* Pattern var holds class string offset (from MAKE_SPAN) */
-            PAT_OFF = VARS(PIDX);
-
-            /* Get subject length */
-            SUBJ_LEN = SLEN(ADDR(SB) + SUBJ_OFF);
-
-            /* Try SPAN at each position (unanchored) */
-            MATCHED = 0;
-            TRYPOS = 0;
-            DO WHILE (TRYPOS <= SUBJ_LEN AND MATCHED = 0);
-                MLEN = EXEC_SPAN(ADDR(SB) + SUBJ_OFF, SUBJ_LEN, TRYPOS, ADDR(SB) + PAT_OFF);
-                IF (MLEN > 0) THEN DO;
-                    MATCHED = 1;
-                    /* Store captured substring as string in SB */
-                    IF (CIDX != 0 - 1 AND CIDX < 32) THEN DO;
-                        /* Copy matched chars to SB */
-                        DCL DST INT;
-                        DST = SBPOS;
-                        I = 0;
-                        DO WHILE (I < MLEN);
-                            SP2 = ADDR(SB) + SUBJ_OFF + TRYPOS + I;
-                            DCL DP PTR;
-                            DP = ADDR(SB) + SBPOS;
-                            DP->DTAG = SP2->DTAG;
-                            SBPOS = SBPOS + 1;
-                            I = I + 1;
-                        END;
-                        DP = ADDR(SB) + SBPOS;
-                        DP->DTAG = 0;
-                        SBPOS = SBPOS + 1;
-                        /* Store offset to captured string */
-                        VARS(CIDX) = DST;
-                        VTYP(CIDX) = VTYP_STR;
-                    END;
-                END;
-                TRYPOS = TRYPOS + 1;
-            END;
-
-            LAST_RESULT = MATCHED;
-        END;
-        ELSE IF (OP = OP_MAKE_BREAK) THEN DO;
-            V = AM_CODE(PC + 2) * 65536 + AM_CODE(PC + 1) * 256 + AM_CODE(PC);
-            PC = PC + 3;
-            /* Push to eval stack (for BK = BREAK('...') assignment) */
-            ESTK(ESP) = V;
-            ETYP(ESP) = VTYP_PAT_BREAK;
-            ESP = ESP + 1;
-            LAST_PUSH_TYP = VTYP_PAT_BREAK;
-            /* Push (kind=BREAK, class_offset=V) onto pattern stack */
-            PSTK(PSTOP) = V;
-            PSTYP(PSTOP) = PK_BREAK;
-            PSTOP = PSTOP + 1;
-        END;
-        ELSE IF (OP = OP_MAKE_REM) THEN DO;
-            PSTK(PSTOP) = 0;
-            PSTYP(PSTOP) = PK_REM;
-            PSTOP = PSTOP + 1;
-        END;
-        ELSE IF (OP = OP_MAKE_LEN) THEN DO;
-            V = AM_CODE(PC + 2) * 65536 + AM_CODE(PC + 1) * 256 + AM_CODE(PC);
-            PC = PC + 3;
-            PSTK(PSTOP) = V;
-            PSTYP(PSTOP) = PK_LEN;
-            PSTOP = PSTOP + 1;
-        END;
-        ELSE IF (OP = OP_MAKE_LEN_VAR) THEN DO;
-            IDX = AM_CODE(PC);
-            PC = PC + 1;
-            PSTK(PSTOP) = VARS(IDX);
-            PSTYP(PSTOP) = PK_LEN;
-            PSTOP = PSTOP + 1;
-        END;
-        ELSE IF (OP = OP_MAKE_LIT_PAT) THEN DO;
-            V = AM_CODE(PC + 2) * 65536 + AM_CODE(PC + 1) * 256 + AM_CODE(PC);
-            PC = PC + 3;
-            PSTK(PSTOP) = V;
-            PSTYP(PSTOP) = PK_LIT;
-            PSTOP = PSTOP + 1;
-        END;
-        ELSE IF (OP = OP_PAT_VAR) THEN DO;
-            /* Push a pattern variable's value onto pattern stack */
-            IDX = AM_CODE(PC);
-            PC = PC + 1;
-            PSTK(PSTOP) = VARS(IDX);
-            IF (VTYP(IDX) = VTYP_PAT_SPAN) THEN
-                PSTYP(PSTOP) = PK_SPAN;
-            ELSE IF (VTYP(IDX) = VTYP_PAT_BREAK) THEN
-                PSTYP(PSTOP) = PK_BREAK;
-            ELSE
-                PSTYP(PSTOP) = PK_LIT;
-            PSTOP = PSTOP + 1;
-        END;
-        ELSE IF (OP = OP_PAT_CONCAT) THEN DO;
-            /* Just a marker -- parts stay on pattern stack */
-        END;
-        ELSE IF (OP = OP_PAT_CAP) THEN DO;
-            /* Mark previous pattern stack entry for capture */
-            IDX = AM_CODE(PC);
-            PC = PC + 1;
-            /* Store capture var index with the previous part */
-            IF (PSTOP > 0) THEN DO;
-                /* Use high bit trick: val = val | (capvar << 16) -- too complex.
-                 * Instead, add a capture entry to pattern stack */
-                PSTK(PSTOP) = IDX;
-                PSTYP(PSTOP) = PK_CAP;
-                PSTOP = PSTOP + 1;
-            END;
-        END;
-        ELSE IF (OP = OP_PAT_MATCH2) THEN DO;
-            /* Execute compound pattern from pattern stack */
-            DCL SIDX2 INT;
-            DCL SUBJ_OFF2 INT;
-            DCL SUBJ_LEN2 INT;
-            DCL TRYPOS2 INT;
-            DCL MATCHED2 INT;
-            DCL CPOS INT;
-            DCL PI INT;
-            DCL PT INT;
-            DCL PV INT;
-            DCL MLEN2 INT;
-            DCL CAPVAR INT;
-            DCL CAPSTART INT;
-
-            SIDX2 = AM_CODE(PC);
-            PC = PC + 1;
-            SUBJ_OFF2 = VARS(SIDX2);
-            SUBJ_LEN2 = SLEN(ADDR(SB) + SUBJ_OFF2);
-
-            MATCHED2 = 0;
-            TRYPOS2 = 0;
-
-            /* Try at each starting position (unanchored) */
-            DO WHILE (TRYPOS2 <= SUBJ_LEN2 AND MATCHED2 = 0);
-                CPOS = TRYPOS2;
-                PI = 0;
-                MATCHED2 = 1;
-                CAPVAR = 0 - 1;
-
-                DO WHILE (PI < PSTOP AND MATCHED2 = 1);
-                    PT = PSTYP(PI);
-                    PV = PSTK(PI);
-
-                    IF (PT = PK_CAP) THEN DO;
-                        /* Capture: store current substring into capture var */
-                        IF (PV >= 0 AND PV < 16) THEN DO;
-                            DCL DST2 INT;
-                            DCL J INT;
-                            DCL SP3 PTR;
-                            DCL DP2 PTR;
-                            DST2 = SBPOS;
-                            J = CAPSTART;
-                            DO WHILE (J < CPOS);
-                                SP3 = ADDR(SB) + SUBJ_OFF2 + J;
-                                DP2 = ADDR(SB) + SBPOS;
-                                DP2->DTAG = SP3->DTAG;
-                                SBPOS = SBPOS + 1;
-                                J = J + 1;
-                            END;
-                            DP2 = ADDR(SB) + SBPOS;
-                            DP2->DTAG = 0;
-                            SBPOS = SBPOS + 1;
-                            VARS(PV) = DST2;
-                            VTYP(PV) = VTYP_STR;
-                        END;
-                    END;
-                    ELSE IF (PT = PK_SPAN) THEN DO;
-                        CAPSTART = CPOS;
-                        MLEN2 = EXEC_SPAN(ADDR(SB) + SUBJ_OFF2, SUBJ_LEN2, CPOS, ADDR(SB) + PV);
-                        IF (MLEN2 > 0) THEN
-                            CPOS = CPOS + MLEN2;
-                        ELSE
-                            MATCHED2 = 0;
-                    END;
-                    ELSE IF (PT = PK_BREAK) THEN DO;
-                        CAPSTART = CPOS;
-                        MLEN2 = EXEC_BREAK(ADDR(SB) + SUBJ_OFF2, SUBJ_LEN2, CPOS, ADDR(SB) + PV);
-                        IF (MLEN2 >= 0) THEN
-                            CPOS = CPOS + MLEN2;
-                        ELSE
-                            MATCHED2 = 0;
-                    END;
-                    ELSE IF (PT = PK_REM) THEN DO;
-                        CAPSTART = CPOS;
-                        CPOS = SUBJ_LEN2;
-                    END;
-                    ELSE IF (PT = PK_LEN) THEN DO;
-                        /* LEN(N): match exactly N chars from current pos */
-                        IF (CPOS + PV > SUBJ_LEN2) THEN
-                            MATCHED2 = 0;
-                        ELSE DO;
-                            CAPSTART = CPOS;
-                            CPOS = CPOS + PV;
-                        END;
-                    END;
-                    ELSE IF (PT = PK_LIT) THEN DO;
-                        /* Literal match */
-                        DCL LLEN INT;
-                        DCL LK INT;
-                        DCL LP2 PTR;
-                        DCL CP2 PTR;
-                        LLEN = SLEN(ADDR(SB) + PV);
-                        IF (CPOS + LLEN > SUBJ_LEN2) THEN DO;
-                            MATCHED2 = 0;
-                        END;
-                        ELSE DO;
-                            LK = 0;
-                            DO WHILE (LK < LLEN);
-                                LP2 = ADDR(SB) + PV + LK;
-                                CP2 = ADDR(SB) + SUBJ_OFF2 + CPOS + LK;
-                                IF (LP2->DTAG != CP2->DTAG) THEN DO;
-                                    MATCHED2 = 0;
-                                    LK = LLEN;
-                                END;
-                                LK = LK + 1;
-                            END;
-                            IF (MATCHED2 = 1) THEN
-                                CPOS = CPOS + LLEN;
-                        END;
-                    END;
-
-                    PI = PI + 1;
-                END;
-
-                IF (MATCHED2 = 0) THEN
-                    TRYPOS2 = TRYPOS2 + 1;
-            END;
-
-            PSTOP = 0;
-            LAST_RESULT = MATCHED2;
-        END;
-        ELSE IF (OP = OP_MAKE_ARRAY) THEN DO;
-            /* Allocate array, push array ID */
-            V = ARR_CNT;
-            ARR_CNT = ARR_CNT + 1;
-            ESTK(ESP) = V;
-            ESP = ESP + 1;
-            LAST_PUSH_TYP = VTYP_ARR;
-        END;
-        ELSE IF (OP = OP_ARR_LOAD) THEN DO;
-            /* ARR_LOAD <arr_var>: load arr[idx]; idx is on the eval stack. */
-            DCL ARR_ID INT;
-            DCL ARR_IDX INT;
-            DCL ARR_VAR INT;
-            DCL ARR_VTY INT;
-            ARR_VAR = AM_CODE(PC);
-            PC = PC + 1;
-            ARR_ID = VARS(ARR_VAR);
-            ESP = ESP - 1;
-            ARR_IDX = ESTK(ESP);
-            V = ARR_DATA(ARR_ID * ARR_ELEMS + ARR_IDX);
-            ARR_VTY = ARR_TYP(ARR_ID * ARR_ELEMS + ARR_IDX);
-            ETYP(ESP) = ARR_VTY;
-            ESTK(ESP) = V;
-            ESP = ESP + 1;
-            LAST_PUSH_TYP = ARR_VTY;
-        END;
-        ELSE IF (OP = OP_ARR_STORE) THEN DO;
-            /* ARR_STORE <arr_var>: stack is [val, idx] with idx on top. */
-            DCL AS_ARR INT;
-            DCL AS_IDX INT;
-            DCL AS_VAL INT;
-            DCL AS_VAR INT;
-            DCL AS_VTY INT;
-            AS_VAR = AM_CODE(PC);
-            PC = PC + 1;
-            AS_ARR = VARS(AS_VAR);
-            ESP = ESP - 1;
-            AS_IDX = ESTK(ESP);
-            ESP = ESP - 1;
-            AS_VAL = ESTK(ESP);
-            AS_VTY = ETYP(ESP);
-            ARR_DATA(AS_ARR * ARR_ELEMS + AS_IDX) = AS_VAL;
-            ARR_TYP(AS_ARR * ARR_ELEMS + AS_IDX) = AS_VTY;
-        END;
-        ELSE IF (OP = OP_READ_INPUT) THEN DO;
-            /* Read one line from input data into SB */
-            V = READ_INPUT();
-            IF (V >= 0) THEN DO;
-                ETYP(ESP) = VTYP_STR;
-                ESTK(ESP) = V;
-                ESP = ESP + 1;
-                LAST_PUSH_TYP = VTYP_STR;
-                LAST_RESULT = 1;
-            END;
-            ELSE DO;
-                /* EOF -- push empty, set failure */
-                ETYP(ESP) = VTYP_STR;
-                ESTK(ESP) = 0;
-                ESP = ESP + 1;
-                LAST_PUSH_TYP = VTYP_STR;
-                LAST_RESULT = 0;
-            END;
-        END;
-        ELSE IF (OP = OP_CALL) THEN DO;
-            /* OP_CALL <fn_idx>: arg already on ESTK; push frame, set param, jump */
-            DCL FNI INT;
-            DCL PSY INT;
-            DCL ARG INT;
-            DCL ARG_TY INT;
-            FNI = AM_CODE(PC);
-            PC = PC + 1;
-            ESP = ESP - 1;
-            ARG = ESTK(ESP);
-            ARG_TY = ETYP(ESP);
-            PSY = FN_PARAM(FNI);
-            CSTK_PC(CSTK_TOP) = PC;
-            CSTK_PV(CSTK_TOP) = VARS(PSY);
-            CSTK_FN(CSTK_TOP) = FNI;
-            CSTK_TOP = CSTK_TOP + 1;
-            VARS(PSY) = ARG;
-            VTYP(PSY) = ARG_TY;
-            /* Also clear function name var so caller sees fresh return */
-            VARS(FN_NAME(FNI)) = 0;
-            VTYP(FN_NAME(FNI)) = VTYP_INT;
-            PC = STMT_ADDR(FN_ENTRY(FNI));
-        END;
-        ELSE IF (OP = OP_RET) THEN DO;
-            DCL FNI2 INT;
-            DCL PSY2 INT;
-            CSTK_TOP = CSTK_TOP - 1;
-            FNI2 = CSTK_FN(CSTK_TOP);
-            PSY2 = FN_PARAM(FNI2);
-            /* Push return value: function name var */
-            ETYP(ESP) = VTYP(FN_NAME(FNI2));
-            ESTK(ESP) = VARS(FN_NAME(FNI2));
-            ESP = ESP + 1;
-            LAST_PUSH_TYP = VTYP(FN_NAME(FNI2));
-            VARS(PSY2) = CSTK_PV(CSTK_TOP);
-            PC = CSTK_PC(CSTK_TOP);
-            LAST_RESULT = 1;
-        END;
-        ELSE IF (OP = OP_FRET) THEN DO;
-            DCL FNI3 INT;
-            DCL PSY3 INT;
-            CSTK_TOP = CSTK_TOP - 1;
-            FNI3 = CSTK_FN(CSTK_TOP);
-            PSY3 = FN_PARAM(FNI3);
-            ETYP(ESP) = VTYP_INT;
-            ESTK(ESP) = 0;
-            ESP = ESP + 1;
-            LAST_PUSH_TYP = VTYP_INT;
-            VARS(PSY3) = CSTK_PV(CSTK_TOP);
-            PC = CSTK_PC(CSTK_TOP);
-            LAST_RESULT = 0;
-        END;
-        ELSE IF (OP = 34) THEN DO;
-            DCL BCN INT;
-            DCL BV1 INT;
-            DCL BV2 INT;
-            BCN = AM_CODE(PC);
-            PC = PC + 1;
-            ESP = ESP - 1;
-            BV2 = ESTK(ESP);
-            ESP = ESP - 1;
-            BV1 = ESTK(ESP);
-            LAST_RESULT = 0;
-            IF (BCN = 3) THEN DO; IF (BV1 > BV2) THEN LAST_RESULT = 1; END;
-            ELSE IF (BCN = 4) THEN DO; IF (BV1 = BV2) THEN LAST_RESULT = 1; END;
-            ELSE IF (BCN = 5) THEN DO; IF (BV1 <= BV2) THEN LAST_RESULT = 1; END;
-        END;
-        ELSE IF (OP = 33) THEN DO;
-            DCL BCS INT;
-            DCL BO1 INT;
-            DCL BO2 INT;
-            DCL BEQ INT;
-            BCS = AM_CODE(PC);
-            PC = PC + 1;
-            ESP = ESP - 1;
-            BO2 = ESTK(ESP);
-            ESP = ESP - 1;
-            BO1 = ESTK(ESP);
-            BEQ = SCEQ(ADDR(SB) + BO1, ADDR(SB) + BO2);
-            IF (BCS = 1) THEN LAST_RESULT = BEQ;
-            ELSE DO;
-                IF (BEQ = 0) THEN LAST_RESULT = 1;
-                ELSE LAST_RESULT = 0;
-            END;
-        END;
-        ELSE IF (OP = OP_HALT) THEN DO;
-            RETURN;
-        END;
-        ELSE IF (OP = OP_DUMP) THEN DO;
+        WHEN (X_OP = OP_DUMP) DO;
             DCL DV INT;
             CALL UART_PUTCHAR(123);
             DV = 0;
@@ -1389,15 +926,492 @@ AM_EXEC: PROC;
             CALL UART_PUTCHAR(125);
             CALL UART_PUTCHAR(10);
         END;
-        ELSE IF (OP = OP_REFLECT) THEN DO;
-            /* In-place pronoun-swap on a string variable. */
+        WHEN (X_OP = OP_REFLECT) DO;
             DCL RIDX INT;
             DCL RNEW INT;
-            RIDX = AM_CODE(PC);
-            PC = PC + 1;
-            RNEW = REFLECT_STR(VARS(RIDX));
-            VARS(RIDX) = RNEW;
+            RIDX = AM_READ_BYTE();
+            VARS(RIDX) = REFLECT_STR(VARS(RIDX));
             VTYP(RIDX) = VTYP_STR;
+        END;
+    END;
+END;
+
+/* --- Handler: pattern build operations --- */
+EXEC_PAT_BUILD: PROC;
+    SELECT;
+        WHEN (X_OP = OP_MAKE_SPAN) DO;
+            X_V = AM_READ_WORD();
+            ESTK(ESP) = X_V;
+            ETYP(ESP) = VTYP_PAT_SPAN;
+            ESP = ESP + 1;
+            LAST_PUSH_TYP = VTYP_PAT_SPAN;
+            PSTK(PSTOP) = X_V;
+            PSTYP(PSTOP) = PK_SPAN;
+            PSTOP = PSTOP + 1;
+        END;
+        WHEN (X_OP = OP_MAKE_BREAK) DO;
+            X_V = AM_READ_WORD();
+            ESTK(ESP) = X_V;
+            ETYP(ESP) = VTYP_PAT_BREAK;
+            ESP = ESP + 1;
+            LAST_PUSH_TYP = VTYP_PAT_BREAK;
+            PSTK(PSTOP) = X_V;
+            PSTYP(PSTOP) = PK_BREAK;
+            PSTOP = PSTOP + 1;
+        END;
+        WHEN (X_OP = OP_MAKE_REM) DO;
+            PSTK(PSTOP) = 0;
+            PSTYP(PSTOP) = PK_REM;
+            PSTOP = PSTOP + 1;
+        END;
+        WHEN (X_OP = OP_MAKE_LEN) DO;
+            X_V = AM_READ_WORD();
+            PSTK(PSTOP) = X_V;
+            PSTYP(PSTOP) = PK_LEN;
+            PSTOP = PSTOP + 1;
+        END;
+        WHEN (X_OP = OP_MAKE_LEN_VAR) DO;
+            X_IDX = AM_READ_BYTE();
+            PSTK(PSTOP) = VARS(X_IDX);
+            PSTYP(PSTOP) = PK_LEN;
+            PSTOP = PSTOP + 1;
+        END;
+        WHEN (X_OP = OP_MAKE_LIT_PAT) DO;
+            X_V = AM_READ_WORD();
+            PSTK(PSTOP) = X_V;
+            PSTYP(PSTOP) = PK_LIT;
+            PSTOP = PSTOP + 1;
+        END;
+        WHEN (X_OP = OP_PAT_VAR) DO;
+            X_IDX = AM_READ_BYTE();
+            PSTK(PSTOP) = VARS(X_IDX);
+            IF (VTYP(X_IDX) = VTYP_PAT_SPAN) THEN
+                PSTYP(PSTOP) = PK_SPAN;
+            ELSE IF (VTYP(X_IDX) = VTYP_PAT_BREAK) THEN
+                PSTYP(PSTOP) = PK_BREAK;
+            ELSE
+                PSTYP(PSTOP) = PK_LIT;
+            PSTOP = PSTOP + 1;
+        END;
+        WHEN (X_OP = OP_PAT_CONCAT) DO; END;
+        WHEN (X_OP = OP_PAT_CAP) DO;
+            X_IDX = AM_READ_BYTE();
+            IF (PSTOP > 0) THEN DO;
+                PSTK(PSTOP) = X_IDX;
+                PSTYP(PSTOP) = PK_CAP;
+                PSTOP = PSTOP + 1;
+            END;
+        END;
+    END;
+END;
+
+/* --- Handler: legacy pattern match (PAT_MATCH) --- */
+EXEC_PAT_MATCH_LEGACY: PROC;
+    DCL SIDX INT;
+    DCL PIDX INT;
+    DCL CIDX INT;
+    DCL SUBJ_OFF INT;
+    DCL PAT_OFF INT;
+    DCL SUBJ_LEN INT;
+    DCL MATCHED INT;
+    DCL TRYPOS INT;
+    DCL MLEN INT;
+    DCL SP2 PTR;
+    DCL I INT;
+
+    SIDX = AM_READ_BYTE();
+    PIDX = AM_READ_BYTE();
+    CIDX = AM_READ_BYTE();
+
+    SUBJ_OFF = VARS(SIDX);
+    PAT_OFF = VARS(PIDX);
+    SUBJ_LEN = SLEN(ADDR(SB) + SUBJ_OFF);
+
+    MATCHED = 0;
+    TRYPOS = 0;
+    DO WHILE (TRYPOS <= SUBJ_LEN AND MATCHED = 0);
+        MLEN = EXEC_SPAN(ADDR(SB) + SUBJ_OFF, SUBJ_LEN, TRYPOS, ADDR(SB) + PAT_OFF);
+        IF (MLEN > 0) THEN DO;
+            MATCHED = 1;
+            IF (CIDX != 0 - 1 AND CIDX < 32) THEN DO;
+                DCL DST INT;
+                DST = SBPOS;
+                I = 0;
+                DO WHILE (I < MLEN);
+                    SP2 = ADDR(SB) + SUBJ_OFF + TRYPOS + I;
+                    DCL DP PTR;
+                    DP = ADDR(SB) + SBPOS;
+                    DP->DTAG = SP2->DTAG;
+                    SBPOS = SBPOS + 1;
+                    I = I + 1;
+                END;
+                DP = ADDR(SB) + SBPOS;
+                DP->DTAG = 0;
+                SBPOS = SBPOS + 1;
+                VARS(CIDX) = DST;
+                VTYP(CIDX) = VTYP_STR;
+            END;
+        END;
+        TRYPOS = TRYPOS + 1;
+    END;
+    LAST_RESULT = MATCHED;
+END;
+
+/* --- Handler: compound pattern match (PAT_MATCH2) --- */
+EXEC_PAT_MATCH2: PROC;
+    DCL SIDX2 INT;
+    DCL SUBJ_OFF2 INT;
+    DCL SUBJ_LEN2 INT;
+    DCL TRYPOS2 INT;
+    DCL MATCHED2 INT;
+    DCL CPOS INT;
+    DCL PI INT;
+    DCL PT INT;
+    DCL PV INT;
+    DCL MLEN2 INT;
+    DCL CAPVAR INT;
+    DCL CAPSTART INT;
+
+    SIDX2 = AM_READ_BYTE();
+    SUBJ_OFF2 = VARS(SIDX2);
+    SUBJ_LEN2 = SLEN(ADDR(SB) + SUBJ_OFF2);
+
+    MATCHED2 = 0;
+    TRYPOS2 = 0;
+
+    DO WHILE (TRYPOS2 <= SUBJ_LEN2 AND MATCHED2 = 0);
+        CPOS = TRYPOS2;
+        PI = 0;
+        MATCHED2 = 1;
+        CAPVAR = 0 - 1;
+
+        DO WHILE (PI < PSTOP AND MATCHED2 = 1);
+            PT = PSTYP(PI);
+            PV = PSTK(PI);
+
+            SELECT;
+                WHEN (PT = PK_CAP) DO;
+                    IF (PV >= 0 AND PV < 16) THEN DO;
+                        DCL DST2 INT;
+                        DCL J INT;
+                        DCL SP3 PTR;
+                        DCL DP2 PTR;
+                        DST2 = SBPOS;
+                        J = CAPSTART;
+                        DO WHILE (J < CPOS);
+                            SP3 = ADDR(SB) + SUBJ_OFF2 + J;
+                            DP2 = ADDR(SB) + SBPOS;
+                            DP2->DTAG = SP3->DTAG;
+                            SBPOS = SBPOS + 1;
+                            J = J + 1;
+                        END;
+                        DP2 = ADDR(SB) + SBPOS;
+                        DP2->DTAG = 0;
+                        SBPOS = SBPOS + 1;
+                        VARS(PV) = DST2;
+                        VTYP(PV) = VTYP_STR;
+                    END;
+                END;
+                WHEN (PT = PK_SPAN) DO;
+                    CAPSTART = CPOS;
+                    MLEN2 = EXEC_SPAN(ADDR(SB) + SUBJ_OFF2, SUBJ_LEN2, CPOS, ADDR(SB) + PV);
+                    IF (MLEN2 > 0) THEN
+                        CPOS = CPOS + MLEN2;
+                    ELSE
+                        MATCHED2 = 0;
+                END;
+                WHEN (PT = PK_BREAK) DO;
+                    CAPSTART = CPOS;
+                    MLEN2 = EXEC_BREAK(ADDR(SB) + SUBJ_OFF2, SUBJ_LEN2, CPOS, ADDR(SB) + PV);
+                    IF (MLEN2 >= 0) THEN
+                        CPOS = CPOS + MLEN2;
+                    ELSE
+                        MATCHED2 = 0;
+                END;
+                WHEN (PT = PK_REM) DO;
+                    CAPSTART = CPOS;
+                    CPOS = SUBJ_LEN2;
+                END;
+                WHEN (PT = PK_LEN) DO;
+                    IF (CPOS + PV > SUBJ_LEN2) THEN
+                        MATCHED2 = 0;
+                    ELSE DO;
+                        CAPSTART = CPOS;
+                        CPOS = CPOS + PV;
+                    END;
+                END;
+                WHEN (PT = PK_LIT) DO;
+                    DCL LLEN INT;
+                    DCL LK INT;
+                    DCL LP2 PTR;
+                    DCL CP2 PTR;
+                    LLEN = SLEN(ADDR(SB) + PV);
+                    IF (CPOS + LLEN > SUBJ_LEN2) THEN
+                        MATCHED2 = 0;
+                    ELSE DO;
+                        LK = 0;
+                        DO WHILE (LK < LLEN);
+                            LP2 = ADDR(SB) + PV + LK;
+                            CP2 = ADDR(SB) + SUBJ_OFF2 + CPOS + LK;
+                            IF (LP2->DTAG != CP2->DTAG) THEN DO;
+                                MATCHED2 = 0;
+                                LK = LLEN;
+                            END;
+                            LK = LK + 1;
+                        END;
+                        IF (MATCHED2 = 1) THEN
+                            CPOS = CPOS + LLEN;
+                    END;
+                END;
+            END;
+
+            PI = PI + 1;
+        END;
+
+        IF (MATCHED2 = 0) THEN
+            TRYPOS2 = TRYPOS2 + 1;
+    END;
+
+    PSTOP = 0;
+    LAST_RESULT = MATCHED2;
+END;
+
+/* --- Handler: array operations --- */
+EXEC_ARRAY: PROC;
+    SELECT;
+        WHEN (X_OP = OP_MAKE_ARRAY) DO;
+            X_V = ARR_CNT;
+            ARR_CNT = ARR_CNT + 1;
+            ESTK(ESP) = X_V;
+            ESP = ESP + 1;
+            LAST_PUSH_TYP = VTYP_ARR;
+        END;
+        WHEN (X_OP = OP_ARR_LOAD) DO;
+            DCL ARR_ID INT;
+            DCL ARR_IDX INT;
+            DCL ARR_VAR INT;
+            DCL ARR_VTY INT;
+            ARR_VAR = AM_READ_BYTE();
+            ARR_ID = VARS(ARR_VAR);
+            ESP = ESP - 1;
+            ARR_IDX = ESTK(ESP);
+            X_V = ARR_DATA(ARR_ID * ARR_ELEMS + ARR_IDX);
+            ARR_VTY = ARR_TYP(ARR_ID * ARR_ELEMS + ARR_IDX);
+            ETYP(ESP) = ARR_VTY;
+            ESTK(ESP) = X_V;
+            ESP = ESP + 1;
+            LAST_PUSH_TYP = ARR_VTY;
+        END;
+        WHEN (X_OP = OP_ARR_STORE) DO;
+            DCL AS_ARR INT;
+            DCL AS_IDX INT;
+            DCL AS_VAL INT;
+            DCL AS_VAR INT;
+            DCL AS_VTY INT;
+            AS_VAR = AM_READ_BYTE();
+            AS_ARR = VARS(AS_VAR);
+            ESP = ESP - 1;
+            AS_IDX = ESTK(ESP);
+            ESP = ESP - 1;
+            AS_VAL = ESTK(ESP);
+            AS_VTY = ETYP(ESP);
+            ARR_DATA(AS_ARR * ARR_ELEMS + AS_IDX) = AS_VAL;
+            ARR_TYP(AS_ARR * ARR_ELEMS + AS_IDX) = AS_VTY;
+        END;
+    END;
+END;
+
+/* --- Handler: function call/return --- */
+EXEC_CALL: PROC;
+    SELECT;
+        WHEN (X_OP = OP_CALL) DO;
+            DCL FNI INT;
+            DCL PSY INT;
+            DCL ARG INT;
+            DCL ARG_TY INT;
+            FNI = AM_READ_BYTE();
+            ESP = ESP - 1;
+            ARG = ESTK(ESP);
+            ARG_TY = ETYP(ESP);
+            PSY = FN_PARAM(FNI);
+            CSTK_PC(CSTK_TOP) = X_PC;
+            CSTK_PV(CSTK_TOP) = VARS(PSY);
+            CSTK_FN(CSTK_TOP) = FNI;
+            CSTK_TOP = CSTK_TOP + 1;
+            VARS(PSY) = ARG;
+            VTYP(PSY) = ARG_TY;
+            VARS(FN_NAME(FNI)) = 0;
+            VTYP(FN_NAME(FNI)) = VTYP_INT;
+            X_PC = STMT_ADDR(FN_ENTRY(FNI));
+        END;
+        WHEN (X_OP = OP_RET) DO;
+            DCL FNI2 INT;
+            DCL PSY2 INT;
+            CSTK_TOP = CSTK_TOP - 1;
+            FNI2 = CSTK_FN(CSTK_TOP);
+            PSY2 = FN_PARAM(FNI2);
+            ETYP(ESP) = VTYP(FN_NAME(FNI2));
+            ESTK(ESP) = VARS(FN_NAME(FNI2));
+            ESP = ESP + 1;
+            LAST_PUSH_TYP = VTYP(FN_NAME(FNI2));
+            VARS(PSY2) = CSTK_PV(CSTK_TOP);
+            X_PC = CSTK_PC(CSTK_TOP);
+            LAST_RESULT = 1;
+        END;
+        WHEN (X_OP = OP_FRET) DO;
+            DCL FNI3 INT;
+            DCL PSY3 INT;
+            CSTK_TOP = CSTK_TOP - 1;
+            FNI3 = CSTK_FN(CSTK_TOP);
+            PSY3 = FN_PARAM(FNI3);
+            ETYP(ESP) = VTYP_INT;
+            ESTK(ESP) = 0;
+            ESP = ESP + 1;
+            LAST_PUSH_TYP = VTYP_INT;
+            VARS(PSY3) = CSTK_PV(CSTK_TOP);
+            X_PC = CSTK_PC(CSTK_TOP);
+            LAST_RESULT = 0;
+        END;
+    END;
+END;
+
+/* --- Handler: comparison operations (opcodes 33, 34) --- */
+EXEC_COMPARE: PROC;
+    IF (X_OP = 34) THEN DO;
+        DCL BCN INT;
+        DCL BV1 INT;
+        DCL BV2 INT;
+        BCN = AM_READ_BYTE();
+        ESP = ESP - 1;
+        BV2 = ESTK(ESP);
+        ESP = ESP - 1;
+        BV1 = ESTK(ESP);
+        LAST_RESULT = 0;
+        IF (BCN = 3) THEN DO; IF (BV1 > BV2) THEN LAST_RESULT = 1; END;
+        ELSE IF (BCN = 4) THEN DO; IF (BV1 = BV2) THEN LAST_RESULT = 1; END;
+        ELSE IF (BCN = 5) THEN DO; IF (BV1 <= BV2) THEN LAST_RESULT = 1; END;
+    END;
+    ELSE DO;
+        DCL BCS INT;
+        DCL BO1 INT;
+        DCL BO2 INT;
+        DCL BEQ INT;
+        BCS = AM_READ_BYTE();
+        ESP = ESP - 1;
+        BO2 = ESTK(ESP);
+        ESP = ESP - 1;
+        BO1 = ESTK(ESP);
+        BEQ = SCEQ(ADDR(SB) + BO1, ADDR(SB) + BO2);
+        IF (BCS = 1) THEN LAST_RESULT = BEQ;
+        ELSE DO;
+            IF (BEQ = 0) THEN LAST_RESULT = 1;
+            ELSE LAST_RESULT = 0;
+        END;
+    END;
+END;
+
+/* --- Handler: branch operations --- */
+EXEC_BRANCH: PROC;
+    SELECT;
+        WHEN (X_OP = OP_BR) DO;
+            X_V = AM_CODE(X_PC + 2) * 65536 + AM_CODE(X_PC + 1) * 256 + AM_CODE(X_PC);
+            X_PC = X_V;
+        END;
+        WHEN (X_OP = OP_BR_SUCC) DO;
+            X_V = AM_CODE(X_PC + 2) * 65536 + AM_CODE(X_PC + 1) * 256 + AM_CODE(X_PC);
+            IF (LAST_RESULT = 1) THEN
+                X_PC = X_V;
+            ELSE
+                X_PC = X_PC + 3;
+        END;
+        WHEN (X_OP = OP_BR_FAIL) DO;
+            X_V = AM_CODE(X_PC + 2) * 65536 + AM_CODE(X_PC + 1) * 256 + AM_CODE(X_PC);
+            IF (LAST_RESULT = 0) THEN
+                X_PC = X_V;
+            ELSE
+                X_PC = X_PC + 3;
+        END;
+    END;
+END;
+
+/* ================================================================
+ * Main executor: dispatch loop
+ *
+ * Single SELECT/WHEN dispatcher routes each opcode to a grouped
+ * handler procedure. This shape is much friendlier to the PL/SW
+ * compiler than a long IF/ELSE IF chain.
+/* ================================================================ */
+AM_EXEC: PROC;
+    X_PC = 0;
+    ESP = 0;
+
+    DO WHILE (X_PC < AM_PC);
+        X_OP = AM_CODE(X_PC);
+        X_PC = X_PC + 1;
+
+        SELECT;
+            /* Stack and arithmetic */
+            WHEN (X_OP = OP_LOAD_INT)   CALL EXEC_STACK;
+            WHEN (X_OP = OP_LOAD_STR)   CALL EXEC_STACK;
+            WHEN (X_OP = OP_LOAD_VAR)   CALL EXEC_STACK;
+            WHEN (X_OP = OP_STORE_VAR)  CALL EXEC_STACK;
+            WHEN (X_OP = OP_ADD)        CALL EXEC_STACK;
+            WHEN (X_OP = OP_SUB)        CALL EXEC_STACK;
+            WHEN (X_OP = OP_MUL)        CALL EXEC_STACK;
+            WHEN (X_OP = OP_MOD)        CALL EXEC_STACK;
+            WHEN (X_OP = OP_CONCAT)     CALL EXEC_STACK;
+
+            /* I/O */
+            WHEN (X_OP = OP_PRINT_INT)  CALL EXEC_IO;
+            WHEN (X_OP = OP_PRINT_STR)  CALL EXEC_IO;
+            WHEN (X_OP = OP_PRINT_NL)   CALL EXEC_IO;
+            WHEN (X_OP = OP_PRINT_VAR)  CALL EXEC_IO;
+            WHEN (X_OP = OP_READ_INPUT) CALL EXEC_IO;
+
+            /* Branches */
+            WHEN (X_OP = OP_BR)         CALL EXEC_BRANCH;
+            WHEN (X_OP = OP_BR_SUCC)    CALL EXEC_BRANCH;
+            WHEN (X_OP = OP_BR_FAIL)    CALL EXEC_BRANCH;
+
+            /* Pattern build */
+            WHEN (X_OP = OP_MAKE_SPAN)    CALL EXEC_PAT_BUILD;
+            WHEN (X_OP = OP_MAKE_BREAK)   CALL EXEC_PAT_BUILD;
+            WHEN (X_OP = OP_MAKE_REM)     CALL EXEC_PAT_BUILD;
+            WHEN (X_OP = OP_MAKE_LEN)     CALL EXEC_PAT_BUILD;
+            WHEN (X_OP = OP_MAKE_LEN_VAR) CALL EXEC_PAT_BUILD;
+            WHEN (X_OP = OP_MAKE_LIT_PAT) CALL EXEC_PAT_BUILD;
+            WHEN (X_OP = OP_PAT_VAR)      CALL EXEC_PAT_BUILD;
+            WHEN (X_OP = OP_PAT_CONCAT)   CALL EXEC_PAT_BUILD;
+            WHEN (X_OP = OP_PAT_CAP)      CALL EXEC_PAT_BUILD;
+
+            /* Pattern match */
+            WHEN (X_OP = OP_PAT_MATCH)  CALL EXEC_PAT_MATCH_LEGACY;
+            WHEN (X_OP = OP_PAT_MATCH2) CALL EXEC_PAT_MATCH2;
+
+            /* Arrays */
+            WHEN (X_OP = OP_MAKE_ARRAY) CALL EXEC_ARRAY;
+            WHEN (X_OP = OP_ARR_LOAD)   CALL EXEC_ARRAY;
+            WHEN (X_OP = OP_ARR_STORE)  CALL EXEC_ARRAY;
+
+            /* Function call/return */
+            WHEN (X_OP = OP_CALL) CALL EXEC_CALL;
+            WHEN (X_OP = OP_RET)  CALL EXEC_CALL;
+            WHEN (X_OP = OP_FRET) CALL EXEC_CALL;
+
+            /* Comparisons (opcodes 33, 34) */
+            WHEN (X_OP = 33) CALL EXEC_COMPARE;
+            WHEN (X_OP = 34) CALL EXEC_COMPARE;
+
+            /* Builtins and misc */
+            WHEN (X_OP = OP_SIZE)    CALL EXEC_BUILTIN;
+            WHEN (X_OP = OP_SUBSTR)  CALL EXEC_BUILTIN;
+            WHEN (X_OP = OP_CHAR)    CALL EXEC_BUILTIN;
+            WHEN (X_OP = OP_DUMP)    CALL EXEC_BUILTIN;
+            WHEN (X_OP = OP_REFLECT) CALL EXEC_BUILTIN;
+
+            /* Halt and no-op */
+            WHEN (X_OP = OP_HALT) RETURN;
+            WHEN (X_OP = OP_NOP)  DO; END;
         END;
     END;
 END;

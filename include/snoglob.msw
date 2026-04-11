@@ -150,6 +150,12 @@ DCL ESP INT STATIC INIT(0);
 DCL VARS(SYMMAX) INT;
 DCL LAST_PUSH_TYP INT STATIC INIT(0);
 
+/* Executor state shared across handler procedures */
+DCL X_PC INT STATIC INIT(0);
+DCL X_OP INT STATIC INIT(0);
+DCL X_V INT STATIC INIT(0);
+DCL X_IDX INT STATIC INIT(0);
+
 /* Debug: per-statement execution counters */
 DCL ST_EXEC(STMAX) INT;
 
