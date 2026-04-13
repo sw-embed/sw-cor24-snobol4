@@ -406,7 +406,7 @@ PARSE: PROC;
             IF (TT = TK_EOL) THEN CALL LEX;
             STCNT = STCNT + 1;
         END;
-        ELSE IF (TT = TK_IDENT) THEN DO;
+        ELSE IF (TT = TK_IDENT OR TT = TK_STR) THEN DO;
             IF (LHAS_LBL = 1) THEN DO;
                 NOFF = SBSAVE();
                 CALL LBL_ADD(NOFF, S);
@@ -426,6 +426,17 @@ PARSE: PROC;
                     S_SUBJ(S) = SYM_LOOKUP(NOFF);
                     CALL LEX;
                 END;
+            END;
+            ELSE IF (TT = TK_STR) THEN DO;
+                /* Literal subject: 'abc' pattern :goto */
+                DCL LSOFF INT;
+                LSOFF = SBSAVE();
+                TB(0) = 95;   /* temp var name "_" */
+                TB(1) = 0;
+                NOFF = SBSAVE();
+                S_SUBJ(S) = SYM_LOOKUP(NOFF);
+                S_OEV2(S) = LSOFF;  /* literal offset for lowering */
+                CALL LEX;
             END;
             ELSE IF (TT = TK_IDENT) THEN DO;
                 NOFF = SBSAVE();

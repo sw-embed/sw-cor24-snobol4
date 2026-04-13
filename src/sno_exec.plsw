@@ -483,6 +483,13 @@ LOWER_STMT: PROC(S INT);
     END;
 
     IF (S_TYP(S) = ST_MATCH) THEN DO;
+        /* Literal subject: load string into temp var before matching */
+        IF (S_OEV2(S) >= 0) THEN DO;
+            CALL AM_EMIT_OP(OP_LOAD_STR);
+            CALL AM_EMIT_WORD(S_OEV2(S));
+            CALL AM_EMIT_OP(OP_STORE_VAR);
+            CALL AM_EMIT_BYTE(S_SUBJ(S));
+        END;
         IF (S_PPCNT(S) > 0) THEN DO;
             /* Compound pattern: emit build ops for each part */
             DCL PPI2 INT;
@@ -546,6 +553,13 @@ LOWER_STMT: PROC(S INT);
     END;
 
     IF (S_TYP(S) = ST_REPL) THEN DO;
+        /* Literal subject: load string into temp var before matching */
+        IF (S_OEV2(S) >= 0) THEN DO;
+            CALL AM_EMIT_OP(OP_LOAD_STR);
+            CALL AM_EMIT_WORD(S_OEV2(S));
+            CALL AM_EMIT_OP(OP_STORE_VAR);
+            CALL AM_EMIT_BYTE(S_SUBJ(S));
+        END;
         /* Pattern-replacement: emit pattern build ops */
         IF (S_PPCNT(S) > 0) THEN DO;
             DCL RPP INT;

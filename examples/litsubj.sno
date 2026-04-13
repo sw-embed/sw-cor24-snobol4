@@ -1,0 +1,19 @@
+*      Test 1: literal not in subject -- should fail
+       'ABC' 'X'                       :F(T1OK)
+       OUTPUT = 'FAIL 1'              :(T2)
+T1OK   OUTPUT = 'PASS 1'
+*      Test 2: literal IS in subject -- should succeed
+T2     'HELLO WORLD' 'WORLD'          :F(T2NO)
+       OUTPUT = 'PASS 2'             :(T3)
+T2NO   OUTPUT = 'FAIL 2'
+*      Test 3: single char not found
+T3     'XYZ' '('                      :F(T3OK)
+       OUTPUT = 'FAIL 3'             :(T4)
+T3OK   OUTPUT = 'PASS 3'
+*      Test 4: variable subject still works
+T4     S = 'TESTING'
+       S 'TEST' . CAP                 :F(T4NO)
+       OUTPUT = 'PASS 4 ' CAP        :(DONE)
+T4NO   OUTPUT = 'FAIL 4'
+DONE
+END

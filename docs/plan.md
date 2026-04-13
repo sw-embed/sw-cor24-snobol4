@@ -841,6 +841,20 @@ adding `TK_EQ` as a terminator for the pattern collection loop.
 
 See `docs/lowercase-problems.md` for full implementation notes.
 
+### 14.6 Issue #10 -- Literal subject pattern match always succeeds
+
+**Filed**: sw-embed/sw-cor24-snobol4#10 (closed).
+
+**Symptom**. `'abc' 'x' :F(NOT)` always succeeded because the parser
+only recognized `TK_IDENT` subjects. A `TK_STR` subject fell through
+to the catch-all which produced `ST_EMPTY` (always succeeds).
+
+**Fix**. Extended the parser to accept `TK_STR` as a statement subject.
+When a string literal is the subject, the parser creates a temp
+variable `_`, stores the literal's SB offset in `S_OEV2`, and the
+lowering emits `OP_LOAD_STR` + `OP_STORE_VAR` before the pattern
+match. Works for both `ST_MATCH` and `ST_REPL`.
+
 Working examples (just demos):
 - hello.sno -- OUTPUT = 'Hello, World!'
 - hello_goto.sno -- goto :(END) skips code
