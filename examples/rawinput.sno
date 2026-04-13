@@ -1,0 +1,4 @@
+READ   LINE = RAWINPUT             :F(DONE)
+       OUTPUT = LINE               :(READ)
+DONE   OUTPUT = 'End of input'
+END

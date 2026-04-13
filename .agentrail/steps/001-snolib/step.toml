@@ -1,6 +1,6 @@
 number = 1
 slug = "snolib"
-status = "pending"
+status = "in-progress"
 description = """
 # Extract src/snolib.plsw -- the runtime library module
 

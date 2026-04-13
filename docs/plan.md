@@ -817,6 +817,30 @@ being amended with full hashes in `c96a16c`. The broken first-attempt
 archive `snobol4-modular-cleanup-20260411T111246` remains as a
 historical artifact -- do NOT hand-edit it to match the amendment.
 
+### 14.4 Issue #8 -- Case-preserving INPUT for case-sensitive languages
+
+**Filed**: sw-embed/sw-cor24-snobol4#8 (closed).
+
+**Fix**: Added `RAWINPUT` builtin that reads input without uppercasing.
+New opcode `OP_READ_RAW_INPUT` (45), new proc `READ_RAW_INPUT` in
+`sno_util.plsw`. Required widening the symbol table from 8 to 12 bytes
+per name (`SYM_WIDTH`) since "RAWINPUT" is 8 characters. Also required
+a PL/SW compiler fix (AST node pool increase) to handle the additional
+WHEN branch in EXEC_IO.
+
+### 14.5 Issue #9 -- Pattern-replacement assignment (S pattern = replacement)
+
+**Filed**: sw-embed/sw-cor24-snobol4#9 (closed).
+
+**Fix**: Added `ST_REPL` statement type (7) and `OP_PAT_REPLACE` opcode
+(46). Parser detects `=` after pattern parts and switches to replacement
+mode. Executor matches the pattern, then rebuilds the subject as
+`prefix + replacement + suffix`. Works with SPAN, BREAK, LEN, REM,
+literal patterns, captures, and empty replacement (deletion). Required
+adding `TK_EQ` as a terminator for the pattern collection loop.
+
+See `docs/lowercase-problems.md` for full implementation notes.
+
 Working examples (just demos):
 - hello.sno -- OUTPUT = 'Hello, World!'
 - hello_goto.sno -- goto :(END) skips code

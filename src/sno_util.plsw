@@ -96,6 +96,70 @@ READ_INPUT: PROC RETURNS(INT);
     RETURN(OFF);
 END;
 
+READ_RAW_INPUT: PROC RETURNS(INT);
+    DCL OFF INT;
+    DCL RP PTR;
+    DCL DP PTR;
+    DCL CH INT;
+    DCL DONE INT;
+
+    /* TTY mode: read a line live, case-preserving */
+    IF (INP_TTY = 1) THEN DO;
+        OFF = SBPOS;
+        DONE = 0;
+        DO WHILE (DONE = 0);
+            CH = UART_GETCHAR();
+            IF (CH = 4) THEN DO;
+                IF (SBPOS = OFF) THEN RETURN(0 - 1);
+            END;
+            ELSE IF (CH = 13 OR CH = 10) THEN DO;
+                CALL UART_PUTCHAR(10);
+                DONE = 1;
+            END;
+            ELSE IF (CH = 8 OR CH = 127) THEN DO;
+                IF (SBPOS > OFF) THEN DO;
+                    SBPOS = SBPOS - 1;
+                    CALL UART_PUTCHAR(8);
+                    CALL UART_PUTCHAR(32);
+                    CALL UART_PUTCHAR(8);
+                END;
+            END;
+            ELSE DO;
+                /* No uppercasing -- preserve case */
+                DP = ADDR(SB) + SBPOS;
+                DP->DTAG = CH;
+                SBPOS = SBPOS + 1;
+                CALL UART_PUTCHAR(CH);
+            END;
+        END;
+        DP = ADDR(SB) + SBPOS;
+        DP->DTAG = 0;
+        SBPOS = SBPOS + 1;
+        RETURN(OFF);
+    END;
+
+    /* Batch mode: read from data file, case-preserving */
+    RP = INP_LOAD_ADDR + INP_POS;
+    CH = RP->DTAG;
+    IF (CH = 0) THEN RETURN(0 - 1);
+    OFF = SBPOS;
+    DO WHILE (CH != 10 AND CH != 0);
+        /* No uppercasing -- preserve case */
+        DP = ADDR(SB) + SBPOS;
+        DP->DTAG = CH;
+        SBPOS = SBPOS + 1;
+        INP_POS = INP_POS + 1;
+        RP = INP_LOAD_ADDR + INP_POS;
+        CH = RP->DTAG;
+    END;
+    DP = ADDR(SB) + SBPOS;
+    DP->DTAG = 0;
+    SBPOS = SBPOS + 1;
+    IF (CH = 10) THEN
+        INP_POS = INP_POS + 1;
+    RETURN(OFF);
+END;
+
 /* ---- String helpers ---- */
 
 SLEN: PROC(S PTR) RETURNS(INT);
@@ -458,13 +522,16 @@ FIND_SPECIAL: PROC;
     DCL NP PTR;
     OUT_SYM = 0 - 1;
     INP_SYM = 0 - 1;
+    RAWINP_SYM = 0 - 1;
     I = 0;
     DO WHILE (I < SYMC);
-        NP = ADDR(SYMN) + I * 8;
+        NP = ADDR(SYMN) + I * SYM_WIDTH;
         IF (SCEQ(NP, ADDR(N_OUT)) != 0) THEN
             OUT_SYM = I;
         IF (SCEQ(NP, ADDR(N_INP)) != 0) THEN
             INP_SYM = I;
+        IF (SCEQ(NP, ADDR(N_RAWINP)) != 0) THEN
+            RAWINP_SYM = I;
         I = I + 1;
     END;
 END;

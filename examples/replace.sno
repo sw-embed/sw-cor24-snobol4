@@ -1,0 +1,10 @@
+       S = 'HELLO WORLD'
+       S 'HELLO' = 'HI'
+       OUTPUT = S
+       T = 'AAA BBB CCC'
+       T 'BBB' = 'XXX'
+       OUTPUT = T
+       U = 'ABCDEF'
+       U 'CD' = ''
+       OUTPUT = U
+END

@@ -1,0 +1,17 @@
+*      Consume matched text (replace with empty string)
+       LINE = 'HELLO WORLD'
+       LINE SPAN('ABCDEFGHIJKLMNOPQRSTUVWXYZ') . TOK = ''
+       OUTPUT = TOK
+       OUTPUT = LINE
+*      Replace a delimiter
+       S = 'KEY=VALUE'
+       S BREAK('=') . K '=' = ''
+       OUTPUT = K
+       OUTPUT = S
+*      Failure case: no match
+       T = 'NOTHING'
+       T 'XYZ' = 'ABC'                :F(NOPE)
+       OUTPUT = 'should not reach'     :(DONE)
+NOPE   OUTPUT = 'no match (correct)'
+DONE
+END

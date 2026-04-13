@@ -27,6 +27,7 @@
 %DEFINE ST_ASSIGN 1;
 %DEFINE ST_END 2;
 %DEFINE ST_MATCH 3;
+%DEFINE ST_REPL 7;
 %DEFINE OE_NONE 0;
 %DEFINE OE_IDENT 1;
 %DEFINE OE_INT 2;
@@ -65,6 +66,7 @@
 
 /* Symbol table size -- also governs VARS, SYMV, VTYP */
 %DEFINE SYMMAX 64;
+%DEFINE SYM_WIDTH 12;       /* bytes per symbol name (max name = SYM_WIDTH-1 chars) */
 
 /* Statement table size -- also governs S_TYP, S_EPCNT, STMT_ADDR, etc. */
 %DEFINE STMAX 256;
@@ -108,13 +110,13 @@ DCL SB(4096) BYTE;
 DCL SBPOS INT STATIC INIT(0);
 
 /* Symbol table -- sizes must match SYMMAX */
-DCL SYMN(512) BYTE;       /* SYMMAX * 8 bytes per name */
+DCL SYMN(768) BYTE;       /* SYMMAX * SYM_WIDTH = 64 * 12 */
 DCL SYMV(SYMMAX) INT;
 DCL SYMC INT STATIC INIT(0);
 DCL VTYP(SYMMAX) INT;
 
 /* Label table */
-DCL LBLN(512) BYTE;       /* LBL_MAX * 8 bytes per name */
+DCL LBLN(768) BYTE;       /* LBL_MAX * SYM_WIDTH = 64 * 12 */
 DCL LBLS(LBL_MAX) INT;
 DCL LBLC INT STATIC INIT(0);
 
@@ -190,3 +192,5 @@ DCL NL(3) CHAR INIT('
 ');
 DCL N_OUT(8) CHAR INIT('OUTPUT');
 DCL N_INP(8) CHAR INIT('INPUT');
+DCL N_RAWINP(12) CHAR INIT('RAWINPUT');
+DCL RAWINP_SYM INT STATIC INIT(0);

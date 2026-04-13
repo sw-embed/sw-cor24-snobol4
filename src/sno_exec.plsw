@@ -90,7 +90,7 @@ END;
  * Lowering: statement table -> AM bytecode
 /* ================================================================ */
 
-/* N_OUT, N_INP, OUT_SYM, INP_SYM defined in sno_util + snoglob */
+/* N_OUT, N_INP, N_RAWINP, OUT_SYM, INP_SYM, RAWINP_SYM in sno_util + snoglob */
 
 
 LOWER_STMT: PROC(S INT);
@@ -198,6 +198,8 @@ LOWER_STMT: PROC(S INT);
                     ELSE IF (EPT = OE_IDENT) THEN DO;
                         IF (EPV = INP_SYM AND INP_SYM >= 0) THEN
                             CALL AM_EMIT_OP(OP_READ_INPUT);
+                        ELSE IF (EPV = RAWINP_SYM AND RAWINP_SYM >= 0) THEN
+                            CALL AM_EMIT_OP(OP_READ_RAW_INPUT);
                         ELSE DO;
                             CALL AM_EMIT_OP(OP_LOAD_VAR);
                             CALL AM_EMIT_BYTE(EPV);
@@ -222,6 +224,8 @@ LOWER_STMT: PROC(S INT);
                     ELSE IF (EPT = OE_IDENT) THEN DO;
                         IF (EPV = INP_SYM AND INP_SYM >= 0) THEN
                             CALL AM_EMIT_OP(OP_READ_INPUT);
+                        ELSE IF (EPV = RAWINP_SYM AND RAWINP_SYM >= 0) THEN
+                            CALL AM_EMIT_OP(OP_READ_RAW_INPUT);
                         ELSE DO;
                             CALL AM_EMIT_OP(OP_LOAD_VAR);
                             CALL AM_EMIT_BYTE(EPV);
@@ -320,6 +324,8 @@ LOWER_STMT: PROC(S INT);
         ELSE IF (S_OETY(S) = OE_IDENT) THEN DO;
             IF (S_OEV1(S) = INP_SYM AND INP_SYM >= 0) THEN
                 CALL AM_EMIT_OP(OP_READ_INPUT);
+            ELSE IF (S_OEV1(S) = RAWINP_SYM AND RAWINP_SYM >= 0) THEN
+                CALL AM_EMIT_OP(OP_READ_RAW_INPUT);
             ELSE DO;
                 CALL AM_EMIT_OP(OP_LOAD_VAR);
                 CALL AM_EMIT_BYTE(S_OEV1(S));
@@ -536,6 +542,118 @@ LOWER_STMT: PROC(S INT);
         END;
 
         /* Goto after match */
+        CALL EMIT_GOTO(S);
+    END;
+
+    IF (S_TYP(S) = ST_REPL) THEN DO;
+        /* Pattern-replacement: emit pattern build ops */
+        IF (S_PPCNT(S) > 0) THEN DO;
+            DCL RPP INT;
+            DCL RPPB INT;
+            DCL RPPT INT;
+            DCL RPPV INT;
+            RPPB = S * EPSLOTS;
+            RPP = 0;
+            DO WHILE (RPP < S_PPCNT(S));
+                RPPT = PP_TYP(RPPB + RPP);
+                RPPV = PP_VAL(RPPB + RPP);
+                SELECT;
+                    WHEN (RPPT = OE_SPAN) DO;
+                        CALL AM_EMIT_OP(OP_MAKE_SPAN);
+                        CALL AM_EMIT_WORD(RPPV);
+                    END;
+                    WHEN (RPPT = OE_BREAK) DO;
+                        CALL AM_EMIT_OP(OP_MAKE_BREAK);
+                        CALL AM_EMIT_WORD(RPPV);
+                    END;
+                    WHEN (RPPT = OE_REM)
+                        CALL AM_EMIT_OP(OP_MAKE_REM);
+                    WHEN (RPPT = OE_LEN) DO;
+                        CALL AM_EMIT_OP(OP_MAKE_LEN);
+                        CALL AM_EMIT_WORD(RPPV);
+                    END;
+                    WHEN (RPPT = OE_LEN_VAR) DO;
+                        CALL AM_EMIT_OP(OP_MAKE_LEN_VAR);
+                        CALL AM_EMIT_BYTE(RPPV);
+                    END;
+                    WHEN (RPPT = OE_STR) DO;
+                        CALL AM_EMIT_OP(OP_MAKE_LIT_PAT);
+                        CALL AM_EMIT_WORD(RPPV);
+                    END;
+                    WHEN (RPPT = OE_IDENT) DO;
+                        CALL AM_EMIT_OP(OP_PAT_VAR);
+                        CALL AM_EMIT_BYTE(RPPV);
+                    END;
+                    WHEN (RPPT = OE_CAP) DO;
+                        CALL AM_EMIT_OP(OP_PAT_CAP);
+                        CALL AM_EMIT_BYTE(RPPV);
+                    END;
+                END;
+                IF (RPP > 0 AND RPPT != OE_CAP) THEN
+                    CALL AM_EMIT_OP(OP_PAT_CONCAT);
+                RPP = RPP + 1;
+            END;
+        END;
+
+        /* Emit replacement value onto eval stack */
+        IF (S_EPCNT(S) >= 2) THEN DO;
+            DCL REI INT;
+            DCL REB INT;
+            DCL RETY INT;
+            DCL REVAL INT;
+            DCL RNP INT;
+            REB = S * EPSLOTS;
+            REI = 0;
+            RNP = 0;
+            DO WHILE (REI < S_EPCNT(S));
+                RETY = EP_TYP(REB + REI);
+                REVAL = EP_VAL(REB + REI);
+                SELECT;
+                    WHEN (RETY = OE_INT) DO;
+                        CALL AM_EMIT_OP(OP_LOAD_INT);
+                        CALL AM_EMIT_WORD(REVAL);
+                    END;
+                    WHEN (RETY = OE_STR) DO;
+                        CALL AM_EMIT_OP(OP_LOAD_STR);
+                        CALL AM_EMIT_WORD(REVAL);
+                    END;
+                    WHEN (RETY = OE_IDENT) DO;
+                        CALL AM_EMIT_OP(OP_LOAD_VAR);
+                        CALL AM_EMIT_BYTE(REVAL);
+                    END;
+                END;
+                IF (RNP > 0) THEN
+                    CALL AM_EMIT_OP(OP_CONCAT);
+                RNP = RNP + 1;
+                REI = REI + 1;
+            END;
+        END;
+        ELSE IF (S_OETY(S) = OE_STR) THEN DO;
+            CALL AM_EMIT_OP(OP_LOAD_STR);
+            CALL AM_EMIT_WORD(S_SPTR(S));
+        END;
+        ELSE IF (S_OETY(S) = OE_INT) THEN DO;
+            CALL AM_EMIT_OP(OP_LOAD_INT);
+            CALL AM_EMIT_WORD(S_OEV1(S));
+        END;
+        ELSE IF (S_OETY(S) = OE_IDENT) THEN DO;
+            CALL AM_EMIT_OP(OP_LOAD_VAR);
+            CALL AM_EMIT_BYTE(S_OEV1(S));
+        END;
+        ELSE DO;
+            /* Empty replacement: allocate empty string in SB */
+            DCL EMPTY_OFF INT;
+            DCL EDP PTR;
+            EMPTY_OFF = SBPOS;
+            EDP = ADDR(SB) + SBPOS;
+            EDP->DTAG = 0;
+            SBPOS = SBPOS + 1;
+            CALL AM_EMIT_OP(OP_LOAD_STR);
+            CALL AM_EMIT_WORD(EMPTY_OFF);
+        END;
+
+        CALL AM_EMIT_OP(OP_PAT_REPLACE);
+        CALL AM_EMIT_BYTE(S_SUBJ(S));
         CALL EMIT_GOTO(S);
     END;
 
@@ -818,6 +936,23 @@ EXEC_IO: PROC;
         END;
         WHEN (X_OP = OP_READ_INPUT) DO;
             X_V = READ_INPUT();
+            IF (X_V >= 0) THEN DO;
+                ETYP(ESP) = VTYP_STR;
+                ESTK(ESP) = X_V;
+                ESP = ESP + 1;
+                LAST_PUSH_TYP = VTYP_STR;
+                LAST_RESULT = 1;
+            END;
+            ELSE DO;
+                ETYP(ESP) = VTYP_STR;
+                ESTK(ESP) = 0;
+                ESP = ESP + 1;
+                LAST_PUSH_TYP = VTYP_STR;
+                LAST_RESULT = 0;
+            END;
+        END;
+        WHEN (X_OP = OP_READ_RAW_INPUT) DO;
+            X_V = READ_RAW_INPUT();
             IF (X_V >= 0) THEN DO;
                 ETYP(ESP) = VTYP_STR;
                 ESTK(ESP) = X_V;
@@ -1176,6 +1311,182 @@ EXEC_PAT_MATCH2: PROC;
     LAST_RESULT = MATCHED2;
 END;
 
+/* --- Handler: pattern replacement (S pattern = replacement) --- */
+EXEC_PAT_REPLACE: PROC;
+    DCL RSIDX INT;
+    DCL RSUBJ_OFF INT;
+    DCL RSUBJ_LEN INT;
+    DCL RTRYPOS INT;
+    DCL RMATCHED INT;
+    DCL RCPOS INT;
+    DCL RPI INT;
+    DCL RPT INT;
+    DCL RPV INT;
+    DCL RMLEN INT;
+    DCL RCAPVAR INT;
+    DCL RCAPSTART INT;
+    DCL REPL_OFF INT;
+    DCL REPL_LEN INT;
+    DCL NEW_OFF INT;
+    DCL RI INT;
+    DCL RSP PTR;
+    DCL RDP PTR;
+    DCL CDST INT;
+    DCL CJ INT;
+    DCL CSP PTR;
+    DCL CDP PTR;
+    DCL RLLEN INT;
+    DCL RLK INT;
+    DCL RLP PTR;
+    DCL RCP PTR;
+
+    RSIDX = AM_READ_BYTE();
+
+    /* Pop replacement from eval stack */
+    ESP = ESP - 1;
+    REPL_OFF = ESTK(ESP);
+    REPL_LEN = SLEN(ADDR(SB) + REPL_OFF);
+
+    RSUBJ_OFF = VARS(RSIDX);
+    RSUBJ_LEN = SLEN(ADDR(SB) + RSUBJ_OFF);
+
+    RMATCHED = 0;
+    RTRYPOS = 0;
+
+    DO WHILE (RTRYPOS <= RSUBJ_LEN AND RMATCHED = 0);
+        RCPOS = RTRYPOS;
+        RPI = 0;
+        RMATCHED = 1;
+        RCAPVAR = 0 - 1;
+
+        DO WHILE (RPI < PSTOP AND RMATCHED = 1);
+            RPT = PSTYP(RPI);
+            RPV = PSTK(RPI);
+
+            SELECT;
+                WHEN (RPT = PK_CAP) DO;
+                    IF (RPV >= 0 AND RPV < SYMMAX) THEN DO;
+                        CDST = SBPOS;
+                        CJ = RCAPSTART;
+                        DO WHILE (CJ < RCPOS);
+                            CSP = ADDR(SB) + RSUBJ_OFF + CJ;
+                            CDP = ADDR(SB) + SBPOS;
+                            CDP->DTAG = CSP->DTAG;
+                            SBPOS = SBPOS + 1;
+                            CJ = CJ + 1;
+                        END;
+                        CDP = ADDR(SB) + SBPOS;
+                        CDP->DTAG = 0;
+                        SBPOS = SBPOS + 1;
+                        VARS(RPV) = CDST;
+                        VTYP(RPV) = VTYP_STR;
+                    END;
+                END;
+                WHEN (RPT = PK_SPAN) DO;
+                    RCAPSTART = RCPOS;
+                    RMLEN = EXEC_SPAN(ADDR(SB) + RSUBJ_OFF, RSUBJ_LEN, RCPOS, ADDR(SB) + RPV);
+                    IF (RMLEN > 0) THEN
+                        RCPOS = RCPOS + RMLEN;
+                    ELSE
+                        RMATCHED = 0;
+                END;
+                WHEN (RPT = PK_BREAK) DO;
+                    RCAPSTART = RCPOS;
+                    RMLEN = EXEC_BREAK(ADDR(SB) + RSUBJ_OFF, RSUBJ_LEN, RCPOS, ADDR(SB) + RPV);
+                    IF (RMLEN >= 0) THEN
+                        RCPOS = RCPOS + RMLEN;
+                    ELSE
+                        RMATCHED = 0;
+                END;
+                WHEN (RPT = PK_REM) DO;
+                    RCAPSTART = RCPOS;
+                    RCPOS = RSUBJ_LEN;
+                END;
+                WHEN (RPT = PK_LEN) DO;
+                    IF (RCPOS + RPV > RSUBJ_LEN) THEN
+                        RMATCHED = 0;
+                    ELSE DO;
+                        RCAPSTART = RCPOS;
+                        RCPOS = RCPOS + RPV;
+                    END;
+                END;
+                WHEN (RPT = PK_LIT) DO;
+                    RLLEN = SLEN(ADDR(SB) + RPV);
+                    IF (RCPOS + RLLEN > RSUBJ_LEN) THEN
+                        RMATCHED = 0;
+                    ELSE DO;
+                        RLK = 0;
+                        DO WHILE (RLK < RLLEN);
+                            RLP = ADDR(SB) + RPV + RLK;
+                            RCP = ADDR(SB) + RSUBJ_OFF + RCPOS + RLK;
+                            IF (RLP->DTAG != RCP->DTAG) THEN DO;
+                                RMATCHED = 0;
+                                RLK = RLLEN;
+                            END;
+                            RLK = RLK + 1;
+                        END;
+                        IF (RMATCHED = 1) THEN
+                            RCPOS = RCPOS + RLLEN;
+                    END;
+                END;
+            END;
+
+            RPI = RPI + 1;
+        END;
+
+        IF (RMATCHED = 0) THEN
+            RTRYPOS = RTRYPOS + 1;
+    END;
+
+    PSTOP = 0;
+
+    IF (RMATCHED = 1) THEN DO;
+        /* Build new string: prefix + replacement + suffix */
+        NEW_OFF = SBPOS;
+
+        /* Copy prefix: subject[0..RTRYPOS) */
+        RI = 0;
+        DO WHILE (RI < RTRYPOS);
+            RSP = ADDR(SB) + RSUBJ_OFF + RI;
+            RDP = ADDR(SB) + SBPOS;
+            RDP->DTAG = RSP->DTAG;
+            SBPOS = SBPOS + 1;
+            RI = RI + 1;
+        END;
+
+        /* Copy replacement */
+        RI = 0;
+        DO WHILE (RI < REPL_LEN);
+            RSP = ADDR(SB) + REPL_OFF + RI;
+            RDP = ADDR(SB) + SBPOS;
+            RDP->DTAG = RSP->DTAG;
+            SBPOS = SBPOS + 1;
+            RI = RI + 1;
+        END;
+
+        /* Copy suffix: subject[RCPOS..RSUBJ_LEN) */
+        RI = RCPOS;
+        DO WHILE (RI < RSUBJ_LEN);
+            RSP = ADDR(SB) + RSUBJ_OFF + RI;
+            RDP = ADDR(SB) + SBPOS;
+            RDP->DTAG = RSP->DTAG;
+            SBPOS = SBPOS + 1;
+            RI = RI + 1;
+        END;
+
+        /* Null-terminate */
+        RDP = ADDR(SB) + SBPOS;
+        RDP->DTAG = 0;
+        SBPOS = SBPOS + 1;
+
+        /* Store back into subject */
+        VARS(RSIDX) = NEW_OFF;
+        VTYP(RSIDX) = VTYP_STR;
+    END;
+
+    LAST_RESULT = RMATCHED;
+END;
+
 /* --- Handler: array operations --- */
 EXEC_ARRAY: PROC;
     SELECT;
@@ -1367,6 +1678,7 @@ AM_EXEC: PROC;
             WHEN (X_OP = OP_PRINT_NL)   CALL EXEC_IO;
             WHEN (X_OP = OP_PRINT_VAR)  CALL EXEC_IO;
             WHEN (X_OP = OP_READ_INPUT) CALL EXEC_IO;
+            WHEN (X_OP = OP_READ_RAW_INPUT) CALL EXEC_IO;
 
             /* Branches */
             WHEN (X_OP = OP_BR)         CALL EXEC_BRANCH;
@@ -1387,6 +1699,7 @@ AM_EXEC: PROC;
             /* Pattern match */
             WHEN (X_OP = OP_PAT_MATCH)  CALL EXEC_PAT_MATCH_LEGACY;
             WHEN (X_OP = OP_PAT_MATCH2) CALL EXEC_PAT_MATCH2;
+            WHEN (X_OP = OP_PAT_REPLACE) CALL EXEC_PAT_REPLACE;
 
             /* Arrays */
             WHEN (X_OP = OP_MAKE_ARRAY) CALL EXEC_ARRAY;
