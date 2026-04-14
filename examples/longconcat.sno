@@ -1,0 +1,7 @@
+*      Build a 200-char string via concat, then concat more.
+*      Previously truncated at 120 chars per operand.
+       A = '01234567890123456789012345678901234567890123456789'
+       B = A A A A
+       OUTPUT = B
+       OUTPUT = SIZE(B)
+END
