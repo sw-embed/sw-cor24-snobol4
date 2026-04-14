@@ -105,8 +105,10 @@ DCL TN INT STATIC INIT(0);
 DCL LHAS_LBL INT STATIC INIT(0);
 DCL AT_SOL INT STATIC INIT(1);
 
-/* String buffer */
-DCL SB(4096) BYTE;
+/* String buffer -- 16KB. No GC/compaction: every concat result, read
+ * input line, and pattern capture appends at SBPOS. Previous 4KB size
+ * caused silent memory corruption (issue #11) in realistic programs. */
+DCL SB(16384) BYTE;
 DCL SBPOS INT STATIC INIT(0);
 
 /* Symbol table -- sizes must match SYMMAX */

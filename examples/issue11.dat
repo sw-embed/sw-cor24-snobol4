@@ -1,0 +1,5 @@
+FACT parent 2 a:bob a:ann
+FACT parent 2 a:ann a:liz
+FACT color 1 a:red
+FACT color 1 a:green
+QUERY parent 2 a:bob a:ann

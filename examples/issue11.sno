@@ -1,0 +1,131 @@
+       OUTPUT = '.atom 0 nil'
+       OUTPUT = '.atom 1 bob'
+       OUTPUT = '.atom 2 ann'
+       OUTPUT = '.atom 3 joe'
+       OUTPUT = '.atom 4 liz'
+       OUTPUT = '.atom 5 parent'
+       OUTPUT = '.atom 6 ancestor'
+       OUTPUT = '.atom 7 red'
+       OUTPUT = '.atom 8 green'
+       OUTPUT = '.atom 9 blue'
+       OUTPUT = ''
+       OUTPUT = '    EXECUTE query'
+       OUTPUT = ''
+       CFUN = ''
+       NCC = 0
+       QUERY = ''
+READ   LINE = RAWINPUT                  :F(EOF)
+       IDENT(LINE,'')                   :S(READ)
+RS     LINE LEN(1) . CH                :F(READ)
+       IDENT(CH,' ')                    :F(RS2)
+       LINE ' ' = ''                   :(RS)
+RS2    LINE BREAK(' ') . FORM = ''    :F(READ)
+       LINE ' ' = ''
+       IDENT(FORM,'QUERY')              :F(F1)
+       QUERY = LINE                    :(READ)
+F1     IDENT(FORM,'FACT')               :F(READ)
+       LINE BREAK(' ') . FUN = ''     :F(READ)
+       LINE ' ' = ''
+       LINE BREAK(' ') . ARITY = ''   :F(READ)
+       LINE ' ' = ''
+       IDENT(CFUN,'')                   :S(FSTART)
+       IDENT(FUN,CFUN)                  :F(FCHANGE)
+       IDENT(ARITY,CAR)                 :F(FCHANGE)
+       :(FBUILD)
+FCHANGE FSTATE = 'FSTART'               :(FLUSH)
+FSTART CFUN = FUN
+       CAR = ARITY
+       NCC = 0
+FBUILD NCC = NCC + 1
+       VMAP = ' '
+       XCNT = 0
+       REGN = 0
+       OUTPUT = ''
+       OUTPUT = CFUN '_c' NCC '_body:'
+GLOOP  IDENT(LINE,'')                   :S(GFIN)
+       LINE LEN(1) . CH                :F(GFIN)
+       IDENT(CH,' ')                    :F(GLOOP2)
+       LINE LEN(1) = ''                :(GLOOP)
+GLOOP2 IDENT(LINE,'')                   :S(GFIN)
+       LINE BREAK(' ') . ARG = ''     :F(GLAST)
+       :(GEMIT)
+GLAST  LINE REM . ARG = ''
+GEMIT  ARG 'a:' = ''                   :F(GEV)
+       OUTPUT = '    GET_CONST A' REGN ', atom(' ARG ')'
+       REGN = REGN + 1                :(GLOOP)
+GEV    ARG 'v:' = ''                   :F(GEI)
+       TEMP = VMAP
+       TEMP ' ' ARG ':' BREAK(' ') . VX :F(GNVAR)
+       OUTPUT = '    GET_VAL X' VX ', A' REGN
+       REGN = REGN + 1                :(GLOOP)
+GNVAR  VMAP = VMAP ARG ':' XCNT ' '
+       OUTPUT = '    GET_VAR X' XCNT ', A' REGN
+       REGN = REGN + 1
+       XCNT = XCNT + 1                :(GLOOP)
+GEI    ARG 'i:' = ''                   :F(GSKIP)
+       OUTPUT = '    GET_CONST A' REGN ', int(' ARG ')'
+       REGN = REGN + 1                :(GLOOP)
+GSKIP  OUTPUT = '    ; skipping ' ARG  :(GLOOP)
+GFIN   OUTPUT = '    PROCEED'          :(READ)
+EOF    IDENT(CFUN,'')                  :S(FDONE)
+       FSTATE = 'FDONE'                :(FLUSH)
+FDONE  IDENT(QUERY,'')                 :S(DONE)
+       :(QEMIT)
+FLUSH  OUTPUT = ''
+       OUTPUT = CFUN '_entry:'
+       EQ(NCC,1)                       :F(FMUL)
+       OUTPUT = '    EXECUTE ' CFUN '_c1_body' :(FLDIS)
+FMUL   OUTPUT = '    TRY ' CFUN '_c2'
+       OUTPUT = '    EXECUTE ' CFUN '_c1_body'
+       I = 1
+FMLP   I = I + 1
+       GT(I,NCC)                       :S(FLDIS)
+       OUTPUT = CFUN '_c' I ':'
+       EQ(I,NCC)                       :S(FMLT)
+       J = I + 1
+       OUTPUT = '    RETRY ' CFUN '_c' J :(FMLE)
+FMLT   OUTPUT = '    TRUST'
+FMLE   OUTPUT = '    EXECUTE ' CFUN '_c' I '_body' :(FMLP)
+FLDIS  CFUN = ''
+       NCC = 0
+       IDENT(FSTATE,'FSTART')          :S(FSTART)
+       IDENT(FSTATE,'FDONE')           :S(FDONE)
+       :(DONE)
+QEMIT  OUTPUT = ''
+       OUTPUT = 'query:'
+       Q = QUERY
+       Q BREAK(' ') . QFUN = ''       :F(DONE)
+       Q ' ' = ''
+       Q BREAK(' ') . QAR = ''        :F(DONE)
+       Q ' ' = ''
+       VMAP = ' '
+       XCNT = 0
+       REGN = 0
+QLOOP  IDENT(Q,'')                      :S(QFIN)
+       Q LEN(1) . CH                   :F(QFIN)
+       IDENT(CH,' ')                    :F(QLOOP2)
+       Q LEN(1) = ''                   :(QLOOP)
+QLOOP2 IDENT(Q,'')                      :S(QFIN)
+       Q BREAK(' ') . ARG = ''        :F(QLAST)
+       :(QE)
+QLAST  Q REM . ARG = ''
+QE     ARG 'a:' = ''                   :F(QEV)
+       OUTPUT = '    PUT_CONST A' REGN ', atom(' ARG ')'
+       REGN = REGN + 1                :(QLOOP)
+QEV    ARG 'v:' = ''                   :F(QEI)
+       TEMP = VMAP
+       TEMP ' ' ARG ':' BREAK(' ') . VX :F(QNVAR)
+       OUTPUT = '    PUT_VAL X' VX ', A' REGN
+       REGN = REGN + 1                :(QLOOP)
+QNVAR  VMAP = VMAP ARG ':' XCNT ' '
+       OUTPUT = '    PUT_VAR X' XCNT ', A' REGN
+       REGN = REGN + 1
+       XCNT = XCNT + 1                :(QLOOP)
+QEI    ARG 'i:' = ''                   :F(QSKIP)
+       OUTPUT = '    PUT_CONST A' REGN ', int(' ARG ')'
+       REGN = REGN + 1                :(QLOOP)
+QSKIP  OUTPUT = '    ; skipping ' ARG  :(QLOOP)
+QFIN   OUTPUT = '    CALL ' QFUN '_entry'
+       OUTPUT = '    HALT'
+DONE
+END
