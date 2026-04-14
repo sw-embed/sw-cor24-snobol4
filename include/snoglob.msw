@@ -107,8 +107,12 @@ DCL AT_SOL INT STATIC INIT(1);
 
 /* String buffer -- 16KB. No GC/compaction: every concat result, read
  * input line, and pattern capture appends at SBPOS. Previous 4KB size
- * caused silent memory corruption (issue #11) in realistic programs. */
-DCL SB(16384) BYTE;
+ * caused silent memory corruption (issue #11) in realistic programs.
+ * SB_LIMIT reserves headroom (128 bytes) so a single oversized operand
+ * can't overshoot while we detect the overflow. See issue #12. */
+%DEFINE SB_SIZE 16384;
+%DEFINE SB_LIMIT 15872;     /* SB_SIZE - 512 (headroom for one op) */
+DCL SB(SB_SIZE) BYTE;
 DCL SBPOS INT STATIC INIT(0);
 
 /* Symbol table -- sizes must match SYMMAX */
@@ -196,3 +200,7 @@ DCL N_OUT(8) CHAR INIT('OUTPUT');
 DCL N_INP(8) CHAR INIT('INPUT');
 DCL N_RAWINP(12) CHAR INIT('RAWINPUT');
 DCL RAWINP_SYM INT STATIC INIT(0);
+
+/* SB overflow abort: set by SB_ABORT, checked by AM_EXEC loop. */
+DCL SB_OVERFLOW INT STATIC INIT(0);
+DCL SB_OVF_MSG(48) CHAR INIT('SNOBOL4: string buffer overflow at SBPOS=');

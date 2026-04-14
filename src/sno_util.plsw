@@ -9,6 +9,24 @@
 %INCLUDE pat;
 %INCLUDE snoglob;
 
+/* ---- SB overflow guard ----
+ * SB has no GC or compaction (see issue #12). SB_ABORT prints a
+ * diagnostic and sets SB_OVERFLOW so the executor loop can stop
+ * cleanly instead of silently corrupting adjacent globals. */
+
+SB_ABORT: PROC;
+    IF (SB_OVERFLOW != 0) THEN RETURN;
+    SB_OVERFLOW = 1;
+    CALL UART_PUTS(ADDR(SB_OVF_MSG));
+    CALL PUT_DEC(SBPOS);
+    CALL UART_PUTCHAR(10);
+END;
+
+SB_CHECK: PROC(N INT);
+    IF (SBPOS + N >= SB_LIMIT) THEN
+        CALL SB_ABORT;
+END;
+
 /* ---- Source/Input readers ---- */
 
 READ_SRC: PROC;

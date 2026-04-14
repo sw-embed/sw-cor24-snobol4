@@ -1,0 +1,10 @@
+*      Grow SB by building unique strings via concat in a loop.
+       N = 0
+       S = ''
+LOOP   N = N + 1
+       S = S 'x'
+       OUTPUT = N
+       GT(N,10000)                     :S(DONE)
+       :(LOOP)
+DONE   OUTPUT = 'reached loop end'
+END

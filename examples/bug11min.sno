@@ -1,0 +1,6 @@
+       CFUN = 'PARENT'
+       I = 2
+       OUTPUT = CFUN '_c' I ':'
+       CFUN = 'COLOR'
+       OUTPUT = CFUN '_c' I ':'
+END

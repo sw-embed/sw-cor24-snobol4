@@ -1670,7 +1670,8 @@ AM_EXEC: PROC;
     X_PC = 0;
     ESP = 0;
 
-    DO WHILE (X_PC < AM_PC);
+    DO WHILE (X_PC < AM_PC AND SB_OVERFLOW = 0);
+        IF (SBPOS > SB_LIMIT) THEN CALL SB_ABORT;
         X_OP = AM_CODE(X_PC);
         X_PC = X_PC + 1;
 
