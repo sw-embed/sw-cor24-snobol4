@@ -178,6 +178,36 @@ READ_RAW_INPUT: PROC RETURNS(INT);
     RETURN(OFF);
 END;
 
+/* Parse null-terminated decimal digits at SB+OFF into an integer.
+ * Optional leading '-' for negative. Non-digit chars terminate parsing.
+ * Empty or non-numeric input returns 0 (SNOBOL4 coercion convention). */
+PARSE_INT: PROC(OFF INT) RETURNS(INT);
+    DCL P PTR;
+    DCL C INT;
+    DCL N INT;
+    DCL I INT;
+    DCL NEG INT;
+    N = 0;
+    I = 0;
+    NEG = 0;
+    P = ADDR(SB) + OFF;
+    C = P->DTAG;
+    IF (C = 45) THEN DO;
+        NEG = 1;
+        I = 1;
+        P = ADDR(SB) + OFF + I;
+        C = P->DTAG;
+    END;
+    DO WHILE (C >= 48 AND C <= 57);
+        N = N * 10 + C - 48;
+        I = I + 1;
+        P = ADDR(SB) + OFF + I;
+        C = P->DTAG;
+    END;
+    IF (NEG = 1) THEN N = 0 - N;
+    RETURN(N);
+END;
+
 /* ---- String helpers ---- */
 
 SLEN: PROC(S PTR) RETURNS(INT);

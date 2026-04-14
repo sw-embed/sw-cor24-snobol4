@@ -1,0 +1,25 @@
+*      Arithmetic on pattern-captured strings
+       LINE = 'parent 5 foo bar'
+       LINE BREAK(' ') . FUN = ''
+       LINE ' ' = ''
+       LINE BREAK(' ') . N = ''
+       OUTPUT = N
+       X = N + 1
+       OUTPUT = X
+       Y = N - 1
+       OUTPUT = Y
+       Z = N * 2
+       OUTPUT = Z
+       R = REMDR(N,3)
+       OUTPUT = R
+*      Chained decrement
+       NARG = N
+LOOP   OUTPUT = NARG
+       NARG = NARG - 1
+       GT(NARG,0)                      :S(LOOP)
+       OUTPUT = 'done'
+*      Negative coercion
+       NEG = '-7'
+       W = NEG + 10
+       OUTPUT = W
+END

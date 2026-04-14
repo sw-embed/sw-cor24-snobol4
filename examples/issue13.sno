@@ -1,0 +1,11 @@
+       LINE = 'parent 2 a:bob a:ann'
+       LINE BREAK(' ') . FUN = ''
+       LINE ' ' = ''
+       LINE BREAK(' ') . ARITY = ''
+       LINE ' ' = ''
+       OUTPUT = 'ARITY=[' ARITY ']'
+       NARG = ARITY
+       OUTPUT = 'NARG=[' NARG ']'
+       NARG = NARG - 1
+       OUTPUT = 'after dec: NARG=[' NARG ']'
+END

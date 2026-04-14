@@ -1,0 +1,12 @@
+       LINE = 'parent 5 foo'
+       LINE BREAK(' ') . FUN = ''
+       LINE ' ' = ''
+       LINE BREAK(' ') . ARITY = ''
+       OUTPUT = 'ARITY=' ARITY
+       NARG = 0 + ARITY
+       OUTPUT = 'NARG=' NARG
+       NARG2 = ARITY + 0
+       OUTPUT = 'NARG2=' NARG2
+       NARG3 = ARITY - 0
+       OUTPUT = 'NARG3=' NARG3
+END
