@@ -1,0 +1,13 @@
+*      Keep 3 live strings and churn others. Verifies compaction
+*      preserves live data under repeated growth.
+       A = 'alpha'
+       B = 'beta'
+       C = 'gamma'
+       N = 0
+LOOP   N = N + 1
+       JUNK = 'x' N 'y' N 'z' N 'w' N 'extra-padding-to-grow-SB'
+       OUTPUT = N ' ' A ' ' B ' ' C
+       GT(N,500)                      :S(DONE)
+       :(LOOP)
+DONE   OUTPUT = 'final: ' A ' ' B ' ' C
+END

@@ -1660,6 +1660,144 @@ EXEC_BRANCH: PROC;
 END;
 
 /* ================================================================
+ * SB compaction (mark-copy-rewrite)
+ *
+ * Reclaims dead strings from the runtime region of SB (offsets
+ * >= SB_COMPILE_END). Skipped if any expression or pattern match
+ * is in flight (ESP != 0, PSTOP != 0, CSTK_TOP != 0) since those
+ * hold SB references we don't scan. See issue #12.
+ * ================================================================ */
+
+/* Add an offset to the forwarding table if not already present. */
+SB_FWD_ADD: PROC(OFF INT);
+    DCL J INT;
+    J = 0;
+    DO WHILE (J < SB_FWD_CNT);
+        IF (SB_FWD_OLD(J) = OFF) THEN RETURN;
+        J = J + 1;
+    END;
+    IF (SB_FWD_CNT >= SB_FWD_MAX) THEN RETURN;
+    SB_FWD_OLD(SB_FWD_CNT) = OFF;
+    SB_FWD_CNT = SB_FWD_CNT + 1;
+END;
+
+/* Return the new offset for an old offset, or the old offset if
+ * not in the forwarding table (e.g., it's a stable compile-time
+ * offset below SB_COMPILE_END). */
+SB_FWD_LOOKUP: PROC(OFF INT) RETURNS(INT);
+    DCL J INT;
+    J = 0;
+    DO WHILE (J < SB_FWD_CNT);
+        IF (SB_FWD_OLD(J) = OFF) THEN RETURN(SB_FWD_NEW(J));
+        J = J + 1;
+    END;
+    RETURN(OFF);
+END;
+
+SB_COMPACT: PROC;
+    DCL I INT;
+    DCL J INT;
+    DCL TMP INT;
+    DCL OFF INT;
+    DCL LEN INT;
+    DCL NEW_POS INT;
+    DCL SP PTR;
+    DCL DP PTR;
+    DCL C INT;
+
+    /* Skip if anything references SB via unscanned roots */
+    IF (ESP != 0) THEN RETURN;
+    IF (PSTOP != 0) THEN RETURN;
+    IF (CSTK_TOP != 0) THEN RETURN;
+
+    SB_FWD_CNT = 0;
+
+    /* Collect live offsets from VARS */
+    I = 0;
+    DO WHILE (I < SYMC);
+        IF (VTYP(I) = VTYP_STR) THEN
+            IF (VARS(I) >= SB_COMPILE_END) THEN
+                CALL SB_FWD_ADD(VARS(I));
+        I = I + 1;
+    END;
+
+    /* Collect live offsets from ARR_DATA */
+    I = 0;
+    DO WHILE (I < ARR_CNT * ARR_ELEMS);
+        IF (ARR_TYP(I) = VTYP_STR) THEN
+            IF (ARR_DATA(I) >= SB_COMPILE_END) THEN
+                CALL SB_FWD_ADD(ARR_DATA(I));
+        I = I + 1;
+    END;
+
+    /* Sort SB_FWD_OLD ascending (insertion sort, small N) */
+    I = 1;
+    DO WHILE (I < SB_FWD_CNT);
+        J = I;
+        DO WHILE (J > 0);
+            IF (SB_FWD_OLD(J - 1) <= SB_FWD_OLD(J)) THEN J = 0;
+            ELSE DO;
+                TMP = SB_FWD_OLD(J);
+                SB_FWD_OLD(J) = SB_FWD_OLD(J - 1);
+                SB_FWD_OLD(J - 1) = TMP;
+                J = J - 1;
+            END;
+        END;
+        I = I + 1;
+    END;
+
+    /* Copy live strings to new compact positions (in-place, safe
+     * because new_pos <= old_pos for every string in ascending order) */
+    NEW_POS = SB_COMPILE_END;
+    I = 0;
+    DO WHILE (I < SB_FWD_CNT);
+        OFF = SB_FWD_OLD(I);
+        SB_FWD_NEW(I) = NEW_POS;
+
+        /* Compute length (excluding null) */
+        LEN = 0;
+        SP = ADDR(SB) + OFF;
+        C = SP->DTAG;
+        DO WHILE (C != 0);
+            LEN = LEN + 1;
+            SP = ADDR(SB) + OFF + LEN;
+            C = SP->DTAG;
+        END;
+
+        /* Copy LEN+1 bytes (including null terminator) */
+        J = 0;
+        DO WHILE (J <= LEN);
+            SP = ADDR(SB) + OFF + J;
+            DP = ADDR(SB) + NEW_POS + J;
+            DP->DTAG = SP->DTAG;
+            J = J + 1;
+        END;
+
+        NEW_POS = NEW_POS + LEN + 1;
+        I = I + 1;
+    END;
+
+    /* Rewrite all root offsets using forwarding table */
+    I = 0;
+    DO WHILE (I < SYMC);
+        IF (VTYP(I) = VTYP_STR) THEN
+            IF (VARS(I) >= SB_COMPILE_END) THEN
+                VARS(I) = SB_FWD_LOOKUP(VARS(I));
+        I = I + 1;
+    END;
+
+    I = 0;
+    DO WHILE (I < ARR_CNT * ARR_ELEMS);
+        IF (ARR_TYP(I) = VTYP_STR) THEN
+            IF (ARR_DATA(I) >= SB_COMPILE_END) THEN
+                ARR_DATA(I) = SB_FWD_LOOKUP(ARR_DATA(I));
+        I = I + 1;
+    END;
+
+    SBPOS = NEW_POS;
+END;
+
+/* ================================================================
  * Main executor: dispatch loop
  *
  * Single SELECT/WHEN dispatcher routes each opcode to a grouped
@@ -1669,8 +1807,10 @@ END;
 AM_EXEC: PROC;
     X_PC = 0;
     ESP = 0;
+    SB_COMPILE_END = SBPOS;
 
     DO WHILE (X_PC < AM_PC AND SB_OVERFLOW = 0);
+        IF (SBPOS > SB_SOFT_LIMIT) THEN CALL SB_COMPACT;
         IF (SBPOS > SB_LIMIT) THEN CALL SB_ABORT;
         X_OP = AM_CODE(X_PC);
         X_PC = X_PC + 1;
