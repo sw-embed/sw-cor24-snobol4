@@ -1,0 +1,257 @@
+* issue14.sno -- Regression test for issue #14.
+*
+* This is the sw-cor24-prolog codegen.sno at b85f5b9 with the failing
+* IDENT(ARG,'COMMA') :F(GSKIP) branch added to GBCHK. Source size
+* crosses the 8KB SRC boundary, which in the old READ_SRC truncated
+* the trailing "OUTPUT = '    HALT'" line and cut the earlier
+* "OUTPUT = '    CALL '..." literal to '    C'. The repro runs on
+* examples/issue14.dat and must emit "CALL parent_entry" + "HALT"
+* as the final two lines.
+*
+* codegen.sno -- Generate .lam from parsed Prolog (Phase 2)
+*
+* Reads intermediate form (output of parse.sno):
+*   FACT parent 2 a:bob a:ann
+*   QUERY parent 2 a:bob a:ann
+*
+* Emits .lam with multi-clause dispatch. Each clause body is emitted
+* under a pred_cN_body label as it is read (streaming). When a
+* predicate group ends, an entry + retry-chain dispatcher is emitted:
+*
+*   parent_c1_body:
+*       GET_CONST A0, atom(bob)
+*       GET_CONST A1, atom(ann)
+*       PROCEED
+*   parent_c2_body:
+*       GET_CONST A0, atom(ann)
+*       GET_CONST A1, atom(liz)
+*       PROCEED
+*   parent_entry:
+*       TRY parent_c2
+*       EXECUTE parent_c1_body
+*   parent_c2:
+*       TRUST
+*       EXECUTE parent_c2_body
+*
+* For single-clause predicates the dispatcher is just:
+*   parent_entry:
+*       EXECUTE parent_c1_body
+*
+* Phase 2 limitations:
+*   - Clauses of a predicate must be consecutive in source
+*   - Only FACTs supported (RULEs handled in next step)
+*   - Hardcoded atom table
+*
+* ---- Emit fixed atom declarations ----
+*
+       OUTPUT = '.atom 0 nil'
+       OUTPUT = '.atom 1 bob'
+       OUTPUT = '.atom 2 ann'
+       OUTPUT = '.atom 3 joe'
+       OUTPUT = '.atom 4 liz'
+       OUTPUT = '.atom 5 parent'
+       OUTPUT = '.atom 6 ancestor'
+       OUTPUT = '.atom 7 red'
+       OUTPUT = '.atom 8 green'
+       OUTPUT = '.atom 9 blue'
+       OUTPUT = ''
+*
+*      Emit jump-to-query so PC=0 works
+       OUTPUT = '    EXECUTE query'
+       OUTPUT = ''
+*
+*      Group state: current predicate being accumulated
+       CFUN = ''
+       CAR = ''
+       NCC = 0
+       QUERY = ''
+*
+* ---- Read intermediate form ----
+*
+READ   LINE = RAWINPUT                  :F(EOF)
+       IDENT(LINE,'')                   :S(READ)
+*
+*      Skip leading whitespace
+RS     LINE LEN(1) . CH                :F(READ)
+       IDENT(CH,' ')                    :F(RS2)
+       LINE ' ' = ''                   :(RS)
+*
+*      Get form type
+RS2    LINE BREAK(' ') . FORM = ''    :F(READ)
+       LINE ' ' = ''
+*
+*      QUERY: save and continue reading
+       IDENT(FORM,'QUERY')              :F(F1)
+       QUERY = LINE                    :(READ)
+*
+*      FACT or RULE: extract functor and arity; clause grouping
+*      is identical for both. GLOOP detects the 'BODY' sentinel
+*      to switch from head GET_* to body PUT_* emission.
+F1     IDENT(FORM,'FACT')               :S(F1X)
+       IDENT(FORM,'RULE')               :F(READ)
+F1X    LINE BREAK(' ') . FUN = ''     :F(READ)
+       LINE ' ' = ''
+       LINE BREAK(' ') . ARITY = ''   :F(READ)
+       LINE ' ' = ''
+*
+*      If no current group, start one
+       IDENT(CFUN,'')                   :S(FSTART)
+*      If same predicate, append
+       IDENT(FUN,CFUN)                  :F(FCHANGE)
+       IDENT(ARITY,CAR)                 :F(FCHANGE)
+       :(FBUILD)
+*
+*      Predicate changed: flush old dispatcher, then start new
+FCHANGE FSTATE = 'FSTART'               :(FLUSH)
+*
+*      Start a new group
+FSTART CFUN = FUN
+       CAR = ARITY
+       NCC = 0
+*
+*      Emit this clause's body under pred_cN_body label.
+*      PASS is 'GET' while processing head args, then flips to
+*      'PUT' (at GBODY) so the same loop also emits the body
+*      goal's call-argument setup. GFIN chooses PROCEED or
+*      EXECUTE based on which phase we finished.
+FBUILD NCC = NCC + 1
+       VMAP = ' '
+       XCNT = 0
+       REGN = 0
+       PASS = 'GET'
+       OUTPUT = ''
+       OUTPUT = CFUN '_c' NCC '_body:'
+GLOOP  IDENT(LINE,'')                   :S(GFIN)
+       LINE LEN(1) . CH                :F(GFIN)
+       IDENT(CH,' ')                    :F(GLOOP2)
+       LINE LEN(1) = ''                :(GLOOP)
+GLOOP2 IDENT(LINE,'')                   :S(GFIN)
+       LINE BREAK(' ') . ARG = ''     :F(GLAST)
+       :(GEMIT)
+GLAST  LINE REM . ARG = ''
+GEMIT  ARG 'a:' = ''                   :F(GEV)
+       OUTPUT = '    ' PASS '_CONST A' REGN ', atom(' ARG ')'
+       REGN = REGN + 1                :(GLOOP)
+*      v:Name -- variable
+GEV    ARG 'v:' = ''                   :F(GEI)
+       TEMP = VMAP
+       TEMP ' ' ARG ':' BREAK(' ') . VX :F(GNVAR)
+       OUTPUT = '    ' PASS '_VAL X' VX ', A' REGN
+       REGN = REGN + 1                :(GLOOP)
+GNVAR  VMAP = VMAP ARG ':' XCNT ' '
+       OUTPUT = '    ' PASS '_VAR X' XCNT ', A' REGN
+       REGN = REGN + 1
+       XCNT = XCNT + 1                :(GLOOP)
+*      i:N -- integer
+GEI    ARG 'i:' = ''                   :F(GBCHK)
+       OUTPUT = '    ' PASS '_CONST A' REGN ', int(' ARG ')'
+       REGN = REGN + 1                :(GLOOP)
+*      No known prefix. Check for the RULE-body sentinel.
+GBCHK  IDENT(ARG,'BODY')                :S(GBODY)
+       IDENT(ARG,'COMMA')               :F(GSKIP)
+       OUTPUT = '    CALL ' GFUN '_entry'  :(GBODY)
+GSKIP  OUTPUT = '    ; skipping ' ARG  :(GLOOP)
+GFIN   IDENT(PASS,'PUT')                :S(GFINB)
+       OUTPUT = '    PROCEED'          :(READ)
+*      End of body goal -- emit tail call.
+GFINB  OUTPUT = '    EXECUTE ' GFUN '_entry' :(READ)
+*
+* ---- RULE body: reconfigure GLOOP to emit PUT_* for the body goal
+*
+*      Strip leading spaces, extract goal functor/arity, reset REGN,
+*      flip PASS to PUT. VMAP persists so body vars reuse the X
+*      bindings established by the head.
+*
+GBODY  LINE LEN(1) . CH                :F(READ)
+       IDENT(CH,' ')                    :F(GB2)
+       LINE LEN(1) = ''                :(GBODY)
+GB2    LINE BREAK(' ') . GFUN = ''    :F(READ)
+       LINE ' ' = ''
+       LINE BREAK(' ') . GAR = ''     :F(READ)
+       LINE ' ' = ''
+       REGN = 0
+       PASS = 'PUT'                    :(GLOOP)
+*
+* ---- EOF: flush pending group, then emit query ----
+*
+EOF    IDENT(CFUN,'')                  :S(FDONE)
+       FSTATE = 'FDONE'                :(FLUSH)
+FDONE  IDENT(QUERY,'')                 :S(DONE)
+       :(QEMIT)
+*
+* ---- FLUSH: emit dispatcher (entry + retry chain) ----
+*
+FLUSH  OUTPUT = ''
+       OUTPUT = CFUN '_entry:'
+*      Single clause: entry just EXECUTEs the body
+       EQ(NCC,1)                       :F(FMUL)
+       OUTPUT = '    EXECUTE ' CFUN '_c1_body' :(FLDIS)
+*
+*      Multi-clause: entry TRYs clause 2 then executes clause 1 body
+FMUL   OUTPUT = '    TRY ' CFUN '_c2'
+       OUTPUT = '    EXECUTE ' CFUN '_c1_body'
+*      Emit retry labels for clauses 2..N
+       I = 1
+FMLP   I = I + 1
+       GT(I,NCC)                       :S(FLDIS)
+       OUTPUT = CFUN '_c' I ':'
+       EQ(I,NCC)                       :S(FMLT)
+*      Middle clause: RETRY next
+       J = I + 1
+       CNXT = CFUN '_c' J
+       OUTPUT = '    RETRY ' CNXT     :(FMLE)
+*      Last clause: TRUST
+FMLT   OUTPUT = '    TRUST'
+FMLE   CBOD = CFUN '_c' I '_body'
+       OUTPUT = '    EXECUTE ' CBOD   :(FMLP)
+*
+* ---- FLUSH dispatch: return to caller ----
+*
+FLDIS  CFUN = ''
+       NCC = 0
+       IDENT(FSTATE,'FSTART')          :S(FSTART)
+       IDENT(FSTATE,'FDONE')           :S(FDONE)
+       :(DONE)
+*
+* ---- Emit query ----
+*
+QEMIT  OUTPUT = ''
+       OUTPUT = 'query:'
+       Q = QUERY
+       Q BREAK(' ') . QFUN = ''       :F(DONE)
+       Q ' ' = ''
+       Q BREAK(' ') . QAR = ''        :F(DONE)
+       Q ' ' = ''
+*      Reset per-query var map
+       VMAP = ' '
+       XCNT = 0
+       REGN = 0
+QLOOP  IDENT(Q,'')                      :S(QFIN)
+       Q LEN(1) . CH                   :F(QFIN)
+       IDENT(CH,' ')                    :F(QLOOP2)
+       Q LEN(1) = ''                   :(QLOOP)
+QLOOP2 IDENT(Q,'')                      :S(QFIN)
+       Q BREAK(' ') . ARG = ''        :F(QLAST)
+       :(QE)
+QLAST  Q REM . ARG = ''
+QE     ARG 'a:' = ''                   :F(QEV)
+       OUTPUT = '    PUT_CONST A' REGN ', atom(' ARG ')'
+       REGN = REGN + 1                :(QLOOP)
+QEV    ARG 'v:' = ''                   :F(QEI)
+       TEMP = VMAP
+       TEMP ' ' ARG ':' BREAK(' ') . VX :F(QNVAR)
+       OUTPUT = '    PUT_VAL X' VX ', A' REGN
+       REGN = REGN + 1                :(QLOOP)
+QNVAR  VMAP = VMAP ARG ':' XCNT ' '
+       OUTPUT = '    PUT_VAR X' XCNT ', A' REGN
+       REGN = REGN + 1
+       XCNT = XCNT + 1                :(QLOOP)
+QEI    ARG 'i:' = ''                   :F(QSKIP)
+       OUTPUT = '    PUT_CONST A' REGN ', int(' ARG ')'
+       REGN = REGN + 1                :(QLOOP)
+QSKIP  OUTPUT = '    ; skipping ' ARG  :(QLOOP)
+QFIN   OUTPUT = '    CALL ' QFUN '_entry'
+       OUTPUT = '    HALT'
+*
+DONE
+END

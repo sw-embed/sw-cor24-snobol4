@@ -36,13 +36,22 @@ READ_SRC: PROC;
     P = 0;
     RP = SRC_LOAD_ADDR;
     CH = RP->DTAG;
-    DO WHILE (CH != 0 AND P < 8184);
+    DO WHILE (CH != 0 AND P < SRC_LIMIT);
         SRC(P) = CH;
         P = P + 1;
         RP = SRC_LOAD_ADDR + P;
         CH = RP->DTAG;
     END;
     SRC(P) = 0;
+    /* Detect source overrun: if more input remains after the buffer
+     * filled, halt with a diagnostic rather than silently truncating
+     * a program (issue #14). */
+    IF (CH != 0) THEN DO;
+        CALL UART_PUTS(ADDR(SRC_OVF_MSG));
+        CALL PUT_DEC(P);
+        CALL UART_PUTCHAR(10);
+        SB_OVERFLOW = 1;
+    END;
 END;
 
 READ_INPUT: PROC RETURNS(INT);

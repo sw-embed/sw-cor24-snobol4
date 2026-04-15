@@ -94,7 +94,14 @@
 /* Shared globals -- declared in every module.
  * Assembler uses first definition (from main module). */
 
-DCL SRC(8192) BYTE;
+/* Source buffer -- 12KB. Previous 8KB silently truncated programs at
+ * ~8184 bytes mid-line, corrupting downstream parse output (issue #14).
+ * READ_SRC now sets SB_OVERFLOW with a diagnostic when input exceeds
+ * SRC_LIMIT rather than truncating. 12KB is the largest that links
+ * cleanly under the current module layout. */
+%DEFINE SRC_SIZE 12288;
+%DEFINE SRC_LIMIT 12280;    /* SRC_SIZE - 8, headroom for null terminator */
+DCL SRC(SRC_SIZE) BYTE;
 DCL INP_POS INT STATIC INIT(0);
 DCL SPOS INT STATIC INIT(0);
 DCL TT INT STATIC INIT(0);
@@ -205,6 +212,7 @@ DCL RAWINP_SYM INT STATIC INIT(0);
 /* SB overflow abort: set by SB_ABORT, checked by AM_EXEC loop. */
 DCL SB_OVERFLOW INT STATIC INIT(0);
 DCL SB_OVF_MSG(48) CHAR INIT('SNOBOL4: string buffer overflow at SBPOS=');
+DCL SRC_OVF_MSG(48) CHAR INIT('SNOBOL4: source too large, truncated at byte=');
 
 /* SB compaction watermark: set at start of AM_EXEC to the end of the
  * compile-time string pool. Strings below this are stable (referenced

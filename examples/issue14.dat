@@ -1,0 +1,3 @@
+FACT parent 2 a:bob a:ann
+FACT parent 2 a:ann a:liz
+QUERY parent 2 a:bob a:ann
