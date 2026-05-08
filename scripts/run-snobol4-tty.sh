@@ -3,9 +3,9 @@
 #
 # Usage: ./scripts/run-snobol4-tty.sh program.sno
 #
-# Connects stdin/stdout to the emulated UART via cor24-run --terminal,
+# Connects stdin/stdout to the emulated UART via cor24-emu --terminal,
 # so `LINE = INPUT` reads typed lines instead of a data file.
-# Exit the session with Ctrl-] (cor24-run convention) or Ctrl-D on
+# Exit the session with Ctrl-] (cor24-emu convention) or Ctrl-D on
 # an empty input line (handled by READ_INPUT as EOF).
 
 set -uo pipefail
@@ -38,7 +38,7 @@ fi
 
 # Note: do NOT load anything at 0x090000 -- the interpreter probes that
 # address and switches READ_INPUT to live UART mode when it finds it null.
-exec cor24-run --terminal \
+exec cor24-emu --terminal \
     --load-binary "$INTERP_BIN"@0 \
     --load-binary "$SNO_FILE"@0x080000 \
     --entry 0 \

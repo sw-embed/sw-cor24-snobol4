@@ -10,7 +10,10 @@
 #   6. Pass 2 assembly: reassemble with --base-addr
 #   7. meta-gen emit: produce .meta from pass-1 .lst + .syms
 #   8. link24: combine binaries, patch FIXUP references
-#   9. Result: build/snobol4.bin
+#   9. Result: build/snobol4.bin (loadable raw image)
+#
+# All tooling is PATH-resolved (devgroup-shared toolchain):
+#   pl-sw, cor24-asm, link24, meta-gen
 #
 # Dependency tracking:
 #   After a successful build, writes build/.build-deps containing the
@@ -25,11 +28,6 @@ PROJECT_DIR="${SCRIPT_DIR}/.."
 BUILD="$PROJECT_DIR/build"
 INC="$PROJECT_DIR/include"
 SRC="$PROJECT_DIR/src"
-
-# Tools
-LINKER_DIR="$HOME/github/sw-embed/sw-cor24-plsw/components/linker/target/release"
-LINK24="$LINKER_DIR/link24"
-META_GEN="$LINKER_DIR/meta-gen"
 
 INCLUDES="$INC/descr.msw $INC/heap.msw $INC/am.msw $INC/pat.msw $INC/snoglob.msw"
 
@@ -91,7 +89,7 @@ done
 # --- Phase 2: meta-gen prep (rewrite external la refs to placeholders) ---
 for MOD in $ALL_MODULES; do
     echo "  [2] meta-gen prep $MOD..." >&2
-    "$META_GEN" prep "$BUILD/mod/${MOD}.s" \
+    meta-gen prep "$BUILD/mod/${MOD}.s" \
         -o "$BUILD/mod/${MOD}_prep.s" \
         --syms "$BUILD/mod/${MOD}.syms"
 done
@@ -99,8 +97,9 @@ done
 # --- Phase 3: Pass 1 assembly (base 0 -> sizes + .lst) ---
 SIZES=()
 for MOD in $ALL_MODULES; do
-    cor24-run --assemble "$BUILD/mod/${MOD}_prep.s" \
-        "$BUILD/mod/${MOD}_p1.bin" "$BUILD/mod/${MOD}_p1.lst" >/dev/null 2>&1
+    cor24-asm "$BUILD/mod/${MOD}_prep.s" \
+        --bin "$BUILD/mod/${MOD}_p1.bin" \
+        --listing "$BUILD/mod/${MOD}_p1.lst" >/dev/null
     SZ=$(stat -f%z "$BUILD/mod/${MOD}_p1.bin" 2>/dev/null || stat -c%s "$BUILD/mod/${MOD}_p1.bin" 2>/dev/null)
     SIZES+=($SZ)
     echo "  [3] $MOD: $SZ bytes" >&2
@@ -119,15 +118,16 @@ echo "  [4] Layout: $(for i in $(seq 0 $((${#SIZES[@]} - 1))); do printf "%s@0x%
 # --- Phase 5: Pass 2 assembly (with --base-addr) ---
 for i in $(seq 0 $((${#MODS_ARR[@]} - 1))); do
     MOD="${MODS_ARR[$i]}"
-    cor24-run --assemble "$BUILD/mod/${MOD}_prep.s" \
-        "$BUILD/mod/${MOD}.bin" "$BUILD/mod/${MOD}.lst" \
-        --base-addr "${BASES[$i]}" >/dev/null 2>&1
+    cor24-asm "$BUILD/mod/${MOD}_prep.s" \
+        --bin "$BUILD/mod/${MOD}.bin" \
+        --listing "$BUILD/mod/${MOD}.lst" \
+        --base-addr "${BASES[$i]}" >/dev/null
 done
 
 # --- Phase 6: meta-gen emit (produce .meta from pass-1 .lst) ---
 for MOD in $ALL_MODULES; do
     echo "  [6] meta-gen emit $MOD..." >&2
-    "$META_GEN" emit "$BUILD/mod/${MOD}_p1.lst" \
+    meta-gen emit "$BUILD/mod/${MOD}_p1.lst" \
         --syms "$BUILD/mod/${MOD}.syms" \
         --module "$MOD" \
         -o "$BUILD/mod/${MOD}.meta"
@@ -135,7 +135,7 @@ done
 
 # --- Phase 7: link24 ---
 echo "  [7] Linking..." >&2
-"$LINK24" --entry "$ENTRY" --dir "$BUILD/mod" \
+link24 --entry "$ENTRY" --dir "$BUILD/mod" \
     --map "$BUILD/mod/snobol4.map" \
     $ALL_MODULES -o "$BUILD/snobol4.bin" 2>&1 | head -3 >&2
 

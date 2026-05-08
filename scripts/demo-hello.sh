@@ -28,7 +28,7 @@ echo "" >&2
 
 # Step 2: Run with --dump
 echo "Running on COR24 emulator..." >&2
-cor24-run --load-binary "$INTERP_BIN"@0 \
+cor24-emu --load-binary "$INTERP_BIN"@0 \
     --load-binary "$HELLO_SNO"@0x080000 \
     --entry 0 \
     -n 200000000 -t 60 --speed 0 \

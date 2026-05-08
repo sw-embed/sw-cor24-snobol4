@@ -61,6 +61,54 @@ See [`justfile`](justfile) for available recipes, and
 [`docs/running-plsw-compiler.md`](docs/running-plsw-compiler.md) for details
 on invoking the PL/SW compiler and running programs on the COR24 emulator.
 
+### Toolchain (devgroup-shared)
+
+The build relies on the shared COR24 toolchain installed on `$PATH` for
+every `d*` user — no sibling clones, no `$HOME/...` paths:
+
+| Binary       | Use                                            |
+|--------------|------------------------------------------------|
+| `pl-sw`      | PL/SW compiler (`cor24-emu --lgo plsw.lgo`)    |
+| `cor24-asm`  | Assembler: `.s` → `.lgo` / `.bin` / `.lst`     |
+| `cor24-emu`  | Runtime emulator                               |
+| `link24`     | Module linker (combines per-module `.bin`s)    |
+| `meta-gen`   | EXPORT/FIXUP metadata generator for `link24`   |
+
+The PL/SW compiler image is shipped at
+`/disk1/github/softwarewrighter/devgroup/work/lib/cor24/plsw.lgo`; you do
+not need to rebuild it.
+
+### Recipes
+
+- `just build` — modular build → `build/snobol4.bin` (loadable via
+  `cor24-emu --load-binary build/snobol4.bin@0 --entry 0`).
+- `just rebuild` — same, ignoring the dep manifest.
+- `just build-lgo` — produces the canonical shippable `build/snobol4.lgo`
+  by wrapping the linked `.bin` as `L`-record text. Mike installs this to
+  `work/lib/cor24/snobol4.lgo` for downstream consumers (e.g. dcftn's
+  Fortran compiler).
+- `just hello`, `just count`, `just span`, etc. — run individual demos.
+- `just demos` — run the full demo suite.
+
+### Known cor24-emu limitation
+
+`cor24-emu --lgo <file>` currently ignores any `--load-binary` arguments
+on the same command line (the `lgo` dispatch arm doesn't call
+`load_binaries_and_patches`). Because the SNOBOL4 interpreter expects its
+program source loaded at memory `0x080000`, the `snobol4.lgo` artifact
+cannot yet be invoked via the planned `exec cor24-emu --lgo snobol4.lgo
+"$@"` wrapper. Until cor24-emu is fixed (see brief
+`tools/briefs/dcemu-lgo-load-binary-merge.md`), the working invocation
+is:
+
+```
+cor24-emu --load-binary build/snobol4.bin@0 \
+          --load-binary <prog>.sno@0x080000 \
+          --entry 0
+```
+
+(This is what `scripts/run-snobol4.sh` already does.)
+
 ## Copyright
 
 Copyright (c) 2026 Michael A Wright
