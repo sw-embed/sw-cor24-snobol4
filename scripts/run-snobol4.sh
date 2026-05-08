@@ -63,13 +63,13 @@ ENTRY=0
 
 # Run
 if [ -n "$DAT_FILE" ]; then
-    RUN_OUT=$(cor24-run --load-binary "$INTERP_BIN"@0 \
+    RUN_OUT=$(cor24-emu --load-binary "$INTERP_BIN"@0 \
         --load-binary "$SNO_FILE"@0x080000 \
         --load-binary "$DAT_FILE"@0x090000 \
         --entry "$ENTRY" \
         -n 200000000 -t 120 --speed 0 --dump 2>&1)
 else
-    RUN_OUT=$(cor24-run --load-binary "$INTERP_BIN"@0 \
+    RUN_OUT=$(cor24-emu --load-binary "$INTERP_BIN"@0 \
         --load-binary "$SNO_FILE"@0x080000 \
         --entry "$ENTRY" \
         -n 200000000 -t 120 --speed 0 --dump 2>&1)

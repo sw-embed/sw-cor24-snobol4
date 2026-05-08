@@ -8,6 +8,19 @@ build:
 rebuild:
     bash scripts/build-modular.sh -f
 
+# Produce the canonical shippable .lgo artifact for the shared toolchain.
+# The modular linker (link24) emits a raw .bin; bin-to-lgo.sh wraps it as
+# the L-record text format mike installs to work/lib/cor24/snobol4.lgo.
+#
+# NOTE: cor24-emu currently ignores --load-binary when --lgo is set
+# (https://... -- dcemu brief pending). Until that's fixed, the runtime
+# wrapper should use:  cor24-emu --load-binary snobol4.bin@0 --entry 0
+# rather than the planned `cor24-emu --lgo snobol4.lgo`. The .lgo is
+# shippable; only the auxiliary-data load path needs the dcemu fix.
+build-lgo: build
+    bash scripts/bin-to-lgo.sh build/snobol4.bin build/snobol4.lgo
+    @echo "Built build/snobol4.lgo ($(wc -c < build/snobol4.lgo) bytes, $(wc -l < build/snobol4.lgo) records)"
+
 # Run a SNOBOL4 program
 run file:
     ./scripts/run-snobol4.sh {{file}}
