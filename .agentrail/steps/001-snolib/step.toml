@@ -1,6 +1,6 @@
 number = 1
 slug = "snolib"
-status = "in-progress"
+status = "completed"
 description = """
 # Extract src/snolib.plsw -- the runtime library module
 
@@ -8,4 +8,5 @@ Extract a new `src/s..."""
 role = "production"
 context_files = []
 created_at = "2026-04-11T12:11:56"
-commits = []
+completed_at = "2026-05-08T18:14:19"
+commits = ["676903588327ada5337c10c81c93a3e435c0ea47"]
