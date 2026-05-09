@@ -96,6 +96,17 @@ Any statement may end with a goto suffix:
 - `:(FRETURN)` -- return from the current user-defined function
   with a failed status
 
+Builtin predicates (`IDENT`, `DIFFER`, `EQ`, `LT`, `GT`, ...) accept
+nested function calls in their arguments. The supported nested
+functions are `SUBSTR(s,p,l)`, `SIZE(s)`, and `CHAR(c)`. Both arg1
+and arg2 positions may be nested, and combined with any goto:
+
+```
+        IDENT(SUBSTR('CAB', 1, 1), 'C')   :S(L)
+        EQ(SIZE(LINE), 0)                  :S(BLANK):F(NONBLANK)
+        IDENT(C1, SUBSTR(L, P, 1))         :S(MATCH)
+```
+
 A statement may carry **both** an `:S` and an `:F` transfer. Every
 combination of leading colons and ordering is accepted; the four
 forms below are equivalent:

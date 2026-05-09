@@ -458,23 +458,37 @@ LOWER_STMT: PROC(S INT);
         DCL BBT INT;
         DCL BBV INT;
         DCL BCODE INT;
+        DCL BCNT INT;
         BEPB = S * EPSLOTS;
         BCODE = S_OEV1(S);
+        BCNT = S_EPCNT(S);
+        IF (BCNT < 2) THEN BCNT = 2;
         BIDX = 0;
-        DO WHILE (BIDX < 2);
+        /* Walk all EP slots (not just the first two) so nested
+         * SUBSTR/SIZE/CHAR markers in the predicate's arg list emit
+         * their corresponding ops. The slot stream is postfix: each
+         * primitive pushes a value, each call-marker pops its args
+         * and pushes its result. After the loop the predicate has
+         * exactly two values on the stack regardless of nesting. */
+        DO WHILE (BIDX < BCNT);
             BBT = EP_TYP(BEPB + BIDX);
             BBV = EP_VAL(BEPB + BIDX);
-            IF (BBT = OE_INT) THEN DO;
-                CALL AM_EMIT_OP(OP_LOAD_INT);
-                CALL AM_EMIT_WORD(BBV);
-            END;
-            ELSE IF (BBT = OE_STR) THEN DO;
-                CALL AM_EMIT_OP(OP_LOAD_STR);
-                CALL AM_EMIT_WORD(BBV);
-            END;
-            ELSE DO;
-                CALL AM_EMIT_OP(OP_LOAD_VAR);
-                CALL AM_EMIT_BYTE(BBV);
+            SELECT;
+                WHEN (BBT = OE_INT) DO;
+                    CALL AM_EMIT_OP(OP_LOAD_INT);
+                    CALL AM_EMIT_WORD(BBV);
+                END;
+                WHEN (BBT = OE_STR) DO;
+                    CALL AM_EMIT_OP(OP_LOAD_STR);
+                    CALL AM_EMIT_WORD(BBV);
+                END;
+                WHEN (BBT = OE_SUBSTR) CALL AM_EMIT_OP(OP_SUBSTR);
+                WHEN (BBT = OE_SIZE)   CALL AM_EMIT_OP(OP_SIZE);
+                WHEN (BBT = OE_CHAR)   CALL AM_EMIT_OP(OP_CHAR);
+                OTHERWISE DO;
+                    CALL AM_EMIT_OP(OP_LOAD_VAR);
+                    CALL AM_EMIT_BYTE(BBV);
+                END;
             END;
             BIDX = BIDX + 1;
         END;
