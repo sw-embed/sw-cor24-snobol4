@@ -1,0 +1,1 @@
+Step 1 (snolib) shipped; step 2 (sno-engine) and downstream steps 3-5 are mechanically blocked on PL/SW EMIT_BUF until dcpls's pr/emit-zero-fill ships and gets installed. Reopening as a continuation saga is straightforward once that lands; preserving the trajectory record here. See docs/plan.md section 13.4 and tools/briefs/dcpls-emit-zero-fill.md for status.

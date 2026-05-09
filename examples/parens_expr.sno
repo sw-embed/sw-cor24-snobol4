@@ -1,0 +1,55 @@
+* parens_expr.sno -- regression for parens-around-expressions in
+* assignment context.
+*
+* Pre-fix, the assignment-context primary-token DO WHILE in
+* sno_lex.plsw accepted only TK_INT / TK_STR / TK_IDENT -- never
+* TK_LPAREN. So  K = (SIZE(A))  silently produced 0 because the
+* loop never entered.
+*
+* After the fix, TK_LPAREN at primary position is consumed
+* silently, and a trailing TK_RPAREN at end-of-iteration is also
+* consumed, with one final binary-op pickup so post-paren
+* arithmetic (e.g.  (SIZE(A)) + 1 ) works.
+
+        A = 'HELLO'
+
+* P1 - parens around a single function call
+        K = (SIZE(A))
+        OUTPUT = 'P1 K = ' K
+
+* P2 - parens around a binop expression
+        K = (SIZE(A) - 1)
+        OUTPUT = 'P2 K = ' K
+
+* P3 - parens around a single literal
+        K = (1)
+        OUTPUT = 'P3 K = ' K
+
+* P4 - paren'd subexpr followed by trailing binop
+        K = (SIZE(A)) + 1
+        OUTPUT = 'P4 K = ' K
+
+* P5 - LHS literal then paren'd RHS
+        K = 1 + (SIZE(A))
+        OUTPUT = 'P5 K = ' K
+
+* P6 - nested parens around a single value
+        K = ((SIZE(A)))
+        OUTPUT = 'P6 K = ' K
+
+END
+
+* Expected output:
+*   P1 K = 5
+*   P2 K = 4
+*   P3 K = 1
+*   P4 K = 6
+*   P5 K = 6
+*   P6 K = 5
+*
+* Out of scope (existing limitations preserved):
+*   - Multi-op chains:  K = ((SIZE(A) - 1) + 1)  produces wrong
+*     value because S_OEOP is single-valued (last op wins). Same
+*     limitation as without parens. A separate saga.
+*   - Parens around an empty expression  K = ()  is undefined and
+*     not tested.
