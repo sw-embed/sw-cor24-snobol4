@@ -357,6 +357,14 @@ END;
  *     :S(L1):F(L2)      :S(L1) :F(L2)     :S(L1)F(L2)
  *     :F(L1):S(L2)      :(RETURN)         :(FRETURN)
  *
+ * SNOBOL4 transfer semantics are left-to-right and first-wins: a
+ * transfer that fires exits the statement immediately, so a duplicate
+ * of the same direction (`:S(L1):S(L2)` or `:F(L1):F(L2)`) is
+ * unreachable. We silently drop the duplicate; this matches SPITBOL /
+ * Bell Labs Macro Implementation behaviour and the convention noted
+ * in the dcsno-combined-goto-parser brief ("document precedence; do
+ * not silently drop one").
+ *
  * Storage scheme keeps the existing single-slot representation for
  * the FIRST goto (any kind) and adds S_GLBL_F for a SECOND goto in
  * the combined :S/:F form. Kept tight (2 new fields, not 4) so the
@@ -369,6 +377,8 @@ END;
  *   First goto = `:(FRETURN)`  -> S_GTYP=GT_FRET,   S_GLBL=-1
  *   Combined `:S(L1):F(L2)`    -> S_GTYP=GT_SUCC, S_GLBL=L1, S_GLBL_F=L2
  *   Combined `:F(L1):S(L2)`    -> S_GTYP=GT_SUCC, S_GLBL=L2, S_GLBL_F=L1
+ *   Pathological `:S(L1):S(L2)` -> S_GLBL=L1 (L2 dropped, unreachable)
+ *   Pathological `:F(L1):F(L2)` -> S_GLBL=L1 (L2 dropped, unreachable)
  *
  * On entry: TT is on the leading TK_COLON.
  * On exit:  TT is past the last goto's `)`.
@@ -418,14 +428,22 @@ PARSE_GOTOS: PROC(S INT);
                 LBL_IDX = SBSAVE();
                 CALL LEX;
                 IF (G_KIND = 1) THEN DO;
-                    /* :S(...) target */
+                    /* :S(...) target. SNOBOL4 left-to-right semantics:
+                     * the first :S that's reachable wins. A second
+                     * :S on the same statement is unreachable -- we
+                     * silently drop it (matches SPITBOL / Bell Labs
+                     * Macro Implementation behaviour). */
                     IF (S_GTYP(S) = GT_FAIL) THEN DO;
-                        /* Reversed order: existing F target moves
-                         * to S_GLBL_F so S_GLBL can hold the new S. */
+                        /* Reversed order :F(L1):S(L2) -- the existing
+                         * F target moves into S_GLBL_F so the primary
+                         * slot can hold the new S target. */
                         OLD_GLBL = S_GLBL(S);
                         S_GLBL_F(S) = OLD_GLBL;
                         S_GTYP(S) = GT_SUCC;
                         S_GLBL(S) = LBL_IDX;
+                    END;
+                    ELSE IF (S_GTYP(S) = GT_SUCC) THEN DO;
+                        /* Second :S -- unreachable, drop. */
                     END;
                     ELSE DO;
                         S_GTYP(S) = GT_SUCC;
@@ -433,9 +451,16 @@ PARSE_GOTOS: PROC(S INT);
                     END;
                 END;
                 ELSE IF (G_KIND = 2) THEN DO;
-                    /* :F(...) target */
-                    IF (S_GTYP(S) = GT_SUCC) THEN
-                        S_GLBL_F(S) = LBL_IDX;
+                    /* :F(...) target. Same first-wins rule. */
+                    IF (S_GTYP(S) = GT_SUCC) THEN DO;
+                        IF (S_GLBL_F(S) < 0) THEN
+                            S_GLBL_F(S) = LBL_IDX;
+                        /* else: second :F after combined :S(...):F(...)
+                         * -- drop. */
+                    END;
+                    ELSE IF (S_GTYP(S) = GT_FAIL) THEN DO;
+                        /* Second :F -- unreachable, drop. */
+                    END;
                     ELSE DO;
                         S_GTYP(S) = GT_FAIL;
                         S_GLBL(S) = LBL_IDX;
