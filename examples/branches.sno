@@ -61,8 +61,30 @@ T8F     OUTPUT = '   8 :F fired'                 :(T9)
 * --- 9. Unconditional goto :(L) ------------------------------
 T9      OUTPUT = '9: :(L) unconditional'
                                                  :(T9JUMP)
-        OUTPUT = '   9 fall-through (BUG)'        :(EX)
-T9JUMP  OUTPUT = '   9 :(L) fired'               :(EX)
+        OUTPUT = '   9 fall-through (BUG)'        :(T10)
+T9JUMP  OUTPUT = '   9 :(L) fired'               :(T10)
+
+* --- 10. Pathological :S(L1):S(L2) -- left-to-right, first wins ---
+T10     OUTPUT = '10: :S(L1):S(L2) succ -> first :S wins'
+        IDENT('A', 'A')                          :S(T10A):S(T10B)
+        OUTPUT = '   10 fall-through (BUG)'       :(T11)
+T10A    OUTPUT = '   10 first :S fired (correct)' :(T11)
+T10B    OUTPUT = '   10 second :S fired (BUG)'    :(T11)
+
+* --- 11. Pathological :F(L1):F(L2) -- first wins -------------
+T11     OUTPUT = '11: :F(L1):F(L2) fail -> first :F wins'
+        IDENT('A', 'B')                          :F(T11A):F(T11B)
+        OUTPUT = '   11 fall-through (BUG)'       :(T12)
+T11A    OUTPUT = '   11 first :F fired (correct)' :(T12)
+T11B    OUTPUT = '   11 second :F fired (BUG)'    :(T12)
+
+* --- 12. Mixed dup+combined :S(L1):S(L2):F(L3) ---------------
+T12     OUTPUT = '12: :S(L1):S(L2):F(L3) -- :S(L1) wins, :S(L2) dead'
+        IDENT('A', 'A')                          :S(T12A):S(T12B):F(T12C)
+        OUTPUT = '   12 fall-through (BUG)'       :(EX)
+T12A    OUTPUT = '   12 :S(L1) fired (correct)'   :(EX)
+T12B    OUTPUT = '   12 :S(L2) fired (BUG)'       :(EX)
+T12C    OUTPUT = '   12 :F fired (BUG)'           :(EX)
 
 EX      END
 
@@ -85,3 +107,9 @@ EX      END
 *      8 :F fired
 *   9: :(L) unconditional
 *      9 :(L) fired
+*  10: :S(L1):S(L2) succ -> first :S wins
+*      10 first :S fired (correct)
+*  11: :F(L1):F(L2) fail -> first :F wins
+*      11 first :F fired (correct)
+*  12: :S(L1):S(L2):F(L3) -- :S(L1) wins, :S(L2) dead
+*      12 :S(L1) fired (correct)

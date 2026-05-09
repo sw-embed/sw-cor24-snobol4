@@ -91,6 +91,43 @@ Any statement may end with a goto suffix:
 - `:S(LBL)` -- jump if the previous match (or test predicate)
   succeeded
 - `:F(LBL)` -- jump if it failed
+- `:(RETURN)` -- return from the current user-defined function
+  (success return)
+- `:(FRETURN)` -- return from the current user-defined function
+  with a failed status
+
+A statement may carry **both** an `:S` and an `:F` transfer. Every
+combination of leading colons and ordering is accepted; the four
+forms below are equivalent:
+
+```
+        STMT    :S(L1):F(L2)
+        STMT    :S(L1) :F(L2)
+        STMT    :S(L1)F(L2)        ; second goto without a colon prefix
+        STMT    :F(L2):S(L1)        ; reversed order
+```
+
+`examples/branches.sno` exercises every form; run it with
+`just branches`.
+
+#### Goto precedence (left-to-right, first-wins)
+
+SNOBOL4 transfers are processed left-to-right and a transfer that
+fires exits the statement immediately, so any second transfer of the
+**same direction** on one statement is unreachable. Duplicate-direction
+gotos are silently dropped:
+
+```
+        EXPR    :S(L1):S(L2)        ; fires :S(L1); :S(L2) is dead code
+        EXPR    :F(L1):F(L2)        ; fires :F(L1); :F(L2) is dead code
+        EXPR    :S(L1):S(L2):F(L3)  ; fires :S(L1) on success or :F(L3)
+                                    ; on failure; :S(L2) is dead code
+```
+
+This matches SPITBOL and the Bell Labs Macro Implementation. Such
+forms typically appear as a macro-expansion artifact rather than as
+intentional code; the compiler does not warn but the dead branch
+will never run.
 
 The `END` keyword on its own line marks the end of the program.
 
