@@ -1,0 +1,11 @@
+number = 2
+slug = "parens-around-expressions"
+status = "pending"
+description = """
+# Step 2 -- accept parens around expressions in assignment context
+
+The assig..."""
+role = "production"
+context_files = []
+created_at = "2026-05-09T14:46:22"
+commits = []

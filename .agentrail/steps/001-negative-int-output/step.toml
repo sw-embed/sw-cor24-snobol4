@@ -1,0 +1,11 @@
+number = 1
+slug = "negative-int-output"
+status = "pending"
+description = """
+# Step 1 -- fix EMIT_DEC / PUT_DEC for negative integers
+
+`EMIT_DEC` and `PUT..."""
+role = "production"
+context_files = []
+created_at = "2026-05-09T14:46:22"
+commits = []

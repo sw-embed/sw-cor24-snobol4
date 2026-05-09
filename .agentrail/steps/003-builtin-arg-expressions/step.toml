@@ -1,0 +1,11 @@
+number = 3
+slug = "builtin-arg-expressions"
+status = "pending"
+description = """
+# Step 3 -- accept full expressions in builtin call arguments
+
+dcftn's blocke..."""
+role = "production"
+context_files = []
+created_at = "2026-05-09T14:46:22"
+commits = []
