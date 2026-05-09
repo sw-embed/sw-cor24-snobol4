@@ -1375,8 +1375,16 @@ PARSE: PROC;
                     IF (S_OETY(S) = OE_STR OR S_OETY(S) = OE_SPAN OR S_OETY(S) = OE_BREAK) THEN
                         S_SPTR(S) = EP_VAL(EPB);
                 END;
-                ELSE IF (EPI = 2 AND S_OEOP(S) != 0) THEN DO;
-                    /* Binary op: part0 OP part1 */
+                ELSE IF (EPI >= 2 AND S_OEOP(S) != 0) THEN DO;
+                    /* Binary op: LHS slots ... OP RHS slots ...
+                     * The lowering in sno_exec walks all S_EPCNT slots
+                     * as a postfix expression (so OE_SIZE / OE_SUBSTR /
+                     * OE_CHAR markers between primitives produce their
+                     * builtin op), then emits the binary op at the end.
+                     * Pre-fix this used `EPI = 2` and only worked when
+                     * both operands were single primitives -- that
+                     * dropped the binary op for SIZE(A)-1 and friends
+                     * (dcsno-funcall-arithmetic). */
                     S_OETY(S) = OE_BINOP;
                     S_OEV1(S) = EP_VAL(EPB);
                     S_OEV2(S) = EP_VAL(EPB + 1);

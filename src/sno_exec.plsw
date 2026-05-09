@@ -339,30 +339,36 @@ LOWER_STMT: PROC(S INT);
             END;
         END;
         ELSE IF (S_OETY(S) = OE_BINOP) THEN DO;
-            /* Emit first operand */
+            /* Walk all EP slots as a postfix expression: primitives
+             * push, OE_SIZE/OE_SUBSTR/OE_CHAR markers pop their args
+             * and push their result. After the walk the stack has
+             * the LHS and RHS of the binary op; the op then pops
+             * 2 and pushes 1. Handles both simple primitives
+             * (K - 1) and nested calls (SIZE(A) - 1). */
             EPB = S * EPSLOTS;
-            EPT = EP_TYP(EPB);
-            EPV = EP_VAL(EPB);
-            IF (EPT = OE_IDENT) THEN DO;
-                CALL AM_EMIT_OP(OP_LOAD_VAR);
-                CALL AM_EMIT_BYTE(EPV);
+            EPI = 0;
+            DO WHILE (EPI < S_EPCNT(S));
+                EPT = EP_TYP(EPB + EPI);
+                EPV = EP_VAL(EPB + EPI);
+                SELECT;
+                    WHEN (EPT = OE_INT) DO;
+                        CALL AM_EMIT_OP(OP_LOAD_INT);
+                        CALL AM_EMIT_WORD(EPV);
+                    END;
+                    WHEN (EPT = OE_STR) DO;
+                        CALL AM_EMIT_OP(OP_LOAD_STR);
+                        CALL AM_EMIT_WORD(EPV);
+                    END;
+                    WHEN (EPT = OE_SIZE)   CALL AM_EMIT_OP(OP_SIZE);
+                    WHEN (EPT = OE_SUBSTR) CALL AM_EMIT_OP(OP_SUBSTR);
+                    WHEN (EPT = OE_CHAR)   CALL AM_EMIT_OP(OP_CHAR);
+                    OTHERWISE DO;
+                        CALL AM_EMIT_OP(OP_LOAD_VAR);
+                        CALL AM_EMIT_BYTE(EPV);
+                    END;
+                END;
+                EPI = EPI + 1;
             END;
-            ELSE DO;
-                CALL AM_EMIT_OP(OP_LOAD_INT);
-                CALL AM_EMIT_WORD(EPV);
-            END;
-            /* Emit second operand */
-            EPT = EP_TYP(EPB + 1);
-            EPV = EP_VAL(EPB + 1);
-            IF (EPT = OE_IDENT) THEN DO;
-                CALL AM_EMIT_OP(OP_LOAD_VAR);
-                CALL AM_EMIT_BYTE(EPV);
-            END;
-            ELSE DO;
-                CALL AM_EMIT_OP(OP_LOAD_INT);
-                CALL AM_EMIT_WORD(EPV);
-            END;
-            /* Emit operator */
             SELECT;
                 WHEN (S_OEOP(S) = TK_PLUS) CALL AM_EMIT_OP(OP_ADD);
                 WHEN (S_OEOP(S) = TK_STAR) CALL AM_EMIT_OP(OP_MUL);
