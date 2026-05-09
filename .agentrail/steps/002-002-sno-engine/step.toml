@@ -1,6 +1,6 @@
 number = 2
 slug = "002-sno-engine"
-status = "pending"
+status = "in-progress"
 description = "Step 2 of the snobol4-runtime-split saga: consolidate the engine. Move the le..."
 role = "legacy"
 context_files = []
