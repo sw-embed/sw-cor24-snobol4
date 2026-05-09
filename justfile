@@ -71,8 +71,13 @@ input:
 array:
     ./scripts/run-snobol4.sh examples/array.sno
 
+# Conditional-transfer (goto) variants -- regression for the
+# combined :S(...) :F(...) parser fix
+branches:
+    ./scripts/run-snobol4.sh examples/branches.sno
+
 # Run all demos
-demos: hello hello-goto count span span-fail multiply concat break input array
+demos: hello hello-goto count span span-fail multiply concat break input array branches
 
 # --- Tests ---
 

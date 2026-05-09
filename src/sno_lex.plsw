@@ -349,6 +349,116 @@ FN_FIND: PROC(SIDX INT) RETURNS(INT);
     RETURN(0 - 1);
 END;
 
+/* PARSE_GOTOS -- parse all goto modifiers on statement S.
+ *
+ * Accepts every SNOBOL4 goto syntax variant on a single statement:
+ *
+ *     :S(L1)            :F(L1)            :(L1)
+ *     :S(L1):F(L2)      :S(L1) :F(L2)     :S(L1)F(L2)
+ *     :F(L1):S(L2)      :(RETURN)         :(FRETURN)
+ *
+ * Storage scheme keeps the existing single-slot representation for
+ * the FIRST goto (any kind) and adds S_GLBL_F for a SECOND goto in
+ * the combined :S/:F form. Kept tight (2 new fields, not 4) so the
+ * generated .s stays under PL/SW EMIT_BUF_SIZE = 256KB.
+ *
+ *   First goto = `:S(L)` alone -> S_GTYP=GT_SUCC,   S_GLBL=L
+ *   First goto = `:F(L)` alone -> S_GTYP=GT_FAIL,   S_GLBL=L
+ *   First goto = `:(L)`        -> S_GTYP=GT_UNCOND, S_GLBL=L
+ *   First goto = `:(RETURN)`   -> S_GTYP=GT_RET,    S_GLBL=-1
+ *   First goto = `:(FRETURN)`  -> S_GTYP=GT_FRET,   S_GLBL=-1
+ *   Combined `:S(L1):F(L2)`    -> S_GTYP=GT_SUCC, S_GLBL=L1, S_GLBL_F=L2
+ *   Combined `:F(L1):S(L2)`    -> S_GTYP=GT_SUCC, S_GLBL=L2, S_GLBL_F=L1
+ *
+ * On entry: TT is on the leading TK_COLON.
+ * On exit:  TT is past the last goto's `)`.
+ */
+PARSE_GOTOS: PROC(S INT);
+    DCL G_KIND INT;          /* 0=UNCOND, 1=S, 2=F */
+    DCL LBL_IDX INT;
+    DCL CONT INT;
+    DCL OLD_GLBL INT;
+
+    CONT = 1;
+    DO WHILE (CONT = 1);
+        CONT = 0;
+
+        /* Leading colon -- always present on the first iteration;
+         * optional on the no-colon variant `:S(L1)F(L2)`. */
+        IF (TT = TK_COLON) THEN CALL LEX;
+
+        /* Optional S / F modifier; default = UNCOND for `:(L)`. */
+        G_KIND = 0;
+        IF (TT = TK_IDENT) THEN DO;
+            IF (TB(0) = 83 AND TB(1) = 0) THEN DO;
+                G_KIND = 1;
+                CALL LEX;
+            END;
+            ELSE IF (TB(0) = 70 AND TB(1) = 0) THEN DO;
+                G_KIND = 2;
+                CALL LEX;
+            END;
+        END;
+
+        IF (TT != TK_LPAREN) THEN RETURN;
+        CALL LEX;
+
+        IF (TT = TK_IDENT) THEN DO;
+            IF (TB(0) = 82 AND TB(1) = 69 AND TB(2) = 84 AND TB(3) = 85 AND TB(4) = 82 AND TB(5) = 78 AND TB(6) = 0) THEN DO;
+                S_GTYP(S) = GT_RET;
+                S_GLBL(S) = 0 - 1;
+                CALL LEX;
+            END;
+            ELSE IF (TB(0) = 70 AND TB(1) = 82 AND TB(2) = 69 AND TB(3) = 84 AND TB(4) = 85 AND TB(5) = 82 AND TB(6) = 78 AND TB(7) = 0) THEN DO;
+                S_GTYP(S) = GT_FRET;
+                S_GLBL(S) = 0 - 1;
+                CALL LEX;
+            END;
+            ELSE DO;
+                LBL_IDX = SBSAVE();
+                CALL LEX;
+                IF (G_KIND = 1) THEN DO;
+                    /* :S(...) target */
+                    IF (S_GTYP(S) = GT_FAIL) THEN DO;
+                        /* Reversed order: existing F target moves
+                         * to S_GLBL_F so S_GLBL can hold the new S. */
+                        OLD_GLBL = S_GLBL(S);
+                        S_GLBL_F(S) = OLD_GLBL;
+                        S_GTYP(S) = GT_SUCC;
+                        S_GLBL(S) = LBL_IDX;
+                    END;
+                    ELSE DO;
+                        S_GTYP(S) = GT_SUCC;
+                        S_GLBL(S) = LBL_IDX;
+                    END;
+                END;
+                ELSE IF (G_KIND = 2) THEN DO;
+                    /* :F(...) target */
+                    IF (S_GTYP(S) = GT_SUCC) THEN
+                        S_GLBL_F(S) = LBL_IDX;
+                    ELSE DO;
+                        S_GTYP(S) = GT_FAIL;
+                        S_GLBL(S) = LBL_IDX;
+                    END;
+                END;
+                ELSE DO;
+                    S_GTYP(S) = GT_UNCOND;
+                    S_GLBL(S) = LBL_IDX;
+                END;
+            END;
+        END;
+
+        IF (TT = TK_RPAREN) THEN CALL LEX;
+
+        /* Continue if another goto follows. */
+        IF (TT = TK_COLON) THEN CONT = 1;
+        ELSE IF (TT = TK_IDENT) THEN DO;
+            IF (TB(0) = 83 AND TB(1) = 0) THEN CONT = 1;
+            ELSE IF (TB(0) = 70 AND TB(1) = 0) THEN CONT = 1;
+        END;
+    END;
+END;
+
 PARSE: PROC;
     DCL S INT;
     DCL NOFF INT;
@@ -371,6 +481,7 @@ PARSE: PROC;
         S_OEV2(S) = 0 - 1;
         S_GTYP(S) = GT_NONE;
         S_GLBL(S) = 0 - 1;
+        S_GLBL_F(S) = 0 - 1;
         S_SPTR(S) = 0 - 1;
         S_EPCNT(S) = 0;
         S_PPCNT(S) = 0;
@@ -1066,43 +1177,7 @@ PARSE: PROC;
                 END;
             END;
 
-            IF (TT = TK_COLON) THEN DO;
-                CALL LEX;
-                IF (TT = TK_IDENT) THEN DO;
-                    IF (TB(0) = 83 AND TB(1) = 0) THEN DO;
-                        S_GTYP(S) = GT_SUCC;
-                        CALL LEX;
-                    END;
-                    ELSE IF (TB(0) = 70 AND TB(1) = 0) THEN DO;
-                        S_GTYP(S) = GT_FAIL;
-                        CALL LEX;
-                    END;
-                END;
-                ELSE IF (TT = TK_LPAREN) THEN DO;
-                    S_GTYP(S) = GT_UNCOND;
-                END;
-                IF (TT = TK_LPAREN) THEN DO;
-                    CALL LEX;
-                    IF (TT = TK_IDENT) THEN DO;
-                        /* Detect :(RETURN) and :(FRETURN) */
-                        IF (TB(0) = 82 AND TB(1) = 69 AND TB(2) = 84 AND TB(3) = 85 AND TB(4) = 82 AND TB(5) = 78 AND TB(6) = 0) THEN DO;
-                            S_GTYP(S) = GT_RET;
-                            S_GLBL(S) = 0 - 1;
-                            CALL LEX;
-                        END;
-                        ELSE IF (TB(0) = 70 AND TB(1) = 82 AND TB(2) = 69 AND TB(3) = 84 AND TB(4) = 85 AND TB(5) = 82 AND TB(6) = 78 AND TB(7) = 0) THEN DO;
-                            S_GTYP(S) = GT_FRET;
-                            S_GLBL(S) = 0 - 1;
-                            CALL LEX;
-                        END;
-                        ELSE DO;
-                            S_GLBL(S) = SBSAVE();
-                            CALL LEX;
-                        END;
-                    END;
-                    IF (TT = TK_RPAREN) THEN CALL LEX;
-                END;
-            END;
+            IF (TT = TK_COLON) THEN CALL PARSE_GOTOS(S);
 
             DO WHILE (TT != TK_EOL AND TT != TK_EOF);
                 CALL LEX;
@@ -1111,40 +1186,7 @@ PARSE: PROC;
             STCNT = STCNT + 1;
         END;
         ELSE IF (TT = TK_COLON) THEN DO;
-            CALL LEX;
-            IF (TT = TK_IDENT) THEN DO;
-                IF (TB(0) = 83 AND TB(1) = 0) THEN DO;
-                    S_GTYP(S) = GT_SUCC;
-                    CALL LEX;
-                END;
-                ELSE IF (TB(0) = 70 AND TB(1) = 0) THEN DO;
-                    S_GTYP(S) = GT_FAIL;
-                    CALL LEX;
-                END;
-            END;
-            ELSE IF (TT = TK_LPAREN) THEN DO;
-                S_GTYP(S) = GT_UNCOND;
-            END;
-            IF (TT = TK_LPAREN) THEN DO;
-                CALL LEX;
-                IF (TT = TK_IDENT) THEN DO;
-                    IF (TB(0) = 82 AND TB(1) = 69 AND TB(2) = 84 AND TB(3) = 85 AND TB(4) = 82 AND TB(5) = 78 AND TB(6) = 0) THEN DO;
-                        S_GTYP(S) = GT_RET;
-                        S_GLBL(S) = 0 - 1;
-                        CALL LEX;
-                    END;
-                    ELSE IF (TB(0) = 70 AND TB(1) = 82 AND TB(2) = 69 AND TB(3) = 84 AND TB(4) = 85 AND TB(5) = 82 AND TB(6) = 78 AND TB(7) = 0) THEN DO;
-                        S_GTYP(S) = GT_FRET;
-                        S_GLBL(S) = 0 - 1;
-                        CALL LEX;
-                    END;
-                    ELSE DO;
-                        S_GLBL(S) = SBSAVE();
-                        CALL LEX;
-                    END;
-                END;
-                IF (TT = TK_RPAREN) THEN CALL LEX;
-            END;
+            CALL PARSE_GOTOS(S);
             DO WHILE (TT != TK_EOL AND TT != TK_EOF);
                 CALL LEX;
             END;

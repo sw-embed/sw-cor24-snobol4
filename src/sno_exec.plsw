@@ -99,6 +99,7 @@ LOWER_STMT: PROC(S INT);
 
     STMT_ADDR(S) = AM_PC;
     S_GOTO_OFF(S) = 0 - 1;
+    S_GOTO_OFF_F(S) = 0 - 1;
 
     IF (S_TYP(S) = ST_END) THEN DO;
         CALL AM_EMIT_OP(OP_HALT);
@@ -117,6 +118,12 @@ LOWER_STMT: PROC(S INT);
                 CALL AM_EMIT_OP(OP_BR_SUCC);
                 S_GOTO_OFF(S) = AM_PC;
                 CALL AM_EMIT_WORD(0);
+                /* Combined :S(...):F(...) -- emit the F branch too. */
+                IF (S_GLBL_F(S) >= 0) THEN DO;
+                    CALL AM_EMIT_OP(OP_BR_FAIL);
+                    S_GOTO_OFF_F(S) = AM_PC;
+                    CALL AM_EMIT_WORD(0);
+                END;
             END;
             WHEN (S_GTYP(S) = GT_FAIL) DO;
                 CALL AM_EMIT_OP(OP_BR_FAIL);
@@ -683,7 +690,9 @@ LOWER_STMT: PROC(S INT);
     END;
 END;
 
-/* Emit goto branch for a statement */
+/* Emit goto branch(es) for a statement. Combined :S(L1):F(L2) on a
+ * predicate-bearing statement emits OP_BR_SUCC immediately followed
+ * by OP_BR_FAIL; the second branch is patched via S_GOTO_OFF_F. */
 EMIT_GOTO: PROC(S INT);
     SELECT;
         WHEN (S_GTYP(S) = GT_UNCOND) DO;
@@ -695,6 +704,11 @@ EMIT_GOTO: PROC(S INT);
             CALL AM_EMIT_OP(OP_BR_SUCC);
             S_GOTO_OFF(S) = AM_PC;
             CALL AM_EMIT_WORD(0);
+            IF (S_GLBL_F(S) >= 0) THEN DO;
+                CALL AM_EMIT_OP(OP_BR_FAIL);
+                S_GOTO_OFF_F(S) = AM_PC;
+                CALL AM_EMIT_WORD(0);
+            END;
         END;
         WHEN (S_GTYP(S) = GT_FAIL) DO;
             CALL AM_EMIT_OP(OP_BR_FAIL);
@@ -706,7 +720,10 @@ EMIT_GOTO: PROC(S INT);
     END;
 END;
 
-/* Fix up goto targets using label table (no bytecode scanning) */
+/* Fix up goto targets using label table (no bytecode scanning).
+ * Each statement has the primary slot (S_GOTO_OFF / S_GLBL) and a
+ * possible failure-branch slot (S_GOTO_OFF_F / S_GLBL_F) for the
+ * combined :S(L1):F(L2) form. */
 FIXUP_GOTOS: PROC;
     DCL I INT;
     DCL OFF INT;
@@ -716,9 +733,14 @@ FIXUP_GOTOS: PROC;
         OFF = S_GOTO_OFF(I);
         IF (OFF >= 0 AND S_GLBL(I) >= 0) THEN DO;
             TGT = LBL_FIND(S_GLBL(I));
-            IF (TGT >= 0) THEN DO;
+            IF (TGT >= 0) THEN
                 CALL AM_PATCH_WORD(OFF, STMT_ADDR(TGT));
-            END;
+        END;
+        OFF = S_GOTO_OFF_F(I);
+        IF (OFF >= 0 AND S_GLBL_F(I) >= 0) THEN DO;
+            TGT = LBL_FIND(S_GLBL_F(I));
+            IF (TGT >= 0) THEN
+                CALL AM_PATCH_WORD(OFF, STMT_ADDR(TGT));
         END;
         I = I + 1;
     END;
