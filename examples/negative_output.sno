@@ -1,0 +1,35 @@
+* negative_output.sno -- regression for the negative-int OUTPUT
+* formatter fix in EMIT_DEC / PUT_DEC.
+*
+* Pre-fix, EMIT_DEC's render loop was DO WHILE (N > 0), which
+* never enters for negative N -- so OUTPUT printed empty for any
+* negative integer. After the fix, negative N emits a leading '-'
+* then the absolute-value digits.
+*
+* Computed-negative cases below produce non-zero negative values
+* via integer arithmetic (which has always worked); the demo just
+* exercises that the *output* of those values is now correct.
+        K = 1 - 5
+        OUTPUT = 'T1 K = ' K
+        N = 0 - 1
+        OUTPUT = 'T2 N = ' N
+        N = 5 - 100
+        OUTPUT = 'T3 N = ' N
+        OUTPUT = 0
+        OUTPUT = 100
+        N = 0 - 999
+        OUTPUT = 'T6 N = ' N
+END
+
+* Expected output (one per line):
+*   T1 K = -4
+*   T2 N = -1
+*   T3 N = -95
+*   0
+*   100
+*   T6 N = -999
+*
+* The literal form  OUTPUT = -5  still prints 0 -- that's a separate
+* bug (the assignment-context primary-token loop in sno_lex.plsw does
+* not accept TK_MINUS as a leading token). The fix here is purely the
+* formatter; the parser limitation is its own follow-up.
