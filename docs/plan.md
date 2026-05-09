@@ -654,10 +654,17 @@ be linked into a compiled .sno -> .bin output.
   `EMIT_BUF_SIZE = 262144` (256 KB). The current `.s` outputs are
   already at 99.6% (`sno_exec.s` 261 KB) and 84.1% (`sno_lex.s`
   221 KB) of the buffer; even the cheapest pairwise consolidation
-  (`sno_util` + `sno_lex` = 291 KB) overflows. See
-  `tools/briefs/dcpls-enlarge-emit-buf.md` for the proposed dcpls
-  fix (bump `EMIT_BUF_SIZE` to 2 MB). Step 2 resumes after that
-  brief lands and the new PL/SW compiler is reinstalled.
+  (`sno_util` + `sno_lex` = 291 KB) overflows. The actual cause is
+  a `.s` text encoding cost: ~256 KB of the 261 KB output is
+  `.byte 0,0,0,...` enumeration of `INIT(0)` static arrays, paying
+  ~2 source chars per byte of zero. See
+  `tools/briefs/dcxas-zero-fill-directive.md` (✅ shipped: adds
+  `.zero N` to `cor24-asm`) and
+  `tools/briefs/dcpls-emit-zero-fill.md` (open: PL/SW emits
+  `.zero N` for `INIT(0)` arrays). Step 2 resumes after the
+  dcpls brief lands and the new PL/SW compiler is reinstalled.
+  See `docs/storage-use.md` for the full per-buffer audit and the
+  three-tier fix matrix.
 - Steps 3-5 follow step 2 in order, unblocked once consolidation
   is mechanically possible.
 
