@@ -647,6 +647,20 @@ interpreter from the new three-file layout. The runtime library
 (`snolib.plsw`) compiles cleanly as a standalone library that could
 be linked into a compiled .sno -> .bin output.
 
+**Status as of 2026-05-09.**
+
+- Step 1 (snolib) shipped via `pr/snolib-extraction` (2026-05-08).
+- Step 2 (sno-engine) is **blocked** on PL/SW
+  `EMIT_BUF_SIZE = 262144` (256 KB). The current `.s` outputs are
+  already at 99.6% (`sno_exec.s` 261 KB) and 84.1% (`sno_lex.s`
+  221 KB) of the buffer; even the cheapest pairwise consolidation
+  (`sno_util` + `sno_lex` = 291 KB) overflows. See
+  `tools/briefs/dcpls-enlarge-emit-buf.md` for the proposed dcpls
+  fix (bump `EMIT_BUF_SIZE` to 2 MB). Step 2 resumes after that
+  brief lands and the new PL/SW compiler is reinstalled.
+- Steps 3-5 follow step 2 in order, unblocked once consolidation
+  is mechanically possible.
+
 ### 13.5 Deferred: FORTRAN compiler prerequisites
 
 A FORTRAN compiler written in SNOBOL4 is an active stated direction
