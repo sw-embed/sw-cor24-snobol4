@@ -504,7 +504,8 @@ END;
 
 /* ---- Output ---- */
 
-/* Render integer V as decimal characters into SB at SBPOS. */
+/* Render integer V as decimal characters into SB at SBPOS.
+ * Handles negative V by emitting '-' then the absolute value. */
 EMIT_DEC: PROC(V INT);
     DCL BUF(12) BYTE;
     DCL POS INT;
@@ -517,6 +518,12 @@ EMIT_DEC: PROC(V INT);
         DP->DTAG = 48;
         SBPOS = SBPOS + 1;
         RETURN;
+    END;
+    IF (N < 0) THEN DO;
+        DP = ADDR(SB) + SBPOS;
+        DP->DTAG = 45;
+        SBPOS = SBPOS + 1;
+        N = 0 - N;
     END;
     POS = 0;
     DO WHILE (N > 0);
@@ -541,6 +548,8 @@ EMIT_DEC: PROC(V INT);
     END;
 END;
 
+/* Render integer V as decimal characters via UART. Handles
+ * negative V by emitting '-' then the absolute value. */
 PUT_DEC: PROC(V INT);
     DCL BUF(12) BYTE;
     DCL POS INT;
@@ -550,6 +559,10 @@ PUT_DEC: PROC(V INT);
     IF (N = 0) THEN DO;
         CALL UART_PUTCHAR(48);
         RETURN;
+    END;
+    IF (N < 0) THEN DO;
+        CALL UART_PUTCHAR(45);
+        N = 0 - N;
     END;
     POS = 0;
     DO WHILE (N > 0);
