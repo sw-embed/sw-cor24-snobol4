@@ -1,0 +1,49 @@
+* funcall_arith.sno -- arithmetic on function-call results.
+* Companion regression for the dcsno-funcall-arithmetic fix.
+*
+* Each test prints the value computed; expected output is in the
+* trailing comment block. Pre-fix, every test except T1 and T7
+* printed 0 because the parser dropped the binary op when an EP
+* slot count > 2 (which any nested SIZE/SUBSTR/CHAR call produces).
+
+        A = 'HELLO'
+
+* T1 - direct assignment of function-call result (regression baseline)
+        K = SIZE(A)
+        OUTPUT = 'T1 K = ' K
+
+* T2 - function call on LHS of arith
+        N = SIZE(A) - 1
+        OUTPUT = 'T2 N = ' N
+
+* T3 - function call on LHS of arith with +
+        N = SIZE(A) + 1
+        OUTPUT = 'T3 N = ' N
+
+* T4 - function call on LHS of arith with *
+        N = SIZE(A) * 2
+        OUTPUT = 'T4 N = ' N
+
+* T5 - function call on both sides of arith
+        N = SIZE(A) - SIZE('AB')
+        OUTPUT = 'T5 N = ' N
+
+* T6 - chained: literal + function-call result
+        N = 4 + SIZE('AB')
+        OUTPUT = 'T6 N = ' N
+
+* T7 - variable arithmetic (regression baseline)
+        V = 5
+        M = V - 1
+        OUTPUT = 'T7 M = ' M
+
+END
+
+* Expected output:
+*   T1 K = 5
+*   T2 N = 4
+*   T3 N = 6
+*   T4 N = 10
+*   T5 N = 3
+*   T6 N = 6
+*   T7 M = 4

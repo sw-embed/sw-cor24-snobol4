@@ -76,8 +76,13 @@ array:
 branches:
     ./scripts/run-snobol4.sh examples/branches.sno
 
+# Arithmetic on function-call results -- regression for the
+# dcsno-funcall-arithmetic parser/lowering fix
+funcall-arith:
+    ./scripts/run-snobol4.sh examples/funcall_arith.sno
+
 # Run all demos
-demos: hello hello-goto count span span-fail multiply concat break input array branches
+demos: hello hello-goto count span span-fail multiply concat break input array branches funcall-arith
 
 # --- Tests ---
 
