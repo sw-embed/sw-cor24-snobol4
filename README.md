@@ -52,6 +52,7 @@ Detailed design and process docs live under [`docs/`](docs/):
 - [Running the PL/SW compiler](docs/running-plsw-compiler.md)
 - [MMIO](docs/mmio.md) — memory-mapped I/O on COR24
 - [Storage runtime](docs/storage.md) — region-stack design over PL/SW `?GETMAIN`/`?FREEMAIN`
+- [Storage use audit](docs/storage-use.md) — what's actually in the current 128 KB of statics
 - [AI agent instructions](docs/ai_agent_instructions.md)
 - [Research notes](docs/research.txt)
 
