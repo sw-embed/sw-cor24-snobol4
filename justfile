@@ -85,8 +85,13 @@ funcall-arith:
 negative-output:
     ./scripts/run-snobol4.sh examples/negative_output.sno
 
+# Parens around expressions in assignment context -- regression for
+# the snobol4-expr-completeness step 2 parser fix
+parens-expr:
+    ./scripts/run-snobol4.sh examples/parens_expr.sno
+
 # Run all demos
-demos: hello hello-goto count span span-fail multiply concat break input array branches funcall-arith negative-output
+demos: hello hello-goto count span span-fail multiply concat break input array branches funcall-arith negative-output parens-expr
 
 # --- Tests ---
 

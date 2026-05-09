@@ -1009,9 +1009,22 @@ PARSE: PROC;
                 EPB = S * EPSLOTS;
                 EPI = 0;
 
-                /* Collect expression parts */
-                DO WHILE (TT = TK_INT OR TT = TK_STR OR TT = TK_IDENT);
-                    IF (TT = TK_INT) THEN DO;
+                /* Collect expression parts. TK_LPAREN at primary
+                 * position is consumed silently and the loop
+                 * continues -- after the inner expression parses its
+                 * slots, the trailing close-paren consume at the end
+                 * of each iteration eats the matching `)`. Single-
+                 * level parens around any primary or binop work; the
+                 * existing multi-op limitation (only one S_OEOP per
+                 * statement) is unchanged regardless of parens. */
+                DO WHILE (TT = TK_INT OR TT = TK_STR OR TT = TK_IDENT OR TT = TK_LPAREN);
+                    IF (TT = TK_LPAREN) THEN DO;
+                        /* Consume `(` and re-enter the loop -- the
+                         * inner expression's slots accumulate into
+                         * the same EP slot stream. */
+                        CALL LEX;
+                    END;
+                    ELSE IF (TT = TK_INT) THEN DO;
                         IF (EPI < EPSLOTS) THEN DO;
                             EP_TYP(EPB + EPI) = OE_INT;
                             EP_VAL(EPB + EPI) = TV;
@@ -1359,9 +1372,21 @@ PARSE: PROC;
                         END;
                     END;
 
-                    /* Check for binary operator */
+                    /* Check for binary operator (between primitives). */
                     IF (TT = TK_PLUS OR TT = TK_MINUS OR TT = TK_STAR) THEN DO;
-                        /* Store op, then parse second operand on next loop */
+                        S_OEOP(S) = TT;
+                        CALL LEX;
+                    END;
+                    /* Consume any trailing close parens. These match
+                     * a leading `(` consumed earlier in the loop, or
+                     * a `(` from a previous iteration. */
+                    DO WHILE (TT = TK_RPAREN);
+                        CALL LEX;
+                    END;
+                    /* After close-parens, a binary op may follow:
+                     *   K = (SIZE(A)) + 1
+                     * picks up the `+` here. */
+                    IF (TT = TK_PLUS OR TT = TK_MINUS OR TT = TK_STAR) THEN DO;
                         S_OEOP(S) = TT;
                         CALL LEX;
                     END;
