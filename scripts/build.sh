@@ -18,26 +18,42 @@ if [ $# -lt 1 ]; then
     exit 1
 fi
 
-# Separate .msw and .plsw files
+# Separate .msw macros, .plsw library includes, and the .plsw main.
+# Convention: every .msw is a macro (registered under its full
+# basename so %INCLUDE NAME works the way descr.msw / heap.msw etc.
+# already do). Every .plsw EXCEPT the last is a library include
+# (registered under its bare stem so %INCLUDE SNOLIB matches
+# src/snolib.plsw). The last .plsw on the command line is MAIN.
 MACROS=()
+LIB_PLSW=()
 MAIN=""
+PLSW_ARGS=()
 for f in "$@"; do
     case "$f" in
-        *.msw) MACROS+=("$f") ;;
-        *.plsw) MAIN="$f" ;;
+        *.msw)  MACROS+=("$f") ;;
+        *.plsw) PLSW_ARGS+=("$f") ;;
         *) echo "Error: unknown file type: $f" >&2; exit 1 ;;
     esac
 done
 
-if [ -z "$MAIN" ]; then
+if [ ${#PLSW_ARGS[@]} -lt 1 ]; then
     echo "Error: no .plsw file specified" >&2
     exit 1
 fi
 
+# Last .plsw is MAIN; earlier .plsw files become library includes.
+MAIN="${PLSW_ARGS[$((${#PLSW_ARGS[@]} - 1))]}"
+for ((i = 0; i < ${#PLSW_ARGS[@]} - 1; i++)); do
+    LIB_PLSW+=("${PLSW_ARGS[$i]}")
+done
+
 BASENAME=$(basename "$MAIN" .plsw)
 mkdir -p build
 
-# Build UART input for the compiler (FILE:/SOURCE: protocol)
+# Build UART input for the compiler (FILE:/SOURCE: protocol).
+# .msw macros are registered under basename (e.g. "descr.msw");
+# .plsw library includes are registered under their bare stem
+# (e.g. "snolib") so the source can do `%INCLUDE snolib;`.
 build_input() {
     printf 'c\n'
     if [ ${#MACROS[@]} -gt 0 ]; then
@@ -46,6 +62,15 @@ build_input() {
             cat "$m"
             printf '\x1E'
         done
+    fi
+    if [ ${#LIB_PLSW[@]} -gt 0 ]; then
+        for l in "${LIB_PLSW[@]}"; do
+            printf 'FILE:%s\n' "$(basename "$l" .plsw)"
+            cat "$l"
+            printf '\x1E'
+        done
+    fi
+    if [ ${#MACROS[@]} -gt 0 ] || [ ${#LIB_PLSW[@]} -gt 0 ]; then
         printf 'SOURCE:\n'
     fi
     cat "$MAIN"
@@ -57,6 +82,7 @@ INPUT=$(build_input)
 # Compile via pl-sw (wraps cor24-emu --lgo plsw.lgo)
 echo "=== Compiling $BASENAME ===" >&2
 echo "  Macros: ${MACROS[*]:-none}" >&2
+echo "  Libs:   ${LIB_PLSW[*]:-none}" >&2
 echo "  Source: $MAIN" >&2
 
 COMPILER_OUT=$(pl-sw -u "$INPUT" -n 1000000000 -t 600 --speed 0 2>&1)

@@ -4,77 +4,17 @@
  *        DESC_IS_NULL, DESC_IS_INT, DESC_TAG_GET, DESC_PAY_GET,
  *        DESC_EQ (equal and not-equal)
  *
- * Note: split into two test files due to plsw#10 (64 symbol limit)
+ * Note: split into two test files due to plsw#10 (64 symbol limit).
+ *
+ * The DESC_* helpers are now defined in src/snolib.plsw and pulled
+ * in via %INCLUDE so the runtime library has a single canonical
+ * implementation. (Saga: snobol4-runtime-split, step 1.)
  */
 
-%INCLUDE descr;
-%INCLUDE heap;
-
-DESC_SET_NULL: PROC(P PTR);
-    DCL DP PTR;
-    DP = P;
-    DP->DTAG = TAG_NULL;
-    DP->DSUB = 0;
-    DP->DRSV = 0;
-    DP->DPAY = 0;
-END;
-
-DESC_SET_INT: PROC(P PTR, V INT);
-    DCL DP PTR;
-    DP = P;
-    DP->DTAG = TAG_INT;
-    DP->DSUB = 0;
-    DP->DRSV = 0;
-    DP->DPAY = V;
-END;
-
-DESC_CELL_CPY: PROC(DST PTR, SRC PTR);
-    DCL DP PTR;
-    DCL SP PTR;
-    DP = DST;
-    SP = SRC;
-    DP->DTAG = SP->DTAG;
-    DP->DSUB = SP->DSUB;
-    DP->DRSV = SP->DRSV;
-    DP->DPAY = SP->DPAY;
-END;
-
-DESC_IS_NULL: PROC(P PTR) RETURNS(INT);
-    DCL DP PTR;
-    DP = P;
-    IF (DP->DTAG = TAG_NULL) THEN RETURN(1);
-    RETURN(0);
-END;
-
-DESC_IS_INT: PROC(P PTR) RETURNS(INT);
-    DCL DP PTR;
-    DP = P;
-    IF (DP->DTAG = TAG_INT) THEN RETURN(1);
-    RETURN(0);
-END;
-
-DESC_TAG_GET: PROC(P PTR) RETURNS(INT);
-    DCL DP PTR;
-    DP = P;
-    RETURN(DP->DTAG);
-END;
-
-DESC_PAY_GET: PROC(P PTR) RETURNS(INT);
-    DCL DP PTR;
-    DP = P;
-    RETURN(DP->DPAY);
-END;
-
-DESC_EQ: PROC(A PTR, B PTR) RETURNS(INT);
-    DCL AP PTR;
-    DCL BP PTR;
-    AP = A;
-    BP = B;
-    IF (AP->DTAG = BP->DTAG) THEN
-        IF (AP->DPAY = BP->DPAY) THEN
-            RETURN(1);
-    RETURN(0);
-END;
+/* snolib transitively pulls in descr + heap macros, so we don't
+ * %INCLUDE them directly here. PL/SW MACRO_MAX = 8; double-including
+ * the same .msw twice would re-register its MACRODEFs and overflow. */
+%INCLUDE snolib;
 
 DCL D1(6) BYTE;
 DCL D2(6) BYTE;
