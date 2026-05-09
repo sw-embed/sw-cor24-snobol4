@@ -2,10 +2,12 @@ build/
 build/.build-deps
 
 # Blocked monolith / alternate-split experiments. The interpreter is
-# modular -- src/sno_main.plsw + sno_util.plsw + sno_lex.plsw +
-# sno_exec.plsw. These three filenames were used by abandoned drafts
-# preserved in the fallback-pre-cleanup tag, and must not return to
-# the working tree. See CLAUDE.md and docs/plan.md section 13.
+# being re-split along runtime/engine/driver lines (saga
+# snobol4-runtime-split, see docs/plan.md section 13.4). As each
+# canonical source lands it is unblocked here. snolib.plsw is the
+# runtime library, landed in step 1. sno_engine.plsw and snobol4.plsw
+# remain blocked until steps 2 and 3 unblock them. The original
+# abandoned drafts are preserved in the fallback-pre-cleanup tag.
+# See CLAUDE.md and docs/plan.md section 13.
 src/snobol4.plsw
 src/sno_engine.plsw
-src/snolib.plsw

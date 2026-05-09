@@ -2,36 +2,15 @@
  *
  * Tests: HDR_SET, HDR_IS_FREE, HDR_PAYLOAD, HDR_NEXT,
  *        PUT_HEX24, GC mark (OBF_MARK=128), TAG_NAME
+ *
+ * HDR_* helpers come from src/snolib.plsw via %INCLUDE. TAG_NAME and
+ * the hex helpers below stay local to the test -- they are diagnostic
+ * helpers that the saga deliberately leaves out of snolib's scope.
  */
 
-%INCLUDE descr;
-%INCLUDE heap;
-
-HDR_SET: PROC(P PTR, K BYTE, SZ INT);
-    DCL HP PTR;
-    HP = P;
-    HP->OKIND = K;
-    HP->OFLAGS = 0;
-    HP->ORSV = 0;
-    HP->OSIZE = SZ;
-END;
-
-HDR_IS_FREE: PROC(P PTR) RETURNS(INT);
-    DCL HP PTR;
-    HP = P;
-    IF (HP->OKIND = OBK_FREE) THEN RETURN(1);
-    RETURN(0);
-END;
-
-HDR_PAYLOAD: PROC(P PTR) RETURNS(INT);
-    RETURN(P + HDR_BYTES);
-END;
-
-HDR_NEXT: PROC(P PTR) RETURNS(INT);
-    DCL HP PTR;
-    HP = P;
-    RETURN(P + HP->OSIZE);
-END;
+/* snolib transitively pulls in descr + heap macros (see test_snolib.plsw
+ * for the MACRO_MAX rationale). */
+%INCLUDE snolib;
 
 DCL TN_INT(8) CHAR INIT('int');
 DCL TN_UNK(8) CHAR INIT('???');

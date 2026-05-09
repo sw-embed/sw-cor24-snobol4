@@ -1,0 +1,317 @@
+/* snolib.plsw -- SNOBOL4 runtime library
+ *
+ * Runtime helpers a compiled SNOBOL4 program needs at runtime, but
+ * that do NOT require the lexer, parser, AM emitter, or executor.
+ *
+ * Step 1 of the runtime/engine/driver re-split (saga
+ * snobol4-runtime-split, see docs/plan.md section 13.4 and
+ * .agentrail/plan.md). At this step snolib is not yet wired into the
+ * main interpreter build -- it just exists as a library module that
+ * the test_snolib / test_snolib2 suites %INCLUDE in place of their
+ * formerly-inline helper definitions. Step 2 consolidates the engine
+ * around it, step 3 introduces the new top-level driver.
+ *
+ * Contents:
+ *   - Descriptor helpers   (DESC_*)        -- depends on descr.msw
+ *   - Heap header helpers  (HDR_*)         -- depends on heap.msw
+ *   - Generic byte-string  (SLEN, SCEQ, IN_CLASS)
+ *   - Heap allocator       (HEAP_INIT/ALLOC/FREE) -- caller supplies
+ *                                              the arena via HEAP_INIT
+ *
+ * Deliberately NOT pulled in here:
+ *   - snoglob.msw (engine state SB/SRC/symbol tables)
+ *   - am.msw      (AM bytecode opcodes)
+ *   - SBPUT / SBSAVE / EMIT_DEC / PUT_DEC -- they touch the SB global
+ *     defined in snoglob.msw, so they stay in sno_util until step 2
+ *     decides whether the runtime owns SB or the engine does.
+ *
+ * snolib is consumed via %INCLUDE in step 1 (textual paste) so the
+ * existing single-binary test build can exercise it. We deliberately
+ * do NOT %DEFINE LIBRARY here -- that directive triggers the PL/SW
+ * library mode (external linkage for DCL globals + procedures), which
+ * would propagate into any file that %INCLUDEs us. Step 2 changes the
+ * consumption pattern to link24-based separate compilation; that step
+ * (or its successor) will turn snolib into a true library module.
+ */
+
+%INCLUDE descr;
+%INCLUDE heap;
+
+/* ================================================================
+ * Heap state -- snolib owns these globals. Other modules that link
+ * against snolib see them via the linker as external symbols.
+ * ================================================================ */
+
+DCL HEAP_BASE PTR STATIC INIT(0);
+DCL HEAP_LIM  PTR STATIC INIT(0);
+DCL HEAP_TOP  PTR STATIC INIT(0);
+DCL FREE_HD   PTR STATIC INIT(0);
+DCL ALLOC_N   INT STATIC INIT(0);
+DCL FREE_N    INT STATIC INIT(0);
+
+/* ================================================================
+ * Descriptor construction
+ * ================================================================ */
+
+DESC_SET: PROC(P PTR, T BYTE, S BYTE, V INT);
+    DCL DP PTR;
+    DP = P;
+    DP->DTAG = T;
+    DP->DSUB = S;
+    DP->DRSV = 0;
+    DP->DPAY = V;
+END;
+
+DESC_SET_NULL: PROC(P PTR);
+    DCL DP PTR;
+    DP = P;
+    DP->DTAG = TAG_NULL;
+    DP->DSUB = 0;
+    DP->DRSV = 0;
+    DP->DPAY = 0;
+END;
+
+DESC_SET_INT: PROC(P PTR, V INT);
+    DCL DP PTR;
+    DP = P;
+    DP->DTAG = TAG_INT;
+    DP->DSUB = 0;
+    DP->DRSV = 0;
+    DP->DPAY = V;
+END;
+
+DESC_SET_STR: PROC(P PTR, SPTR PTR);
+    DCL DP PTR;
+    DP = P;
+    DP->DTAG = TAG_STR;
+    DP->DSUB = 0;
+    DP->DRSV = 0;
+    DP->DPAY = SPTR;
+END;
+
+DESC_SET_LABEL: PROC(P PTR, ID INT);
+    DCL DP PTR;
+    DP = P;
+    DP->DTAG = TAG_LABEL;
+    DP->DSUB = 0;
+    DP->DRSV = 0;
+    DP->DPAY = ID;
+END;
+
+DESC_CELL_CPY: PROC(DST PTR, SRC PTR);
+    DCL DP PTR;
+    DCL SP PTR;
+    DP = DST;
+    SP = SRC;
+    DP->DTAG = SP->DTAG;
+    DP->DSUB = SP->DSUB;
+    DP->DRSV = SP->DRSV;
+    DP->DPAY = SP->DPAY;
+END;
+
+/* ================================================================
+ * Descriptor type tests -- return 1 if true, 0 if false
+ * ================================================================ */
+
+DESC_IS_NULL: PROC(P PTR) RETURNS(INT);
+    DCL DP PTR;
+    DP = P;
+    IF (DP->DTAG = TAG_NULL) THEN RETURN(1);
+    RETURN(0);
+END;
+
+DESC_IS_INT: PROC(P PTR) RETURNS(INT);
+    DCL DP PTR;
+    DP = P;
+    IF (DP->DTAG = TAG_INT) THEN RETURN(1);
+    RETURN(0);
+END;
+
+DESC_IS_STR: PROC(P PTR) RETURNS(INT);
+    DCL DP PTR;
+    DP = P;
+    IF (DP->DTAG = TAG_STR) THEN RETURN(1);
+    RETURN(0);
+END;
+
+DESC_IS_PAT: PROC(P PTR) RETURNS(INT);
+    DCL DP PTR;
+    DP = P;
+    IF (DP->DTAG = TAG_PAT) THEN RETURN(1);
+    RETURN(0);
+END;
+
+DESC_TAG_GET: PROC(P PTR) RETURNS(INT);
+    DCL DP PTR;
+    DP = P;
+    RETURN(DP->DTAG);
+END;
+
+DESC_PAY_GET: PROC(P PTR) RETURNS(INT);
+    DCL DP PTR;
+    DP = P;
+    RETURN(DP->DPAY);
+END;
+
+DESC_EQ: PROC(A PTR, B PTR) RETURNS(INT);
+    DCL AP PTR;
+    DCL BP PTR;
+    AP = A;
+    BP = B;
+    IF (AP->DTAG = BP->DTAG) THEN
+        IF (AP->DPAY = BP->DPAY) THEN
+            RETURN(1);
+    RETURN(0);
+END;
+
+/* ================================================================
+ * Heap object header helpers
+ * ================================================================ */
+
+HDR_SET: PROC(P PTR, K BYTE, SZ INT);
+    DCL HP PTR;
+    HP = P;
+    HP->OKIND = K;
+    HP->OFLAGS = 0;
+    HP->ORSV = 0;
+    HP->OSIZE = SZ;
+END;
+
+HDR_IS_FREE: PROC(P PTR) RETURNS(INT);
+    DCL HP PTR;
+    HP = P;
+    IF (HP->OKIND = OBK_FREE) THEN RETURN(1);
+    RETURN(0);
+END;
+
+HDR_PAYLOAD: PROC(P PTR) RETURNS(INT);
+    RETURN(P + HDR_BYTES);
+END;
+
+HDR_NEXT: PROC(P PTR) RETURNS(INT);
+    DCL HP PTR;
+    HP = P;
+    RETURN(P + HP->OSIZE);
+END;
+
+/* ================================================================
+ * Generic byte-string helpers (no engine dependency)
+ * ================================================================ */
+
+SLEN: PROC(S PTR) RETURNS(INT);
+    DCL I INT;
+    DCL P PTR;
+    I = 0;
+    P = S;
+    DO WHILE (P->DTAG != 0);
+        I = I + 1;
+        P = S + I;
+    END;
+    RETURN(I);
+END;
+
+SCEQ: PROC(A PTR, B PTR) RETURNS(INT);
+    DCL I INT;
+    DCL AP PTR;
+    DCL BP PTR;
+    DCL CA INT;
+    DCL CB INT;
+    I = 0;
+    DO WHILE (1 = 1);
+        AP = A + I;
+        BP = B + I;
+        CA = AP->DTAG;
+        CB = BP->DTAG;
+        IF (CA != CB) THEN RETURN(0);
+        IF (CA = 0) THEN RETURN(1);
+        I = I + 1;
+    END;
+    RETURN(1);
+END;
+
+IN_CLASS: PROC(C INT, CLASS PTR) RETURNS(INT);
+    DCL I INT;
+    DCL P PTR;
+    DCL CH INT;
+    I = 0;
+    P = CLASS;
+    CH = P->DTAG;
+    DO WHILE (CH != 0);
+        IF (CH = C) THEN RETURN(1);
+        I = I + 1;
+        P = CLASS + I;
+        CH = P->DTAG;
+    END;
+    RETURN(0);
+END;
+
+/* ================================================================
+ * Heap allocator -- caller supplies the arena via HEAP_INIT(BASE,SIZE).
+ * Bump-allocate from BASE, with a singly-linked free list for recycling.
+ * ================================================================ */
+
+HEAP_INIT: PROC(BASE PTR, SIZE INT);
+    HEAP_BASE = BASE;
+    HEAP_LIM  = BASE + SIZE;
+    HEAP_TOP  = BASE;
+    FREE_HD   = 0;
+    ALLOC_N   = 0;
+    FREE_N    = 0;
+END;
+
+HEAP_ALLOC: PROC(SZ INT) RETURNS(INT);
+    DCL P PTR;
+    DCL PREV PTR;
+    DCL FP PTR;
+    DCL PV PTR;
+    DCL BS INT;
+
+    IF (SZ < MIN_BLK) THEN SZ = MIN_BLK;
+
+    /* Free list (first-fit) */
+    P = FREE_HD;
+    PREV = 0;
+    DO WHILE (P != 0);
+        FP = P;
+        BS = FP->FS;
+        IF (BS >= SZ) THEN DO;
+            IF (PREV = 0) THEN
+                FREE_HD = FP->FNEXT;
+            ELSE DO;
+                PV = PREV;
+                PV->FNEXT = FP->FNEXT;
+            END;
+            ALLOC_N = ALLOC_N + 1;
+            RETURN(P);
+        END;
+        PREV = P;
+        FP = P;
+        P = FP->FNEXT;
+    END;
+
+    /* Bump */
+    IF (HEAP_TOP + SZ > HEAP_LIM) THEN RETURN(0);
+    P = HEAP_TOP;
+    FP = P;
+    FP->FK = 0;
+    FP->FF = 0;
+    FP->FR = 0;
+    FP->FS = SZ;
+    HEAP_TOP = HEAP_TOP + SZ;
+    ALLOC_N = ALLOC_N + 1;
+    RETURN(P);
+END;
+
+HEAP_FREE: PROC(P PTR);
+    DCL FP PTR;
+    FP = P;
+    FP->FK = OBK_FREE;
+    FP->FF = 0;
+    FP->FNEXT = FREE_HD;
+    FREE_HD = P;
+    FREE_N = FREE_N + 1;
+END;
+
+/* Dummy MAIN so the module compiles standalone as a library. */
+MAIN: PROC;
+END;

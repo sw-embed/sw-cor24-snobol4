@@ -1,0 +1,8 @@
+number = 2
+slug = "002-sno-engine"
+status = "pending"
+description = "Step 2 of the snobol4-runtime-split saga: consolidate the engine. Move the le..."
+role = "legacy"
+context_files = []
+created_at = "2026-05-08T18:14:19"
+commits = []
