@@ -232,25 +232,34 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## CRITICAL: The interpreter is modular -- do NOT create monolithic sources
 
-The SNOBOL4 interpreter is built from four PL/SW modules:
+The SNOBOL4 interpreter is built from four PL/SW modules plus the
+runtime library:
 
 ```
 src/sno_main.plsw   -- driver: MAIN, calls READ_SRC / PARSE / LOWER_ALL / AM_EXEC
 src/sno_util.plsw   -- I/O helpers, READ_SRC, READ_INPUT
 src/sno_lex.plsw    -- lexer + parser + AM emit
 src/sno_exec.plsw   -- lowering + executor + pattern matching + builtins
+src/snolib.plsw     -- runtime library: descriptor + heap header helpers,
+                       generic byte-string helpers, heap allocator
+                       (extracted in saga step 1, pr/snolib-extraction)
 ```
 
 Plus shared globals in `include/snoglob.msw` and runtime headers in
 `include/{descr,heap,am,pat}.msw`. Built by `scripts/build-modular.sh`
-into `build/snobol4.bin`. Invoke via `just build` (or `just rebuild`
-to bypass the dep cache).
+into `build/snobol4.bin`; the test recipes in the `justfile` also
+pull `src/snolib.plsw` in via `%INCLUDE` for the snolib unit tests.
+Invoke via `just build` (or `just rebuild` to bypass the dep cache).
 
-**Do not create `src/snobol4.plsw`, `src/sno_engine.plsw`, or
-`src/snolib.plsw`.** Those names belonged to abandoned single-file
-or alternate-split experiments and are blocked in `.gitignore`. The
-abandoned files are preserved in the `fallback-pre-cleanup` git tag
-for cherry-picking, but they must not return to the working tree.
+**Do not create `src/snobol4.plsw` or `src/sno_engine.plsw`.** Those
+names belong to in-progress runtime-split steps that haven't landed
+yet and are still blocked in `.gitignore`; they will be unblocked
+by the saga steps that introduce them. (`src/snolib.plsw` *was* on
+this list historically; step 1 of the runtime-split saga unblocked
+it.) The abandoned alternate-split drafts are preserved in the
+`fallback-pre-cleanup` git tag for cherry-picking, but those names
+must not return to the working tree until the saga's later steps
+do so deliberately.
 
 If you want to refactor the module split, that is the
 `snobol4-runtime-split` saga (see `docs/plan.md` section 13.4) and
