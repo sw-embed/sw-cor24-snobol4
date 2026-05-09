@@ -81,10 +81,44 @@ T11B    OUTPUT = '   11 second :F fired (BUG)'    :(T12)
 * --- 12. Mixed dup+combined :S(L1):S(L2):F(L3) ---------------
 T12     OUTPUT = '12: :S(L1):S(L2):F(L3) -- :S(L1) wins, :S(L2) dead'
         IDENT('A', 'A')                          :S(T12A):S(T12B):F(T12C)
-        OUTPUT = '   12 fall-through (BUG)'       :(EX)
-T12A    OUTPUT = '   12 :S(L1) fired (correct)'   :(EX)
-T12B    OUTPUT = '   12 :S(L2) fired (BUG)'       :(EX)
-T12C    OUTPUT = '   12 :F fired (BUG)'           :(EX)
+        OUTPUT = '   12 fall-through (BUG)'       :(T13)
+T12A    OUTPUT = '   12 :S(L1) fired (correct)'   :(T13)
+T12B    OUTPUT = '   12 :S(L2) fired (BUG)'       :(T13)
+T12C    OUTPUT = '   12 :F fired (BUG)'           :(T13)
+
+* --- 13. Nested call in arg1: IDENT(SUBSTR(...), Y) ---------
+T13     OUTPUT = '13: IDENT(SUBSTR(s,p,l), Y) succ -> :S'
+        IDENT(SUBSTR('CAB', 1, 1), 'C')         :S(T13S):F(T13F)
+        OUTPUT = '   13 fall-through (BUG)'       :(T14)
+T13S    OUTPUT = '   13 :S fired (correct)'       :(T14)
+T13F    OUTPUT = '   13 :F fired (BUG)'           :(T14)
+
+* --- 14. Same form, predicate fails -> :F -------------------
+T14     OUTPUT = '14: IDENT(SUBSTR(s,p,l), Y) fail -> :F'
+        IDENT(SUBSTR('XYZ', 1, 1), 'C')         :S(T14S):F(T14F)
+        OUTPUT = '   14 fall-through (BUG)'       :(T15)
+T14S    OUTPUT = '   14 :S fired (BUG)'           :(T15)
+T14F    OUTPUT = '   14 :F fired (correct)'       :(T15)
+
+* --- 15. Nested in arg2: IDENT(X, SUBSTR(...)) ---------------
+T15     OUTPUT = '15: IDENT(Y, SUBSTR(s,p,l)) succ -> :S'
+        IDENT('C', SUBSTR('CAB', 1, 1))         :S(T15S):F(T15F)
+        OUTPUT = '   15 fall-through (BUG)'       :(T16)
+T15S    OUTPUT = '   15 :S fired (correct)'       :(T16)
+T15F    OUTPUT = '   15 :F fired (BUG)'           :(T16)
+
+* --- 16. EQ(SIZE(s), n) -- nested SIZE -----------------------
+T16     OUTPUT = '16: EQ(SIZE(s), n) succ -> :S'
+        EQ(SIZE('hello'), 5)                     :S(T16S):F(T16F)
+        OUTPUT = '   16 fall-through (BUG)'       :(T17)
+T16S    OUTPUT = '   16 :S fired (correct)'       :(T17)
+T16F    OUTPUT = '   16 :F fired (BUG)'           :(T17)
+
+* --- 17. Unconditional :(L) on nested-call statement ---------
+T17     OUTPUT = '17: IDENT(SUBSTR(...), Y) :(JUMP)'
+        IDENT(SUBSTR('CAB', 1, 1), 'C')         :(T17J)
+        OUTPUT = '   17 fall-through (BUG)'       :(EX)
+T17J    OUTPUT = '   17 :(L) fired (correct)'     :(EX)
 
 EX      END
 
@@ -113,3 +147,13 @@ EX      END
 *      11 first :F fired (correct)
 *  12: :S(L1):S(L2):F(L3) -- :S(L1) wins, :S(L2) dead
 *      12 :S(L1) fired (correct)
+*  13: IDENT(SUBSTR(s,p,l), Y) succ -> :S
+*      13 :S fired (correct)
+*  14: IDENT(SUBSTR(s,p,l), Y) fail -> :F
+*      14 :F fired (correct)
+*  15: IDENT(Y, SUBSTR(s,p,l)) succ -> :S
+*      15 :S fired (correct)
+*  16: EQ(SIZE(s), n) succ -> :S
+*      16 :S fired (correct)
+*  17: IDENT(SUBSTR(...), Y) :(JUMP)
+*      17 :(L) fired (correct)
