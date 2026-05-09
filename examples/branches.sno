@@ -1,0 +1,87 @@
+* branches.sno -- demonstrates correct behaviour of every SNOBOL4
+* conditional-transfer (goto) form. Companion regression for the
+* combined :S(...) :F(...) parser fix (dcsno-combined-goto-parser).
+*
+* Each test prints which branch fired so a reader can eyeball the
+* output. The expected output is at the bottom.
+
+* --- 1. :S(L) on a predicate that SUCCEEDS -> S fires ----------
+        OUTPUT = '1: :S(L) succ'
+        IDENT('A', 'A')                          :S(T1OK)
+        OUTPUT = '   1 fall-through (BUG: :S did not fire)'  :(T2)
+T1OK    OUTPUT = '   1 :S fired'                 :(T2)
+
+* --- 2. :S(L) on a predicate that FAILS -> fall through -------
+T2      OUTPUT = '2: :S(L) fail -> fallthrough'
+        IDENT('A', 'B')                          :S(T2BAD)
+        OUTPUT = '   2 fall-through (correct)'   :(T3)
+T2BAD   OUTPUT = '   2 :S fired (BUG)'           :(T3)
+
+* --- 3. :F(L) on a predicate that FAILS -> F fires -----------
+T3      OUTPUT = '3: :F(L) fail'
+        IDENT('A', 'B')                          :F(T3OK)
+        OUTPUT = '   3 fall-through (BUG: :F did not fire)'  :(T4)
+T3OK    OUTPUT = '   3 :F fired'                 :(T4)
+
+* --- 4. Combined :S(L1):F(L2) -- predicate FAILS -> F branch fires --
+T4      OUTPUT = '4: :S(L):F(L) fail -> F'
+        IDENT('A', 'B')                          :S(T4S):F(T4F)
+        OUTPUT = '   4 fall-through (BUG: F branch dropped)'  :(T5)
+T4S     OUTPUT = '   4 :S fired (BUG: predicate failed)' :(T5)
+T4F     OUTPUT = '   4 :F fired'                 :(T5)
+
+* --- 5. Combined :S(L1):F(L2) -- predicate SUCCEEDS -> S branch fires --
+T5      OUTPUT = '5: :S(L):F(L) succ -> S'
+        IDENT('A', 'A')                          :S(T5S):F(T5F)
+        OUTPUT = '   5 fall-through (BUG)'        :(T6)
+T5S     OUTPUT = '   5 :S fired'                 :(T6)
+T5F     OUTPUT = '   5 :F fired (BUG)'            :(T6)
+
+* --- 6. No-colon-on-second-goto :S(L1)F(L2) -- predicate fails -> F --
+T6      OUTPUT = '6: :S(L)F(L) fail -> F'
+        IDENT('A', 'B')                          :S(T6S)F(T6F)
+        OUTPUT = '   6 fall-through (BUG)'        :(T7)
+T6S     OUTPUT = '   6 :S fired (BUG)'            :(T7)
+T6F     OUTPUT = '   6 :F fired'                 :(T7)
+
+* --- 7. Reverse order :F(L1):S(L2) -- predicate succeeds -> S --
+T7      OUTPUT = '7: :F(L):S(L) succ -> S'
+        IDENT('A', 'A')                          :F(T7F):S(T7S)
+        OUTPUT = '   7 fall-through (BUG)'        :(T8)
+T7F     OUTPUT = '   7 :F fired (BUG)'            :(T8)
+T7S     OUTPUT = '   7 :S fired'                 :(T8)
+
+* --- 8. Reverse order :F(L1):S(L2) -- predicate fails -> F ---
+T8      OUTPUT = '8: :F(L):S(L) fail -> F'
+        IDENT('A', 'B')                          :F(T8F):S(T8S)
+        OUTPUT = '   8 fall-through (BUG)'        :(T9)
+T8S     OUTPUT = '   8 :S fired (BUG)'            :(T9)
+T8F     OUTPUT = '   8 :F fired'                 :(T9)
+
+* --- 9. Unconditional goto :(L) ------------------------------
+T9      OUTPUT = '9: :(L) unconditional'
+                                                 :(T9JUMP)
+        OUTPUT = '   9 fall-through (BUG)'        :(EX)
+T9JUMP  OUTPUT = '   9 :(L) fired'               :(EX)
+
+EX      END
+
+* Expected output (one line per test, fall-through indicates parser bug):
+*   1: :S(L) succ
+*      1 :S fired
+*   2: :S(L) fail -> fallthrough
+*      2 fall-through (correct)
+*   3: :F(L) fail
+*      3 :F fired
+*   4: :S(L):F(L) fail -> F
+*      4 :F fired
+*   5: :S(L):F(L) succ -> S
+*      5 :S fired
+*   6: :S(L)F(L) fail -> F
+*      6 :F fired
+*   7: :F(L):S(L) succ -> S
+*      7 :S fired
+*   8: :F(L):S(L) fail -> F
+*      8 :F fired
+*   9: :(L) unconditional
+*      9 :(L) fired

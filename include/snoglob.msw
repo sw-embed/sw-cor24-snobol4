@@ -154,6 +154,21 @@ DCL PP_TYP(EPMAX) INT;    /* STMAX * EPSLOTS */
 DCL PP_VAL(EPMAX) INT;
 DCL S_GOTO_OFF(STMAX) INT;
 
+/* Combined :S(...) :F(...) goto support (dcsno-combined-goto-parser
+ * brief). A statement can carry BOTH an S-branch and an F-branch.
+ * The first goto on a statement uses the existing S_GTYP / S_GLBL /
+ * S_GOTO_OFF slots; when a second goto of the OPPOSITE direction
+ * appears, its target lands in S_GLBL_F and the parser leaves
+ * S_GTYP=GT_SUCC so the lowering code emits both branch ops.
+ * S_GOTO_OFF_F is the bytecode patch site for the failure branch.
+ * Two new arrays (instead of four) keeps the PL/SW emit buffer
+ * under EMIT_BUF_SIZE; STMAX-sized INT arrays cost ~768 bytes of
+ * `.byte` output each. Reversed-order `:F(L1):S(L2)` is handled by
+ * the parser rotating S_GLBL into S_GLBL_F when the second goto
+ * arrives. -1 sentinel = "no F branch on this statement". */
+DCL S_GLBL_F(STMAX) INT;
+DCL S_GOTO_OFF_F(STMAX) INT;
+
 /* AM code buffer */
 DCL AM_CODE(AM_CODE_SIZE) BYTE;
 DCL AM_PC INT STATIC INIT(0);
