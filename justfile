@@ -90,8 +90,13 @@ negative-output:
 parens-expr:
     ./scripts/run-snobol4.sh examples/parens_expr.sno
 
+# Full expressions in builtin args -- regression for the
+# snobol4-expr-completeness step 3 parser/lowering fix
+builtin-arg-expr:
+    ./scripts/run-snobol4.sh examples/builtin_arg_expr.sno
+
 # Run all demos
-demos: hello hello-goto count span span-fail multiply concat break input array branches funcall-arith negative-output parens-expr
+demos: hello hello-goto count span span-fail multiply concat break input array branches funcall-arith negative-output parens-expr builtin-arg-expr
 
 # --- Tests ---
 

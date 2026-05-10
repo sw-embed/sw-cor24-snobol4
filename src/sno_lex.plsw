@@ -528,6 +528,96 @@ PARSE_NESTED_FN: PROC(EPB INT, START_EPI INT) RETURNS(INT);
     RETURN(START_EPI);
 END;
 
+/* PARSE_BUILTIN_ARG -- parse one full expression in a builtin
+ * argument position. Accepts primitives (IDENT/INT/STR), nested
+ * calls to SUBSTR/SIZE/CHAR (via PARSE_NESTED_FN), and an
+ * optional trailing binary op (+ - *) followed by another primary.
+ *
+ * Slot layout (postfix): each primary contributes one or more EP
+ * slots; an optional binop appears as a marker slot AFTER its
+ * second operand. Example for  SIZE(A) - 1 :
+ *
+ *     [OE_IDENT(A), OE_SIZE, OE_INT(1), OE_OP_SUB]
+ *
+ * The lowering's postfix walk produces stack actions:
+ *   load A   ; OP_SIZE pops A, pushes len   ; load 1   ; OP_SUB.
+ *
+ * On entry: TT is on the first token of the arg.
+ * On exit:  TT is past the arg (typically on a `,` or `)`).
+ * Returns the new EPI.
+ */
+PARSE_BUILTIN_ARG: PROC(EPB INT, START_EPI INT) RETURNS(INT);
+    DCL EPI INT;
+    DCL NEW_EPI INT;
+    DCL OP_TT INT;
+    EPI = START_EPI;
+
+    /* First primary: nested call, IDENT, INT, or STR. */
+    NEW_EPI = PARSE_NESTED_FN(EPB, EPI);
+    IF (NEW_EPI > EPI) THEN EPI = NEW_EPI;
+    ELSE IF (TT = TK_IDENT) THEN DO;
+        DCL N1 INT;
+        N1 = SBSAVE();
+        IF (EPI < EPSLOTS) THEN DO;
+            EP_TYP(EPB + EPI) = OE_IDENT;
+            EP_VAL(EPB + EPI) = SYM_LOOKUP(N1);
+            EPI = EPI + 1;
+        END;
+        CALL LEX;
+    END;
+    ELSE IF (TT = TK_INT) THEN DO;
+        IF (EPI < EPSLOTS) THEN DO;
+            EP_TYP(EPB + EPI) = OE_INT;
+            EP_VAL(EPB + EPI) = TV;
+            EPI = EPI + 1;
+        END;
+        CALL LEX;
+    END;
+    ELSE IF (TT = TK_STR) THEN DO;
+        IF (EPI < EPSLOTS) THEN DO;
+            EP_TYP(EPB + EPI) = OE_STR;
+            EP_VAL(EPB + EPI) = SBSAVE();
+            EPI = EPI + 1;
+        END;
+        CALL LEX;
+    END;
+
+    /* Optional binary op + second primary. */
+    IF (TT = TK_PLUS OR TT = TK_MINUS OR TT = TK_STAR) THEN DO;
+        OP_TT = TT;
+        CALL LEX;
+        NEW_EPI = PARSE_NESTED_FN(EPB, EPI);
+        IF (NEW_EPI > EPI) THEN EPI = NEW_EPI;
+        ELSE IF (TT = TK_IDENT) THEN DO;
+            DCL N2 INT;
+            N2 = SBSAVE();
+            IF (EPI < EPSLOTS) THEN DO;
+                EP_TYP(EPB + EPI) = OE_IDENT;
+                EP_VAL(EPB + EPI) = SYM_LOOKUP(N2);
+                EPI = EPI + 1;
+            END;
+            CALL LEX;
+        END;
+        ELSE IF (TT = TK_INT) THEN DO;
+            IF (EPI < EPSLOTS) THEN DO;
+                EP_TYP(EPB + EPI) = OE_INT;
+                EP_VAL(EPB + EPI) = TV;
+                EPI = EPI + 1;
+            END;
+            CALL LEX;
+        END;
+        IF (EPI < EPSLOTS) THEN DO;
+            IF (OP_TT = TK_PLUS) THEN EP_TYP(EPB + EPI) = OE_OP_ADD;
+            ELSE IF (OP_TT = TK_MINUS) THEN EP_TYP(EPB + EPI) = OE_OP_SUB;
+            ELSE EP_TYP(EPB + EPI) = OE_OP_MUL;
+            EP_VAL(EPB + EPI) = 0;
+            EPI = EPI + 1;
+        END;
+    END;
+
+    RETURN(EPI);
+END;
+
 /* PARSE_GOTOS -- parse all goto modifiers on statement S.
  *
  * Accepts every SNOBOL4 goto syntax variant on a single statement:
@@ -1091,31 +1181,17 @@ PARSE: PROC;
                                 S_OEOP(S) = 100;
                             END;
                         END;
-                        /* Check for SIZE(STR) -- one-arg string length */
+                        /* Check for SIZE(STR) -- one-arg string length.
+                         * Arg may be a primitive, a nested SUBSTR/CHAR
+                         * call, or a binop expression on either of
+                         * those. PARSE_BUILTIN_ARG handles all three. */
                         ELSE IF (TB(0) = 83 AND TB(1) = 73 AND TB(2) = 90 AND TB(3) = 69 AND TB(4) = 0) THEN DO;
                             DCL BLT_AI INT;
                             BLT_AI = EPI;
                             CALL LEX;
                             IF (TT = TK_LPAREN) THEN DO;
                                 CALL LEX;
-                                IF (TT = TK_IDENT) THEN DO;
-                                    DCL SZNO1 INT;
-                                    SZNO1 = SBSAVE();
-                                    IF (EPI < EPSLOTS) THEN DO;
-                                        EP_TYP(EPB + EPI) = OE_IDENT;
-                                        EP_VAL(EPB + EPI) = SYM_LOOKUP(SZNO1);
-                                        EPI = EPI + 1;
-                                    END;
-                                    CALL LEX;
-                                END;
-                                ELSE IF (TT = TK_STR) THEN DO;
-                                    IF (EPI < EPSLOTS) THEN DO;
-                                        EP_TYP(EPB + EPI) = OE_STR;
-                                        EP_VAL(EPB + EPI) = SBSAVE();
-                                        EPI = EPI + 1;
-                                    END;
-                                    CALL LEX;
-                                END;
+                                EPI = PARSE_BUILTIN_ARG(EPB, EPI);
                                 IF (TT = TK_RPAREN) THEN CALL LEX;
                                 IF (EPI < EPSLOTS) THEN DO;
                                     EP_TYP(EPB + EPI) = OE_SIZE;
@@ -1127,72 +1203,21 @@ PARSE: PROC;
                                 END;
                             END;
                         END;
-                        /* Check for SUBSTR(STR,POS,LEN) -- three-arg substring */
+                        /* Check for SUBSTR(STR,POS,LEN) -- three-arg
+                         * substring. Each arg goes through
+                         * PARSE_BUILTIN_ARG, which handles nested
+                         * calls and per-arg arithmetic. */
                         ELSE IF (TB(0) = 83 AND TB(1) = 85 AND TB(2) = 66 AND TB(3) = 83 AND TB(4) = 84 AND TB(5) = 82 AND TB(6) = 0) THEN DO;
                             DCL BLT_AI INT;
                             BLT_AI = EPI;
                             CALL LEX;
                             IF (TT = TK_LPAREN) THEN DO;
                                 CALL LEX;
-                                /* arg1: string */
-                                IF (TT = TK_IDENT) THEN DO;
-                                    DCL SBNO1 INT;
-                                    SBNO1 = SBSAVE();
-                                    IF (EPI < EPSLOTS) THEN DO;
-                                        EP_TYP(EPB + EPI) = OE_IDENT;
-                                        EP_VAL(EPB + EPI) = SYM_LOOKUP(SBNO1);
-                                        EPI = EPI + 1;
-                                    END;
-                                    CALL LEX;
-                                END;
-                                ELSE IF (TT = TK_STR) THEN DO;
-                                    IF (EPI < EPSLOTS) THEN DO;
-                                        EP_TYP(EPB + EPI) = OE_STR;
-                                        EP_VAL(EPB + EPI) = SBSAVE();
-                                        EPI = EPI + 1;
-                                    END;
-                                    CALL LEX;
-                                END;
+                                EPI = PARSE_BUILTIN_ARG(EPB, EPI);
                                 IF (TT = 17) THEN CALL LEX;
-                                /* arg2: position */
-                                IF (TT = TK_INT) THEN DO;
-                                    IF (EPI < EPSLOTS) THEN DO;
-                                        EP_TYP(EPB + EPI) = OE_INT;
-                                        EP_VAL(EPB + EPI) = TV;
-                                        EPI = EPI + 1;
-                                    END;
-                                    CALL LEX;
-                                END;
-                                ELSE IF (TT = TK_IDENT) THEN DO;
-                                    DCL SBNO2 INT;
-                                    SBNO2 = SBSAVE();
-                                    IF (EPI < EPSLOTS) THEN DO;
-                                        EP_TYP(EPB + EPI) = OE_IDENT;
-                                        EP_VAL(EPB + EPI) = SYM_LOOKUP(SBNO2);
-                                        EPI = EPI + 1;
-                                    END;
-                                    CALL LEX;
-                                END;
+                                EPI = PARSE_BUILTIN_ARG(EPB, EPI);
                                 IF (TT = 17) THEN CALL LEX;
-                                /* arg3: length */
-                                IF (TT = TK_INT) THEN DO;
-                                    IF (EPI < EPSLOTS) THEN DO;
-                                        EP_TYP(EPB + EPI) = OE_INT;
-                                        EP_VAL(EPB + EPI) = TV;
-                                        EPI = EPI + 1;
-                                    END;
-                                    CALL LEX;
-                                END;
-                                ELSE IF (TT = TK_IDENT) THEN DO;
-                                    DCL SBNO3 INT;
-                                    SBNO3 = SBSAVE();
-                                    IF (EPI < EPSLOTS) THEN DO;
-                                        EP_TYP(EPB + EPI) = OE_IDENT;
-                                        EP_VAL(EPB + EPI) = SYM_LOOKUP(SBNO3);
-                                        EPI = EPI + 1;
-                                    END;
-                                    CALL LEX;
-                                END;
+                                EPI = PARSE_BUILTIN_ARG(EPB, EPI);
                                 IF (TT = TK_RPAREN) THEN CALL LEX;
                                 IF (EPI < EPSLOTS) THEN DO;
                                     EP_TYP(EPB + EPI) = OE_SUBSTR;
@@ -1200,36 +1225,20 @@ PARSE: PROC;
                                         EP_VAL(EPB + EPI) = 0 - BLT_AI;
                                     ELSE
                                         EP_VAL(EPB + EPI) = 0;
-
                                     EPI = EPI + 1;
                                 END;
                             END;
                         END;
-                        /* Check for CHAR(CODE) -- one-arg code-to-char */
+                        /* Check for CHAR(CODE) -- one-arg code-to-char.
+                         * Arg may be a primitive, nested call, or
+                         * binop expression -- same shape as SIZE. */
                         ELSE IF (TB(0) = 67 AND TB(1) = 72 AND TB(2) = 65 AND TB(3) = 82 AND TB(4) = 0) THEN DO;
                             DCL BLT_AI INT;
                             BLT_AI = EPI;
                             CALL LEX;
                             IF (TT = TK_LPAREN) THEN DO;
                                 CALL LEX;
-                                IF (TT = TK_INT) THEN DO;
-                                    IF (EPI < EPSLOTS) THEN DO;
-                                        EP_TYP(EPB + EPI) = OE_INT;
-                                        EP_VAL(EPB + EPI) = TV;
-                                        EPI = EPI + 1;
-                                    END;
-                                    CALL LEX;
-                                END;
-                                ELSE IF (TT = TK_IDENT) THEN DO;
-                                    DCL CHNO1 INT;
-                                    CHNO1 = SBSAVE();
-                                    IF (EPI < EPSLOTS) THEN DO;
-                                        EP_TYP(EPB + EPI) = OE_IDENT;
-                                        EP_VAL(EPB + EPI) = SYM_LOOKUP(CHNO1);
-                                        EPI = EPI + 1;
-                                    END;
-                                    CALL LEX;
-                                END;
+                                EPI = PARSE_BUILTIN_ARG(EPB, EPI);
                                 IF (TT = TK_RPAREN) THEN CALL LEX;
                                 IF (EPI < EPSLOTS) THEN DO;
                                     EP_TYP(EPB + EPI) = OE_CHAR;

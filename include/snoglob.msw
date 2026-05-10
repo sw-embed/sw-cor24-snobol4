@@ -45,6 +45,15 @@
 %DEFINE OE_SIZE 14;
 %DEFINE OE_SUBSTR 15;
 %DEFINE OE_CHAR 16;
+/* In-stream binary-op markers for nested expressions inside
+ * builtin arg lists (saga-expr-completeness step 003). The
+ * lowering's postfix walk emits the corresponding OP_* when it
+ * sees these. Distinct from the statement-level S_OEOP scheme
+ * because builtin args can have their own per-arg arith. */
+%DEFINE OE_OP_ADD 17;
+%DEFINE OE_OP_SUB 18;
+%DEFINE OE_OP_MUL 19;
+%DEFINE OE_OP_MOD 20;
 %DEFINE GT_RET 4;
 %DEFINE GT_FRET 5;
 %DEFINE GT_NONE 0;
