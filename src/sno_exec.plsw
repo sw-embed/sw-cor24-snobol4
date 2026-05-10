@@ -220,23 +220,36 @@ LOWER_STMT: PROC(S INT);
                 DO WHILE (EPI < BLT_IDX);
                     EPT = EP_TYP(EPB + EPI);
                     EPV = EP_VAL(EPB + EPI);
-                    IF (EPT = OE_INT) THEN DO;
-                        CALL AM_EMIT_OP(OP_LOAD_INT);
-                        CALL AM_EMIT_WORD(EPV);
-                    END;
-                    ELSE IF (EPT = OE_STR) THEN DO;
-                        CALL AM_EMIT_OP(OP_LOAD_STR);
-                        CALL AM_EMIT_WORD(EPV);
-                    END;
-                    ELSE IF (EPT = OE_IDENT) THEN DO;
-                        IF (EPV = INP_SYM AND INP_SYM >= 0) THEN
-                            CALL AM_EMIT_OP(OP_READ_INPUT);
-                        ELSE IF (EPV = RAWINP_SYM AND RAWINP_SYM >= 0) THEN
-                            CALL AM_EMIT_OP(OP_READ_RAW_INPUT);
-                        ELSE DO;
-                            CALL AM_EMIT_OP(OP_LOAD_VAR);
-                            CALL AM_EMIT_BYTE(EPV);
+                    SELECT;
+                        WHEN (EPT = OE_INT) DO;
+                            CALL AM_EMIT_OP(OP_LOAD_INT);
+                            CALL AM_EMIT_WORD(EPV);
                         END;
+                        WHEN (EPT = OE_STR) DO;
+                            CALL AM_EMIT_OP(OP_LOAD_STR);
+                            CALL AM_EMIT_WORD(EPV);
+                        END;
+                        WHEN (EPT = OE_IDENT) DO;
+                            IF (EPV = INP_SYM AND INP_SYM >= 0) THEN
+                                CALL AM_EMIT_OP(OP_READ_INPUT);
+                            ELSE IF (EPV = RAWINP_SYM AND RAWINP_SYM >= 0) THEN
+                                CALL AM_EMIT_OP(OP_READ_RAW_INPUT);
+                            ELSE DO;
+                                CALL AM_EMIT_OP(OP_LOAD_VAR);
+                                CALL AM_EMIT_BYTE(EPV);
+                            END;
+                        END;
+                        /* Nested call markers + in-stream binops --
+                         * each pops its args and pushes its result.
+                         * Required for builtin args that contain
+                         * other builtin calls or arithmetic. */
+                        WHEN (EPT = OE_SIZE)   CALL AM_EMIT_OP(OP_SIZE);
+                        WHEN (EPT = OE_SUBSTR) CALL AM_EMIT_OP(OP_SUBSTR);
+                        WHEN (EPT = OE_CHAR)   CALL AM_EMIT_OP(OP_CHAR);
+                        WHEN (EPT = OE_OP_ADD) CALL AM_EMIT_OP(OP_ADD);
+                        WHEN (EPT = OE_OP_SUB) CALL AM_EMIT_OP(OP_SUB);
+                        WHEN (EPT = OE_OP_MUL) CALL AM_EMIT_OP(OP_MUL);
+                        WHEN (EPT = OE_OP_MOD) CALL AM_EMIT_OP(OP_MOD);
                     END;
                     EPI = EPI + 1;
                 END;
@@ -362,6 +375,10 @@ LOWER_STMT: PROC(S INT);
                     WHEN (EPT = OE_SIZE)   CALL AM_EMIT_OP(OP_SIZE);
                     WHEN (EPT = OE_SUBSTR) CALL AM_EMIT_OP(OP_SUBSTR);
                     WHEN (EPT = OE_CHAR)   CALL AM_EMIT_OP(OP_CHAR);
+                    WHEN (EPT = OE_OP_ADD) CALL AM_EMIT_OP(OP_ADD);
+                    WHEN (EPT = OE_OP_SUB) CALL AM_EMIT_OP(OP_SUB);
+                    WHEN (EPT = OE_OP_MUL) CALL AM_EMIT_OP(OP_MUL);
+                    WHEN (EPT = OE_OP_MOD) CALL AM_EMIT_OP(OP_MOD);
                     OTHERWISE DO;
                         CALL AM_EMIT_OP(OP_LOAD_VAR);
                         CALL AM_EMIT_BYTE(EPV);
