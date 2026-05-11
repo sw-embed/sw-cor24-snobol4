@@ -19,6 +19,9 @@
         OUTPUT = 100
         N = 0 - 999
         OUTPUT = 'T6 N = ' N
+        OUTPUT = -5
+        K = -42
+        OUTPUT = 'T8 K = ' K
 END
 
 * Expected output (one per line):
@@ -28,8 +31,9 @@ END
 *   0
 *   100
 *   T6 N = -999
+*   -5
+*   T8 K = -42
 *
-* The literal form  OUTPUT = -5  still prints 0 -- that's a separate
-* bug (the assignment-context primary-token loop in sno_lex.plsw does
-* not accept TK_MINUS as a leading token). The fix here is purely the
-* formatter; the parser limitation is its own follow-up.
+* T7 and T8 verify leading unary minus -- previously documented as
+* a separate parser-level bug, fixed in saga snobol4-expr-cleanup
+* step 2 (in-stream binop markers + pre-loop unary-minus synthesis).

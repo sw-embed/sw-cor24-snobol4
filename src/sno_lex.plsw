@@ -1101,6 +1101,29 @@ PARSE: PROC;
                 EPI = 0;
                 PEND_OP = 0;
 
+                /* Leading unary minus: rewrite  K = -X  as
+                 * K = 0 - X  by synthesising a leading OE_INT(0)
+                 * slot and queuing TK_MINUS in PEND_OP. The
+                 * existing loop then parses X as usual and the
+                 * PEND_OP flush emits OE_OP_SUB after it -- giving
+                 * the slot stream  [OE_INT(0), <X-slots>, OE_OP_SUB]
+                 * which the postfix walk evaluates as -X.
+                 *
+                 * The primary-token DO WHILE does not accept
+                 * TK_MINUS as a leading token, so this pre-loop
+                 * synthesis is how unary minus enters the slot
+                 * stream at all. */
+                IF (TT = TK_MINUS) THEN DO;
+                    IF (EPI < EPSLOTS) THEN DO;
+                        EP_TYP(EPB + EPI) = OE_INT;
+                        EP_VAL(EPB + EPI) = 0;
+                        EPI = EPI + 1;
+                    END;
+                    PEND_OP = TK_MINUS;
+                    S_OEOP(S) = TK_MINUS;
+                    CALL LEX;
+                END;
+
                 /* Collect expression parts. TK_LPAREN at primary
                  * position is consumed silently and the loop
                  * continues -- after the inner expression parses its
