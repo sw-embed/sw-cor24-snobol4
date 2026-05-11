@@ -386,12 +386,11 @@ LOWER_STMT: PROC(S INT);
                 END;
                 EPI = EPI + 1;
             END;
-            SELECT;
-                WHEN (S_OEOP(S) = TK_PLUS) CALL AM_EMIT_OP(OP_ADD);
-                WHEN (S_OEOP(S) = TK_STAR) CALL AM_EMIT_OP(OP_MUL);
-                WHEN (S_OEOP(S) = 100)     CALL AM_EMIT_OP(OP_MOD);
-                OTHERWISE      CALL AM_EMIT_OP(OP_SUB);
-            END;
+            /* No trailing op emit -- the in-stream OE_OP_* markers
+             * from sno_lex's PEND_OP scheme cover every binop in
+             * the expression. The old SELECT-on-S_OEOP that emitted
+             * one final op was correct only for the single-op case
+             * and produced an extra/wrong op for multi-op chains. */
         END;
         ELSE IF (S_OETY(S) = OE_SPAN OR S_OETY(S) = OE_BREAK) THEN DO;
             IF (S_OETY(S) = OE_SPAN) THEN
