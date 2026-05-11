@@ -1,0 +1,13 @@
+number = 2
+slug = "unary-minus-literal"
+status = "pending"
+description = """
+# Step 2 -- leading unary minus in assignment context
+
+## Problem
+
+The assign..."""
+role = "production"
+context_files = []
+created_at = "2026-05-10T13:51:19"
+commits = []
