@@ -1,0 +1,1 @@
+Saga complete (status=completed, --done shipped). Archiving to free the .agentrail/ slot for the next saga.
