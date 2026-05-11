@@ -1094,19 +1094,29 @@ PARSE: PROC;
             ELSE IF (TT = TK_EQ) THEN DO;
                 DCL EPI INT;
                 DCL EPB INT;
+                DCL PEND_OP INT;
                 S_TYP(S) = ST_ASSIGN;
                 CALL LEX;
                 EPB = S * EPSLOTS;
                 EPI = 0;
+                PEND_OP = 0;
 
                 /* Collect expression parts. TK_LPAREN at primary
                  * position is consumed silently and the loop
                  * continues -- after the inner expression parses its
                  * slots, the trailing close-paren consume at the end
-                 * of each iteration eats the matching `)`. Single-
-                 * level parens around any primary or binop work; the
-                 * existing multi-op limitation (only one S_OEOP per
-                 * statement) is unchanged regardless of parens. */
+                 * of each iteration eats the matching `)`.
+                 *
+                 * Binary ops use in-stream OE_OP_* markers (the same
+                 * scheme PARSE_BUILTIN_ARG uses for builtin-arg
+                 * expressions). PEND_OP records the most recent
+                 * binop awaiting its second operand; after the
+                 * second operand is parsed into the slot stream,
+                 * the marker is emitted. Multi-op chains like
+                 * A + B + C end up as
+                 *   [A, B, OE_OP_ADD, C, OE_OP_ADD]
+                 * and lower to a clean postfix walk. S_OEOP is kept
+                 * for OE_BINOP detection in the lowering. */
                 DO WHILE (TT = TK_INT OR TT = TK_STR OR TT = TK_IDENT OR TT = TK_LPAREN);
                     IF (TT = TK_LPAREN) THEN DO;
                         /* Consume `(` and re-enter the loop -- the
@@ -1381,8 +1391,26 @@ PARSE: PROC;
                         END;
                     END;
 
+                    /* Flush PEND_OP: now that the second operand is
+                     * in the slot stream, emit the OE_OP_* marker
+                     * for the previously-seen binop. */
+                    IF (PEND_OP != 0) THEN DO;
+                        IF (EPI < EPSLOTS) THEN DO;
+                            IF (PEND_OP = TK_PLUS) THEN
+                                EP_TYP(EPB + EPI) = OE_OP_ADD;
+                            ELSE IF (PEND_OP = TK_MINUS) THEN
+                                EP_TYP(EPB + EPI) = OE_OP_SUB;
+                            ELSE
+                                EP_TYP(EPB + EPI) = OE_OP_MUL;
+                            EP_VAL(EPB + EPI) = 0;
+                            EPI = EPI + 1;
+                        END;
+                        PEND_OP = 0;
+                    END;
+
                     /* Check for binary operator (between primitives). */
                     IF (TT = TK_PLUS OR TT = TK_MINUS OR TT = TK_STAR) THEN DO;
+                        PEND_OP = TT;
                         S_OEOP(S) = TT;
                         CALL LEX;
                     END;
@@ -1396,6 +1424,7 @@ PARSE: PROC;
                      *   K = (SIZE(A)) + 1
                      * picks up the `+` here. */
                     IF (TT = TK_PLUS OR TT = TK_MINUS OR TT = TK_STAR) THEN DO;
+                        PEND_OP = TT;
                         S_OEOP(S) = TT;
                         CALL LEX;
                     END;
