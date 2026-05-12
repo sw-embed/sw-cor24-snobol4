@@ -95,8 +95,13 @@ parens-expr:
 builtin-arg-expr:
     ./scripts/run-snobol4.sh examples/builtin_arg_expr.sno
 
+# 280-stmt program -- regression for the dcftn brief
+# dcsno-static-program-size-limit (STMAX raised 256 -> 1024)
+many-outputs:
+    ./scripts/run-snobol4.sh examples/many_outputs.sno
+
 # Run all demos
-demos: hello hello-goto count span span-fail multiply concat break input array branches funcall-arith negative-output parens-expr builtin-arg-expr
+demos: hello hello-goto count span span-fail multiply concat break input array branches funcall-arith negative-output parens-expr builtin-arg-expr many-outputs
 
 # --- Tests ---
 

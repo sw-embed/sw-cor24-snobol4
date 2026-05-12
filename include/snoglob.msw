@@ -77,13 +77,18 @@
 %DEFINE SYMMAX 64;
 %DEFINE SYM_WIDTH 12;       /* bytes per symbol name (max name = SYM_WIDTH-1 chars) */
 
-/* Statement table size -- also governs S_TYP, S_EPCNT, STMT_ADDR, etc. */
-%DEFINE STMAX 256;
+/* Statement table size -- also governs S_TYP, S_EPCNT, STMT_ADDR, etc.
+ * Raised 256 -> 1024 to fix the dcftn brief
+ * "dcsno-static-program-size-limit": programs above ~234 stmts
+ * silently truncated and corrupted control flow. PARSE now emits a
+ * compile-time diagnostic when this cap is hit (issue analogous to
+ * the SRC_LIMIT and SB_LIMIT overflow paths). */
+%DEFINE STMAX 1024;
 
 /* Slots per statement for expression parts (EP) and pattern parts (PP).
  * EP_TYP[STMAX*EPSLOTS], PP_TYP[STMAX*EPSLOTS]. Code uses S*EPSLOTS. */
 %DEFINE EPSLOTS 8;
-%DEFINE EPMAX 2048;       /* STMAX * EPSLOTS = 256 * 8 */
+%DEFINE EPMAX 8192;       /* STMAX * EPSLOTS = 1024 * 8 */
 
 /* Eval stack depth */
 %DEFINE ESTK_DEPTH 256;
@@ -237,6 +242,7 @@ DCL RAWINP_SYM INT STATIC INIT(0);
 DCL SB_OVERFLOW INT STATIC INIT(0);
 DCL SB_OVF_MSG(48) CHAR INIT('SNOBOL4: string buffer overflow at SBPOS=');
 DCL SRC_OVF_MSG(48) CHAR INIT('SNOBOL4: source too large, truncated at byte=');
+DCL STMT_OVF_MSG(56) CHAR INIT('SNOBOL4: program exceeds STMAX statements at STCNT=');
 
 /* SB compaction watermark: set at start of AM_EXEC to the end of the
  * compile-time string pool. Strings below this are stable (referenced

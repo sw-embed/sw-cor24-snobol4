@@ -1502,6 +1502,19 @@ PARSE: PROC;
         END;
     END;
 
+    /* Statement-table overflow: parser hit STMAX before TK_EOF. Late
+     * statements (incl. the final END marker, label targets, etc.)
+     * are missing, which silently corrupts control flow at execute
+     * time (`:(LABEL)` lookups land on PC=0). Emit a diagnostic and
+     * set SB_OVERFLOW so AM_EXEC skips running this broken program.
+     * dcftn brief: dcsno-static-program-size-limit. */
+    IF (TT != TK_EOF) THEN DO;
+        CALL UART_PUTS(ADDR(STMT_OVF_MSG));
+        CALL PUT_DEC(STCNT);
+        CALL UART_PUTCHAR(10);
+        SB_OVERFLOW = 1;
+    END;
+
     /* Resolve FN_ENTRY via label lookup */
     DCL FI INT;
     FI = 0;
