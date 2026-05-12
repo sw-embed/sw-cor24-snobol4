@@ -1,0 +1,6 @@
+name = "snobol4-expr-cleanup"
+status = "completed"
+current_step = 2
+created_at = "2026-05-10T13:51:19"
+plan_file = ".agentrail/plan.md"
+retroactive = false
