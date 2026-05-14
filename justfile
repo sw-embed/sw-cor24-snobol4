@@ -111,8 +111,13 @@ large-source:
 any-pattern:
     ./scripts/run-snobol4.sh examples/any_pattern.sno
 
+# Long concat expressions -- regression for the dcftn brief
+# dcsno-concat-truncation (EPSLOTS bumped 8 -> 16)
+concat-chain:
+    ./scripts/run-snobol4.sh examples/concat_chain.sno
+
 # Run all demos
-demos: hello hello-goto count span span-fail multiply concat break input array branches funcall-arith negative-output parens-expr builtin-arg-expr many-outputs large-source any-pattern
+demos: hello hello-goto count span span-fail multiply concat break input array branches funcall-arith negative-output parens-expr builtin-arg-expr many-outputs large-source any-pattern concat-chain
 
 # --- Tests ---
 

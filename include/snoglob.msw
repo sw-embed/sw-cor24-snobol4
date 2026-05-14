@@ -87,9 +87,14 @@
 %DEFINE STMAX 1024;
 
 /* Slots per statement for expression parts (EP) and pattern parts (PP).
- * EP_TYP[STMAX*EPSLOTS], PP_TYP[STMAX*EPSLOTS]. Code uses S*EPSLOTS. */
-%DEFINE EPSLOTS 8;
-%DEFINE EPMAX 8192;       /* STMAX * EPSLOTS = 1024 * 8 */
+ * EP_TYP[STMAX*EPSLOTS], PP_TYP[STMAX*EPSLOTS]. Code uses S*EPSLOTS.
+ * Bumped 8 -> 16 to fix dcsno-concat-truncation: 9+ concat operands
+ * were silently dropped because the parser's per-statement slot cap
+ * was exactly EPSLOTS. 16 covers all realistic single-expression
+ * concats; the brief's repro (5 strings + 4 separators = 9 slots)
+ * fits comfortably. */
+%DEFINE EPSLOTS 16;
+%DEFINE EPMAX 16384;      /* STMAX * EPSLOTS = 1024 * 16 */
 
 /* Eval stack depth */
 %DEFINE ESTK_DEPTH 256;

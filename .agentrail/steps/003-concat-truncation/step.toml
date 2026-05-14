@@ -1,6 +1,6 @@
 number = 3
 slug = "concat-truncation"
-status = "pending"
+status = "in-progress"
 description = """
 # Step 3 -- concat-truncation (5+ operand silent drop)
 
