@@ -1,0 +1,12 @@
+number = 3
+slug = "concat-truncation"
+status = "completed"
+description = """
+# Step 3 -- concat-truncation (5+ operand silent drop)
+
+Brief: `tools/briefs/..."""
+role = "production"
+context_files = []
+created_at = "2026-05-13T20:23:46"
+completed_at = "2026-05-13T20:34:48"
+commits = ["f0ed4abd14073aaf5349af6a0092350ed6dc3ea5"]
