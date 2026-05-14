@@ -1,6 +1,6 @@
 number = 1
 slug = "source-byte-cap"
-status = "in-progress"
+status = "completed"
 description = """
 # Step 1 -- raise SRC_LIMIT (source-byte cap)
 
@@ -8,4 +8,5 @@ Brief: `tools/briefs/dcsno-sou..."""
 role = "production"
 context_files = []
 created_at = "2026-05-13T16:51:03"
-commits = []
+completed_at = "2026-05-13T17:39:03"
+commits = ["cff0ba95f12a53190b5b14d54c212f65e467841f"]
