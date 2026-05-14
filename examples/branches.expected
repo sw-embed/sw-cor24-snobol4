@@ -1,0 +1,34 @@
+1: :S(L) succ
+   1 :S fired
+2: :S(L) fail -> fallthrough
+   2 fall-through (correct)
+3: :F(L) fail
+   3 :F fired
+4: :S(L):F(L) fail -> F
+   4 :F fired
+5: :S(L):F(L) succ -> S
+   5 :S fired
+6: :S(L)F(L) fail -> F
+   6 :F fired
+7: :F(L):S(L) succ -> S
+   7 :S fired
+8: :F(L):S(L) fail -> F
+   8 :F fired
+9: :(L) unconditional
+   9 :(L) fired
+10: :S(L1):S(L2) succ -> first :S wins
+   10 first :S fired (correct)
+11: :F(L1):F(L2) fail -> first :F wins
+   11 first :F fired (correct)
+12: :S(L1):S(L2):F(L3) -- :S(L1) wins, :S(L2) dead
+   12 :S(L1) fired (correct)
+13: IDENT(SUBSTR(s,p,l), Y) succ -> :S
+   13 :S fired (correct)
+14: IDENT(SUBSTR(s,p,l), Y) fail -> :F
+   14 :F fired (correct)
+15: IDENT(Y, SUBSTR(s,p,l)) succ -> :S
+   15 :S fired (correct)
+16: EQ(SIZE(s), n) succ -> :S
+   16 :S fired (correct)
+17: IDENT(SUBSTR(...), Y) :(JUMP)
+   17 :(L) fired (correct)

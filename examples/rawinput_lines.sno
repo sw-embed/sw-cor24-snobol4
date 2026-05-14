@@ -1,0 +1,26 @@
+* rawinput_lines.sno -- regression for the dcftn briefs
+* dcsno-rawinput-eof-garbage + dcsno-rawinput-mid-file-halt.
+*
+* Reads all lines from the data file via RAWINPUT until :F fires,
+* prints the count. Expected: reads=N where N is exactly the number
+* of newline-terminated records in the data file.
+*
+* Pre-fix this had two failure modes:
+*   1. EOF garbage: one extra "rec" with binary noise past real
+*      EOF, so reads=N+1.
+*   2. Mid-file halt: certain input sizes (~150+ bytes with non-
+*      uniform line lengths) caused RAWINPUT to neither fire :S
+*      nor :F -- execution silently exited with no output.
+*
+* Both root-caused to memory-layout collision: the interpreter
+* binary outgrew the historical 0x80000/0x90000 load region.
+* Fixed by moving SRC_LOAD_ADDR / INP_LOAD_ADDR to 0xE0000 /
+* 0xF0000 and adding a build-time size assertion. This regression
+* exists to catch future re-collisions.
+*
+        N = 0
+RD      L = RAWINPUT                                                                    :F(FL)
+        N = N + 1
+        :(RD)
+FL      OUTPUT = 'reads=' N
+END

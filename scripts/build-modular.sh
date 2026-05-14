@@ -142,6 +142,23 @@ link24 --entry "$ENTRY" --dir "$BUILD/mod" \
 TOTAL=$(stat -f%z "$BUILD/snobol4.bin" 2>/dev/null || stat -c%s "$BUILD/snobol4.bin" 2>/dev/null)
 echo "  Output: $TOTAL bytes -> build/snobol4.bin" >&2
 
+# --- Memory-layout sanity check ---
+# Source / data load at 0xE0000 / 0xF0000 (snoglob.msw). The binary
+# must end before SRC_LOAD_ADDR or --load-binary @0xE0000 will
+# overwrite live interpreter state -- the regression that caused
+# dcsno-rawinput-eof-garbage and dcsno-rawinput-mid-file-halt
+# (briefs filed 2026-05-14) when the binary outgrew the historical
+# 0x80000 load region.
+SRC_LOAD=$((0xE0000))
+if [ "$TOTAL" -ge "$SRC_LOAD" ]; then
+    echo "  ERROR: binary size $TOTAL >= SRC_LOAD_ADDR $SRC_LOAD" >&2
+    echo "         The interpreter would overlap the source-file load region." >&2
+    echo "         Either shrink the binary (reduce static caps) or bump" >&2
+    echo "         SRC_LOAD_ADDR / INP_LOAD_ADDR in include/snoglob.msw" >&2
+    echo "         (keep scripts/run-snobol4*.sh in sync)." >&2
+    exit 1
+fi
+
 # --- Write dep manifest ---
 > "$DEPS_FILE"
 for MOD in $ALL_MODULES; do

@@ -1,0 +1,39 @@
+* underscore_labels.sno -- regression for the dcftn brief
+* "dcsno-underscore-label". Pre-fix, the SNOBOL4 lexer's IS_AN
+* (alphanumeric) predicate rejected `_`, so labels like `L_FOO`
+* were tokenized as just `L`. Subsequent `:(L_FOO)` lookups
+* silently failed and control fell through, producing the
+* infinite-loop-over-prologue pathology indistinguishable from
+* the prior STMAX overflow bug. dcftn worked around it by
+* renaming all underscore labels in emit_asm.sno to collapsed
+* forms.
+*
+* Post-fix, `_` (ASCII 95) is accepted in IS_AN, so it can appear
+* in identifier continuations (after the leading alpha char).
+
+* T1: single underscore label
+        :(L_TEST)
+        OUTPUT = 'T1 FAIL: fell through'                                                :(T2)
+L_TEST  OUTPUT = 'T1 ok'                                                                :(T2)
+
+* T2: two-segment label
+T2      :(L_A_B)
+        OUTPUT = 'T2 FAIL: fell through'                                                :(T3)
+L_A_B   OUTPUT = 'T2 ok'                                                                :(T3)
+
+* T3: mixed underscore + plain in same program (distinct targets)
+T3      :(LFOO)
+        OUTPUT = 'T3 FAIL fell-through to L_FOO'                                        :(T4)
+LFOO    OUTPUT = 'T3 ok (no underscore)'                                                :(T3B)
+L_FOO   OUTPUT = 'T3B ok (underscore variant)'                                          :(T4)
+
+T3B     :(L_FOO)
+        OUTPUT = 'T3B FAIL fell through L_FOO'                                          :(T4)
+
+* T4: underscore label inside dispatch
+T4      :(L_C)
+        OUTPUT = 'T4 FAIL'                                                              :(DONE)
+L_C     OUTPUT = 'T4 ok'                                                                :(DONE)
+
+DONE    OUTPUT = 'done'
+END
