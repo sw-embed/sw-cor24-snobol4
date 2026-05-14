@@ -105,8 +105,14 @@ many-outputs:
 large-source:
     ./scripts/run-snobol4.sh examples/large_source.sno
 
+# ANY(class) pattern primitive -- regression for the dcftn brief
+# dcsno-any-pattern-fails (ANY was missing entirely; SPAN was the
+# only one-char-class workaround)
+any-pattern:
+    ./scripts/run-snobol4.sh examples/any_pattern.sno
+
 # Run all demos
-demos: hello hello-goto count span span-fail multiply concat break input array branches funcall-arith negative-output parens-expr builtin-arg-expr many-outputs large-source
+demos: hello hello-goto count span span-fail multiply concat break input array branches funcall-arith negative-output parens-expr builtin-arg-expr many-outputs large-source any-pattern
 
 # --- Tests ---
 

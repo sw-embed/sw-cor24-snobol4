@@ -54,6 +54,7 @@
 %DEFINE OE_OP_SUB 18;
 %DEFINE OE_OP_MUL 19;
 %DEFINE OE_OP_MOD 20;
+%DEFINE OE_ANY 21;          /* pattern: ANY('class') -- match one char */
 %DEFINE GT_RET 4;
 %DEFINE GT_FRET 5;
 %DEFINE GT_NONE 0;

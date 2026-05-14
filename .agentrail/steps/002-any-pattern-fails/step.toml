@@ -1,6 +1,6 @@
 number = 2
 slug = "any-pattern-fails"
-status = "pending"
+status = "in-progress"
 description = """
 # Step 2 -- ANY(class) pattern fails silently
 
