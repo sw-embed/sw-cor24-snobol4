@@ -22,6 +22,7 @@ END;
 IS_AN: PROC(C INT) RETURNS(INT);
     IF (IS_A(C) != 0) THEN RETURN(1);
     IF (IS_D(C) != 0) THEN RETURN(1);
+    IF (C = 95) THEN RETURN(1);     /* underscore -- dcsno-underscore-label */
     RETURN(0);
 END;
 

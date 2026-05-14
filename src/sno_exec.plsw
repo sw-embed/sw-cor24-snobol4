@@ -185,36 +185,40 @@ LOWER_STMT: PROC(S INT);
                 PI2 = PI2 + 1;
             END;
             IF (HAS_BLT = 1) THEN DO;
+                /* Unified left-to-right walk: emit each slot in order;
+                 * markers pop their args and push their result. Slots
+                 * that are args of a later marker get no CONCAT after
+                 * (they get consumed by the marker); slots that are
+                 * complete values get CONCAT after the first one.
+                 * Fixes dcsno-concat-after-funcall-truncates for both
+                 * single- and multi-builtin OUTPUT statements. */
+                DCL EMITTED INT;
+                DCL IS_ARG INT;
+                DCL LA INT;
+                DCL LAT INT;
+                DCL LAA INT;
+                EMITTED = 0;
                 EPI = 0;
-                DO WHILE (EPI < BLT_ARG);
+                DO WHILE (EPI < S_EPCNT(S));
                     EPT = EP_TYP(EPB + EPI);
                     EPV = EP_VAL(EPB + EPI);
-                    IF (EPT = OE_INT) THEN DO;
-                        CALL AM_EMIT_OP(OP_LOAD_INT);
-                        CALL AM_EMIT_WORD(EPV);
-                    END;
-                    ELSE IF (EPT = OE_STR) THEN DO;
-                        CALL AM_EMIT_OP(OP_LOAD_STR);
-                        CALL AM_EMIT_WORD(EPV);
-                    END;
-                    ELSE IF (EPT = OE_IDENT) THEN DO;
-                        IF (EPV = INP_SYM AND INP_SYM >= 0) THEN
-                            CALL AM_EMIT_OP(OP_READ_INPUT);
-                        ELSE IF (EPV = RAWINP_SYM AND RAWINP_SYM >= 0) THEN
-                            CALL AM_EMIT_OP(OP_READ_RAW_INPUT);
-                        ELSE DO;
-                            CALL AM_EMIT_OP(OP_LOAD_VAR);
-                            CALL AM_EMIT_BYTE(EPV);
+                    /* IS_ARG=1 if any later marker owns this slot,
+                     * i.e. slot is in [BLT_AI..marker_pos) for some
+                     * marker. Must check all later markers, not just
+                     * the nearest, because nested calls
+                     * (e.g. SUBSTR(A, SIZE(A), 1)) have an inner
+                     * marker BEFORE the outer marker that owns the
+                     * inner one as an arg. */
+                    IS_ARG = 0;
+                    LA = EPI + 1;
+                    DO WHILE (LA < S_EPCNT(S));
+                        LAT = EP_TYP(EPB + LA);
+                        IF (LAT = OE_SIZE OR LAT = OE_SUBSTR OR LAT = OE_CHAR) THEN DO;
+                            LAA = 0 - EP_VAL(EPB + LA);
+                            IF (LAA <= EPI AND EPI < LA) THEN IS_ARG = 1;
                         END;
+                        LA = LA + 1;
                     END;
-                    IF (EPI > 0) THEN
-                        CALL AM_EMIT_OP(OP_CONCAT);
-                    EPI = EPI + 1;
-                END;
-                EPI = BLT_ARG;
-                DO WHILE (EPI < BLT_IDX);
-                    EPT = EP_TYP(EPB + EPI);
-                    EPV = EP_VAL(EPB + EPI);
                     SELECT;
                         WHEN (EPT = OE_INT) DO;
                             CALL AM_EMIT_OP(OP_LOAD_INT);
@@ -234,10 +238,6 @@ LOWER_STMT: PROC(S INT);
                                 CALL AM_EMIT_BYTE(EPV);
                             END;
                         END;
-                        /* Nested call markers + in-stream binops --
-                         * each pops its args and pushes its result.
-                         * Required for builtin args that contain
-                         * other builtin calls or arithmetic. */
                         WHEN (EPT = OE_SIZE)   CALL AM_EMIT_OP(OP_SIZE);
                         WHEN (EPT = OE_SUBSTR) CALL AM_EMIT_OP(OP_SUBSTR);
                         WHEN (EPT = OE_CHAR)   CALL AM_EMIT_OP(OP_CHAR);
@@ -246,16 +246,12 @@ LOWER_STMT: PROC(S INT);
                         WHEN (EPT = OE_OP_MUL) CALL AM_EMIT_OP(OP_MUL);
                         WHEN (EPT = OE_OP_MOD) CALL AM_EMIT_OP(OP_MOD);
                     END;
+                    IF (IS_ARG = 0) THEN DO;
+                        IF (EMITTED = 1) THEN CALL AM_EMIT_OP(OP_CONCAT);
+                        EMITTED = 1;
+                    END;
                     EPI = EPI + 1;
                 END;
-                EPT = EP_TYP(EPB + BLT_IDX);
-                SELECT;
-                    WHEN (EPT = OE_SIZE)   CALL AM_EMIT_OP(OP_SIZE);
-                    WHEN (EPT = OE_SUBSTR) CALL AM_EMIT_OP(OP_SUBSTR);
-                    WHEN (EPT = OE_CHAR)   CALL AM_EMIT_OP(OP_CHAR);
-                END;
-                IF (BLT_ARG > 0) THEN
-                    CALL AM_EMIT_OP(OP_CONCAT);
             END;
             ELSE DO;
                 N_PARTS = 0;
@@ -347,12 +343,7 @@ LOWER_STMT: PROC(S INT);
             END;
         END;
         ELSE IF (S_OETY(S) = OE_BINOP) THEN DO;
-            /* Walk all EP slots as a postfix expression: primitives
-             * push, OE_SIZE/OE_SUBSTR/OE_CHAR markers pop their args
-             * and push their result. After the walk the stack has
-             * the LHS and RHS of the binary op; the op then pops
-             * 2 and pushes 1. Handles both simple primitives
-             * (K - 1) and nested calls (SIZE(A) - 1). */
+            /* Postfix walk of EP slots; supports nested calls. */
             EPB = S * EPSLOTS;
             EPI = 0;
             DO WHILE (EPI < S_EPCNT(S));
@@ -481,12 +472,7 @@ LOWER_STMT: PROC(S INT);
         BCNT = S_EPCNT(S);
         IF (BCNT < 2) THEN BCNT = 2;
         BIDX = 0;
-        /* Walk all EP slots (not just the first two) so nested
-         * SUBSTR/SIZE/CHAR markers in the predicate's arg list emit
-         * their corresponding ops. The slot stream is postfix: each
-         * primitive pushes a value, each call-marker pops its args
-         * and pushes its result. After the loop the predicate has
-         * exactly two values on the stack regardless of nesting. */
+        /* Postfix walk: handles nested SUBSTR/SIZE/CHAR in args. */
         DO WHILE (BIDX < BCNT);
             BBT = EP_TYP(BEPB + BIDX);
             BBV = EP_VAL(BEPB + BIDX);

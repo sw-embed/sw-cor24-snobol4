@@ -1,0 +1,51 @@
+* concat_builtin.sno -- regression for the dcftn brief
+* dcsno-concat-after-funcall-truncates. Pre-fix, OUTPUT
+* statements with literal/var operands AFTER a builtin
+* (SIZE/SUBSTR/CHAR) silently dropped everything past the
+* builtin. Multi-builtin in one statement was also broken.
+*
+* Each test below has a manually-derived expected output:
+* the value comes from first-principles reasoning about
+* what the SNOBOL4 expression *should* compute, not from
+* observing what the program currently produces.
+
+* T1: builtin prefix + suffix (brief's primary repro)
+*   expected: x5y
+        OUTPUT = 'x' SIZE('hello') 'y'
+
+* T2: builtin in the middle of a longer concat
+*   expected: len=5 (expect 5)
+        OUTPUT = 'len=' SIZE('hello') ' (expect 5)'
+
+* T3: multi-builtin (brief's "multiple function calls")
+*   expected: 2+3=5
+        OUTPUT = SIZE('aa') '+' SIZE('bbb') '=5'
+
+* T4: SUBSTR with prefix and suffix
+*   expected: aab
+        OUTPUT = 'a' SUBSTR('abc',1,1) 'b'
+
+* T5: CHAR with prefix (brief's "last operand" case)
+*   expected: last=A
+        OUTPUT = 'last=' CHAR(65)
+
+* T6: multi-builtin assigned to a variable, then printed in
+* another multi-builtin OUTPUT (brief's "round-trip" case)
+*   S = 'a' '2' 'b' '3' 'c' = 'a2b3c', SIZE(S) = 5
+*   expected: S=[a2b3c] size=5 expect=5
+        S = 'a' SIZE('hi') 'b' SIZE('XXX') 'c'
+        OUTPUT = 'S=[' S '] size=' SIZE(S) ' expect=5'
+
+* T7: builtin between two var operands
+*   N=5, A='HELLO', SIZE(A)=5: 'pre' '5' 'post' = pre5post
+*   expected: pre5post
+        A = 'HELLO'
+        OUTPUT = 'pre' SIZE(A) 'post'
+
+* T8: nested builtin inside a concat
+*   SUBSTR('abc',1,1)='a', SIZE('a')=1: 'len=' '1' = len=1
+*   expected: len=1
+        OUTPUT = 'len=' SIZE(SUBSTR('abc',1,1))
+
+        OUTPUT = 'done'
+END

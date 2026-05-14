@@ -3,7 +3,7 @@
 #
 # 1. Build the modular SNOBOL4 interpreter
 # 2. Load interpreter binary at 0x000000
-# 3. Load examples/hello.sno at 0x080000
+# 3. Load examples/hello.sno at 0xE0000
 # 4. Run with --dump and --uart-log
 # 5. Print captured UART output
 
@@ -29,7 +29,7 @@ echo "" >&2
 # Step 2: Run with --dump
 echo "Running on COR24 emulator..." >&2
 cor24-emu --load-binary "$INTERP_BIN"@0 \
-    --load-binary "$HELLO_SNO"@0x080000 \
+    --load-binary "$HELLO_SNO"@0xE0000 \
     --entry 0 \
     -n 200000000 -t 60 --speed 0 \
     --dump \

@@ -71,8 +71,16 @@
 %DEFINE VTYP_PAT_BREAK 5;
 
 /* Source buffer + load addresses */
-%DEFINE SRC_LOAD_ADDR 524288;
-%DEFINE INP_LOAD_ADDR 589824;
+/* Source / data load addresses. Must be > interpreter binary size.
+ * History: were 0x80000 / 0x90000 when binary was ~165 KB. After
+ * the May 2026 cap-raise saga the binary grew to ~631 KB, overlapping
+ * both load regions and silently corrupting RAWINPUT (briefs
+ * dcsno-rawinput-eof-garbage, dcsno-rawinput-mid-file-halt). Moved
+ * to the top of SRAM so the binary can grow to ~896 KiB before
+ * colliding again. scripts/build-modular.sh asserts this at build
+ * time. Keep the run-script load-binary addresses in sync. */
+%DEFINE SRC_LOAD_ADDR 917504;  /* 0xE0000 -- 64 KiB capacity to 0xEFFFF */
+%DEFINE INP_LOAD_ADDR 983040;  /* 0xF0000 -- 64 KiB capacity to 0xFFFFF */
 
 /* Symbol table size -- also governs VARS, SYMV, VTYP */
 %DEFINE SYMMAX 64;

@@ -1,0 +1,12 @@
+begin
+pad-1: PROGRAM
+match KIND=PROGRAM
+  prog_label=_main len=5
+pad-2: PRINT *, 42
+match KIND=PRINT
+  emit len=10
+pad-3: END
+match KIND=END
+  halt_marker=H size=1
+total records=3
+done

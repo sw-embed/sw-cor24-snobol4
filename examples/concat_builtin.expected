@@ -1,0 +1,9 @@
+x5y
+len=5 (expect 5)
+2+3=5
+aab
+last=A
+S=[a2b3c] size=5 expect=5
+pre5post
+len=1
+done
