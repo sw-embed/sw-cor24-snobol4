@@ -64,3 +64,4 @@
 %DEFINE OP_PAT_VAR 44;
 %DEFINE OP_READ_RAW_INPUT 45;
 %DEFINE OP_PAT_REPLACE 46;
+%DEFINE OP_MAKE_ANY 47;     /* push PK_ANY pattern node from class addr */

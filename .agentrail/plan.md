@@ -1,84 +1,66 @@
-# SNOBOL4 statement-table cap fix
+# SNOBOL4 cap + pattern fixes (dcftn FTI-0 follow-on briefs)
 
-## Problem
+dcftn's FTI-0 milestone-4-print-int work surfaced four independent
+SNOBOL4 bugs after the parent `dcsno-static-program-size-limit`
+brief landed. Each has a self-contained repro and a SPAN/split
+workaround in place; this saga ships proper fixes.
 
-`include/snoglob.msw` defines `STMAX = 256`. The PARSE loop in
-`src/sno_lex.plsw` bounds the parser with
-`DO WHILE (TT != TK_EOF AND STCNT < STMAX);` — when statement 256
-arrives, the loop exits silently. Everything after is dropped:
-remaining statements, the final `END` marker, late `:S(LABEL)` /
-`:F(LABEL)` registrations.
+## Steps
 
-Symptoms (reported by dcftn in
-`tools/briefs/dcsno-static-program-size-limit.md`):
+### Step 1 -- source-byte-cap
 
-- N=234 OUTPUT statements + dispatch loop -> `:(LOOP)` jumps to
-  PC=0 (re-enters prologue), looks like an infinite loop.
-- N=300 OUTPUTs -> truncates at exactly 256 output lines.
-- No diagnostic at compile time.
+Brief: `tools/briefs/dcsno-source-byte-cap.md`.
 
-Real-world hit: `dcftn/sw-cor24-fortran` had to splice a 70-line
-runtime out of `snobol4/src/emit_asm.sno` to keep the file under
-~233 stmts.
+Raise SRC_LIMIT (currently `12280`, backed by `DCL SRC(12288) BYTE`
+in `include/snoglob.msw`) to a comfortable cap (~48-64 KiB), keep
+the overflow diagnostic that shipped in `pr/stmt-table-cap`. Add a
+byte-cap regression: padded SNOBOL4 sources at multiple sizes.
+Unblocks dcftn's `emit_asm.sno` comment budget.
 
-## Plan
+### Step 2 -- any-pattern-fails
 
-One-step fix: raise STMAX (and the dependent EPMAX), add an
-overflow diagnostic so the next time anyone hits the cap they get
-told instead of corrupted output. Verify against dcftn's repro
-plus a scaling regression test.
+Brief: `tools/briefs/dcsno-any-pattern-fails.md`.
 
-### Step 1 — raise-cap-and-diagnose
+`ANY(class)` silently fails; `SPAN(class)` works correctly. Fix
+the ANY opcode handler (probably in `src/sno_exec.plsw`) -- likely
+a cursor-advance, ANY/NOTANY swap, or class-decode bug. Add a
+small ANY test table.
 
-1. **Inspect dependent globals** in `include/snoglob.msw`:
-   - `STMAX` (256) -- statement-table size
-   - `EPSLOTS` (8) -- per-statement expression slots
-   - `EPMAX` (= STMAX * EPSLOTS = 2048) -- EP_TYP/EP_VAL/PP_TYP/PP_VAL
-   - All `S_*(STMAX)`, `STMT_ADDR(STMAX)` arrays scale with STMAX
-   - `LBL_MAX` (64) -- labels. Probably fine, but check.
+### Step 3 -- concat-truncation
 
-2. **Pick a new STMAX**. Target: 1024 if the resulting binary still
-   builds and runs (currently ~165 KB; +1024 cap adds ~140 KB to
-   the static globals). Fallback: 512 (~35 KB extra) if 1024 cliffs
-   anything else (EMIT_BUF, link size, etc.). Confirm empirically.
+Brief: `tools/briefs/dcsno-concat-truncation.md`.
 
-3. **Add overflow diagnostic** in PARSE. Replace the silent
-   `STCNT < STMAX` early-exit with: if the parser would step past
-   STMAX, emit a clear diagnostic via the existing UART_PUTS path
-   ("ERROR: program exceeds STMAX statements"), abort compilation
-   cleanly. Don't truncate-and-execute.
+5+ operand concat silently drops trailing bytes. Investigate the
+parser flattening vs evaluator scratch buffer. Discriminator test
+(2-byte operands) tells which layer is the truncator. Raise the
+cap (with diagnostic) or restructure to left-leaning binary.
 
-4. **Add regression test** at the parser level: a `.sno` program
-   with N=400 OUTPUT lines + dispatch loop. Expected: prints all
-   400 prologues then dispatches correctly. (If we lift the cap
-   to 1024, this test exercises being above the old cap but well
-   within the new one.)
+### Step 4 -- pattern-captures-truncation
 
-5. **Verify dcftn's repro fixes**. Build the repro from the brief
-   for N in {200, 230, 234, 240, 300, 500}; for each, the line
-   count must be exactly N+4.
+Brief: `tools/briefs/dcsno-pattern-captures-truncation.md`.
 
-### Out of scope
+4+ `.` captures per pattern drop the trailing capture values
+(pattern still matches; only the variable bindings break).
+Probably a 3-slot CAP register tuple in the pattern matcher.
+Switch to an array (size 8-16) with diagnostic on overflow.
 
-- No transition to dynamic statement-table allocation. That's a
-  bigger lift (needs heap-backed growth + slot bookkeeping in the
-  parser); we'll revisit if 1024 turns out to be the wrong cap.
-- No changes to `LBL_MAX` (64). Labels haven't cliffed.
-- No `pr/static-program-size-limit` branch (dcftn's brief suggested
-  that name but our workflow renames at handoff, not before).
+## Exit criteria (saga)
 
-## Exit criteria
+- All four briefs' repros pass cleanly.
+- `just demos` (now 16 + any new regressions) green.
+- `just test` 14 "All tests done" green.
+- New regression examples committed under `examples/` and wired
+  into `demos:`.
+- `build/snobol4.{bin,lgo}` rebuilt and committed.
+- One commit per step, each `agentrail complete`'d, then
+  branch renamed `feat/cap-and-pattern-fixes` ->
+  `pr/cap-and-pattern-fixes` for `dg-reap`.
 
-- STMAX raised (target 1024, minimum 512)
-- Overflow path emits a clear compile-time diagnostic instead of
-  silently truncating
-- New scaling regression (`examples/many_outputs.sno` or similar)
-  green
-- dcftn's repro builds and runs correctly for N up to the new cap;
-  emits diagnostic and halts cleanly above it
-- `just demos` and `just test` regressions all green
-- Build artifact (`build/snobol4.bin`) committed to feat branch
+## Out of scope
 
-When done: commit, `agentrail complete --done`, rename branch
-`feat/stmt-table-cap` -> `pr/stmt-table-cap`. Brief reply to dcftn
-goes into the commit message + the saga summary.
+- The `feat/runtime-split-resume` engine consolidation; still
+  parked on dcpls SRC_BUF (separate brief).
+- Storage-runtime impl; gated on dcpls getmain/freemain.
+- Pattern features beyond ANY: ARB, NOTANY, alternation,
+  recursion. If the ANY fix happens to improve them, fine; the
+  saga's exit gate is the four briefs above.
