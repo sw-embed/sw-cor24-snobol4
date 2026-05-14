@@ -108,13 +108,14 @@
 /* Shared globals -- declared in every module.
  * Assembler uses first definition (from main module). */
 
-/* Source buffer -- 12KB. Previous 8KB silently truncated programs at
- * ~8184 bytes mid-line, corrupting downstream parse output (issue #14).
- * READ_SRC now sets SB_OVERFLOW with a diagnostic when input exceeds
- * SRC_LIMIT rather than truncating. 12KB is the largest that links
- * cleanly under the current module layout. */
-%DEFINE SRC_SIZE 12288;
-%DEFINE SRC_LIMIT 12280;    /* SRC_SIZE - 8, headroom for null terminator */
+/* Source buffer -- 64KB. History: 8KB silently truncated mid-line
+ * (issue #14) -> 12KB with diagnostic -> 64KB to unblock dcftn's
+ * FTI-0 emit_asm.sno (dcsno-source-byte-cap brief, sibling to the
+ * STMAX 256 -> 1024 bump). READ_SRC still sets SB_OVERFLOW with a
+ * diagnostic when input exceeds SRC_LIMIT; the cap itself just got
+ * comfortable headroom. */
+%DEFINE SRC_SIZE 65536;
+%DEFINE SRC_LIMIT 65528;    /* SRC_SIZE - 8, headroom for null terminator */
 DCL SRC(SRC_SIZE) BYTE;
 DCL INP_POS INT STATIC INIT(0);
 DCL SPOS INT STATIC INIT(0);

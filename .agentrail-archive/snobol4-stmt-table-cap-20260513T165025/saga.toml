@@ -1,0 +1,6 @@
+name = "snobol4-stmt-table-cap"
+status = "completed"
+current_step = 1
+created_at = "2026-05-12T16:06:13"
+plan_file = ".agentrail/plan.md"
+retroactive = false

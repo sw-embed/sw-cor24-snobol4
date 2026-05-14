@@ -100,8 +100,13 @@ builtin-arg-expr:
 many-outputs:
     ./scripts/run-snobol4.sh examples/many_outputs.sno
 
+# 20 KB source file -- regression for the dcftn brief
+# dcsno-source-byte-cap (SRC_SIZE raised 12 KiB -> 64 KiB)
+large-source:
+    ./scripts/run-snobol4.sh examples/large_source.sno
+
 # Run all demos
-demos: hello hello-goto count span span-fail multiply concat break input array branches funcall-arith negative-output parens-expr builtin-arg-expr many-outputs
+demos: hello hello-goto count span span-fail multiply concat break input array branches funcall-arith negative-output parens-expr builtin-arg-expr many-outputs large-source
 
 # --- Tests ---
 
