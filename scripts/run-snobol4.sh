@@ -4,7 +4,7 @@
 # Usage: ./scripts/run-snobol4.sh program.sno [data.dat]
 #
 # The interpreter is loaded from build/snobol4.bin (modular build).
-# SNOBOL4 source at 0x080000, optional data at 0x090000.
+# SNOBOL4 source at 0xE0000, optional data at 0xF0000.
 
 set -uo pipefail
 
@@ -64,13 +64,13 @@ ENTRY=0
 # Run
 if [ -n "$DAT_FILE" ]; then
     RUN_OUT=$(cor24-emu --load-binary "$INTERP_BIN"@0 \
-        --load-binary "$SNO_FILE"@0x080000 \
-        --load-binary "$DAT_FILE"@0x090000 \
+        --load-binary "$SNO_FILE"@0xE0000 \
+        --load-binary "$DAT_FILE"@0xF0000 \
         --entry "$ENTRY" \
         -n 200000000 -t 120 --speed 0 --dump 2>&1)
 else
     RUN_OUT=$(cor24-emu --load-binary "$INTERP_BIN"@0 \
-        --load-binary "$SNO_FILE"@0x080000 \
+        --load-binary "$SNO_FILE"@0xE0000 \
         --entry "$ENTRY" \
         -n 200000000 -t 120 --speed 0 --dump 2>&1)
 fi

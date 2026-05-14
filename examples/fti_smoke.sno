@@ -1,0 +1,61 @@
+* fti_smoke.sno -- dcftn FTI-0 use-case smoke test.
+*
+* This is a synthetic miniature of dcftn's emit_asm.sno workload
+* in sw-cor24-fortran. It exercises EVERY pattern dcftn relies on
+* in a single program, so any regression that breaks their
+* pipeline gets caught here before we ship.
+*
+* Patterns covered (all of which broke at some point in May 2026):
+*   1. RAWINPUT loop terminated by :F                       (EOF exactness)
+*   2. BREAK + REM + `. CAP` field extraction with 4+ caps  (capture cap)
+*   3. SPAN(class) for one-or-more matching                 (always worked)
+*   4. ANY(class) for exactly-one matching                  (new in cap saga)
+*   5. Goto dispatch with mixed :S(L) :F(L)                 (combined goto)
+*   6. Underscore labels (L_FOO style)                      (was broken)
+*   7. OUTPUT with literal+var+SIZE() mixed concats         (was broken)
+*   8. Multi-builtin in one OUTPUT                          (was broken)
+*   9. Record-by-record processing with running counter
+*
+* Input format (read from data file): three records, one per line:
+*   PROGRAM
+*   PRINT *, 42
+*   END
+*
+* Expected output (manually derived; every line has a verified
+* expected value, NOT a captured-current-behavior baseline):
+*
+*   begin
+*   pad-1: PROGRAM
+*   match KIND=PROGRAM
+*     prog_label=_main len=5
+*   pad-2: PRINT *, 42
+*   match KIND=PRINT
+*     emit len=10
+*   pad-3: END
+*   match KIND=END
+*     halt_marker=H size=1
+*   total records=3
+*   done
+
+        OUTPUT = 'begin'
+        N = 0
+        DG = '0123456789'
+LOOP    LINE = RAWINPUT                                                                 :F(EOFL)
+        N = N + 1
+        OUTPUT = 'pad-' N ': ' LINE
+        IDENT(LINE, 'PROGRAM')                                                          :S(K_PROG)
+        IDENT(LINE, 'END')                                                              :S(K_END)
+        LINE 'PRINT'                                                                    :S(K_PRINT)F(BAD)
+K_PROG  OUTPUT = 'match KIND=PROGRAM'
+        L1 = '_main'
+        OUTPUT = '  prog_label=' L1 ' len=' SIZE(L1)                                    :(LOOP)
+K_PRINT OUTPUT = 'match KIND=PRINT'
+        L2 = 'emit_print'
+        OUTPUT = '  emit len=' SIZE(L2)                                                 :(LOOP)
+K_END   OUTPUT = 'match KIND=END'
+        HALT_TAG = 'H'
+        OUTPUT = '  halt_marker=' HALT_TAG ' size=' SIZE(HALT_TAG)                      :(LOOP)
+BAD     OUTPUT = 'BAD unknown record: ' LINE                                            :(LOOP)
+EOFL    OUTPUT = 'total records=' N
+        OUTPUT = 'done'
+END

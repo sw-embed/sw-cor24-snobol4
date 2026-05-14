@@ -36,10 +36,10 @@ if [ ! -f "$INTERP_BIN" ] || [ "$PROJECT_DIR/src/sno_main.plsw" -nt "$INTERP_BIN
     "$PROJECT_DIR/scripts/build-modular.sh" 2>&1 | grep -v "^\[" >&2
 fi
 
-# Note: do NOT load anything at 0x090000 -- the interpreter probes that
+# Note: do NOT load anything at 0xF0000 -- the interpreter probes that
 # address and switches READ_INPUT to live UART mode when it finds it null.
 exec cor24-emu --terminal \
     --load-binary "$INTERP_BIN"@0 \
-    --load-binary "$SNO_FILE"@0x080000 \
+    --load-binary "$SNO_FILE"@0xE0000 \
     --entry 0 \
     -n -1 -t -1 --speed 0

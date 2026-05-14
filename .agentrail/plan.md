@@ -1,66 +1,60 @@
-# SNOBOL4 cap + pattern fixes (dcftn FTI-0 follow-on briefs)
+# SNOBOL4 more-fixes (underscore labels + OUTPUT trailing-tail)
 
-dcftn's FTI-0 milestone-4-print-int work surfaced four independent
-SNOBOL4 bugs after the parent `dcsno-static-program-size-limit`
-brief landed. Each has a self-contained repro and a SPAN/split
-workaround in place; this saga ships proper fixes.
+Two compounding correctness issues after the cap-and-pattern-fixes
+saga. Both surfaced from dcftn's FTI-0 work or from regression
+testing during the prior saga.
 
 ## Steps
 
-### Step 1 -- source-byte-cap
+### Step 1 -- underscore-label
 
-Brief: `tools/briefs/dcsno-source-byte-cap.md`.
+Brief: `tools/briefs/dcsno-underscore-label.md`.
 
-Raise SRC_LIMIT (currently `12280`, backed by `DCL SRC(12288) BYTE`
-in `include/snoglob.msw`) to a comfortable cap (~48-64 KiB), keep
-the overflow diagnostic that shipped in `pr/stmt-table-cap`. Add a
-byte-cap regression: padded SNOBOL4 sources at multiple sizes.
-Unblocks dcftn's `emit_asm.sno` comment budget.
+`_` (underscore) is rejected as part of a SNOBOL4 label name.
+Declaring `L_FOO` and gotoing `:(L_FOO)` silently mis-resolves
+(label not found -> fall through). The bug is in the lexer's
+char class: either the label-declaration tokenizer or the
+goto-target tokenizer (or both) treats `_` as a non-identifier
+character.
 
-### Step 2 -- any-pattern-fails
+Fix: accept `_` in identifier-char class consistently. Add a
+small regression program with mixed underscore / no-underscore
+labels.
 
-Brief: `tools/briefs/dcsno-any-pattern-fails.md`.
+### Step 2 -- output-trailing-tail
 
-`ANY(class)` silently fails; `SPAN(class)` works correctly. Fix
-the ANY opcode handler (probably in `src/sno_exec.plsw`) -- likely
-a cursor-advance, ANY/NOTANY swap, or class-decode bug. Add a
-small ANY test table.
+Latent bug surfaced during step 3 of the cap-and-pattern-fixes
+saga (regression test for concat-truncation). When an OUTPUT
+statement interleaves a builtin (SIZE/SUBSTR/CHAR) with trailing
+string/var operands:
 
-### Step 3 -- concat-truncation
+    OUTPUT = 'pre ' SIZE(A) ' post'
 
-Brief: `tools/briefs/dcsno-concat-truncation.md`.
+only `pre 1` is emitted -- the trailing `' post'` is dropped.
 
-5+ operand concat silently drops trailing bytes. Investigate the
-parser flattening vs evaluator scratch buffer. Discriminator test
-(2-byte operands) tells which layer is the truncator. Raise the
-cap (with diagnostic) or restructure to left-leaning binary.
+Hypothesis: the HAS_BLT path in `src/sno_exec.plsw` lowering walks
+operands [0..BLT_ARG), emits the builtin args, emits the builtin
+op, then emits a single OP_CONCAT -- but does NOT walk operands
+[BLT_IDX+1..S_EPCNT) that follow the builtin marker.
 
-### Step 4 -- pattern-captures-truncation
-
-Brief: `tools/briefs/dcsno-pattern-captures-truncation.md`.
-
-4+ `.` captures per pattern drop the trailing capture values
-(pattern still matches; only the variable bindings break).
-Probably a 3-slot CAP register tuple in the pattern matcher.
-Switch to an array (size 8-16) with diagnostic on overflow.
-
-## Exit criteria (saga)
-
-- All four briefs' repros pass cleanly.
-- `just demos` (now 16 + any new regressions) green.
-- `just test` 14 "All tests done" green.
-- New regression examples committed under `examples/` and wired
-  into `demos:`.
-- `build/snobol4.{bin,lgo}` rebuilt and committed.
-- One commit per step, each `agentrail complete`'d, then
-  branch renamed `feat/cap-and-pattern-fixes` ->
-  `pr/cap-and-pattern-fixes` for `dg-reap`.
+Fix: extend the HAS_BLT path to also emit operands after the
+builtin and add CONCATs for them. Regression: build a statement
+with literal/var-before, builtin in middle, literal/var-after,
+and verify the full output emits.
 
 ## Out of scope
 
-- The `feat/runtime-split-resume` engine consolidation; still
-  parked on dcpls SRC_BUF (separate brief).
-- Storage-runtime impl; gated on dcpls getmain/freemain.
-- Pattern features beyond ANY: ARB, NOTANY, alternation,
-  recursion. If the ANY fix happens to improve them, fine; the
-  saga's exit gate is the four briefs above.
+- 12+ capture stretch from the prior saga's brief
+  (`dcsno-pattern-captures-truncation.md`). Needs pattern
+  restructuring -- separate saga.
+- The `dcftn-emit-asm-pattern-anchoring.md` brief (addressed to
+  dcftn, not dcsno).
+- Any new feature work; that's after this fix saga.
+
+## Exit (saga)
+
+- Both fixes shipped; reproductions clean.
+- New regressions in `examples/` wired into `just demos`.
+- Existing `just demos` + `just test` green.
+- Branch renamed `feat/more-fixes` -> `pr/more-fixes` for
+  `dg-reap`.

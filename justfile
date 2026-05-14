@@ -122,8 +122,51 @@ concat-chain:
 pattern-captures:
     ./scripts/run-snobol4.sh examples/pattern_captures.sno
 
-# Run all demos
-demos: hello hello-goto count span span-fail multiply concat break input array branches funcall-arith negative-output parens-expr builtin-arg-expr many-outputs large-source any-pattern concat-chain pattern-captures
+# Underscore labels -- regression for the dcftn brief
+# dcsno-underscore-label (`_` accepted in identifier continuation).
+underscore-labels:
+    ./scripts/run-snobol4.sh examples/underscore_labels.sno
+
+# Concat with mixed literal/var/builtin operands -- regression for
+# dcsno-concat-after-funcall-truncates. Multi-builtin in one
+# OUTPUT also exercised.
+concat-builtin:
+    ./scripts/run-snobol4.sh examples/concat_builtin.sno
+
+# Single-file dcftn FTI-0 workload smoke: RAWINPUT loop +
+# BREAK/IDENT dispatch + multi-builtin OUTPUT + underscore labels.
+# Catches any regression that would break dcftn's emit_asm.sno.
+fti-smoke:
+    ./scripts/run-snobol4.sh examples/fti_smoke.sno examples/fti_smoke.dat
+
+# Run all demos -- now diffs each demo's UART output against an
+# examples/<name>.expected fixture. Halt-status alone is not
+# sufficient (see commit "fix: HAS_BLT lowering walked args wrong"
+# for the regression class this catches).
+demos: build
+    @bash scripts/check-demo.sh hello
+    @bash scripts/check-demo.sh hello_goto
+    @bash scripts/check-demo.sh count
+    @bash scripts/check-demo.sh span
+    @bash scripts/check-demo.sh span_fail
+    @bash scripts/check-demo.sh multiply
+    @bash scripts/check-demo.sh concat
+    @bash scripts/check-demo.sh break
+    @bash scripts/check-demo.sh input input.dat
+    @bash scripts/check-demo.sh array
+    @bash scripts/check-demo.sh branches
+    @bash scripts/check-demo.sh funcall_arith
+    @bash scripts/check-demo.sh negative_output
+    @bash scripts/check-demo.sh parens_expr
+    @bash scripts/check-demo.sh builtin_arg_expr
+    @bash scripts/check-demo.sh many_outputs
+    @bash scripts/check-demo.sh large_source
+    @bash scripts/check-demo.sh any_pattern
+    @bash scripts/check-demo.sh concat_chain
+    @bash scripts/check-demo.sh pattern_captures
+    @bash scripts/check-demo.sh underscore_labels
+    @bash scripts/check-demo.sh concat_builtin
+    @bash scripts/check-demo.sh fti_smoke fti_smoke.dat
 
 # --- Tests ---
 
@@ -156,7 +199,7 @@ test-pmatch:
     ./scripts/build.sh include/descr.msw include/heap.msw include/pat.msw src/test_pmatch.plsw
 
 # Run all tests
-test: test-am test-lower test-exec test-amdump test-pat test-cursor test-pmatch test-limits
+test: test-am test-lower test-exec test-amdump test-pat test-cursor test-pmatch test-limits test-rawinput-matrix
     ./scripts/build.sh include/descr.msw include/heap.msw include/trace.msw src/test_descr.plsw
     ./scripts/build.sh include/descr.msw include/heap.msw src/snolib.plsw src/test_snolib.plsw
     ./scripts/build.sh include/descr.msw include/heap.msw src/snolib.plsw src/test_snolib2.plsw
@@ -168,3 +211,9 @@ test: test-am test-lower test-exec test-amdump test-pat test-cursor test-pmatch 
 # Regression test for size limits (catches VARS/SYMMAX mismatches, issue #3)
 test-limits:
     bash scripts/run-snobol4.sh examples/test_limits.sno examples/test_limits.dat
+
+# RAWINPUT line-count matrix -- catches EOF-garbage and mid-file-halt
+# regressions (dcsno-rawinput-{eof-garbage,mid-file-halt}). Iterates
+# {line-length, line-count} pairs and asserts reads=N for each.
+test-rawinput-matrix: build
+    bash scripts/test-rawinput-matrix.sh
