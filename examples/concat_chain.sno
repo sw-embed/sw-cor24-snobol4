@@ -1,0 +1,54 @@
+* concat_chain.sno -- regression for the dcftn brief
+* "dcsno-concat-truncation". Pre-fix, single-expression concats of
+* 9+ operands silently dropped the trailing operand(s) (the parser's
+* per-statement EP slot count was EPSLOTS=8). dcftn worked around
+* it by splitting `S = 'a' NL 'b' NL 'c' NL 'd' NL 'e'` into
+* multiple `S = S NL 'next'` assignments.
+*
+* Post-fix, EPSLOTS=16 (with EPMAX = STMAX*EPSLOTS = 16384). Any
+* single-expression concat up to 16 operands fits without
+* truncation. SIZE() and content checks are emitted on separate
+* OUTPUT lines to avoid an unrelated latent bug where trailing
+* operands after a builtin in OUTPUT context are dropped.
+
+        NL = '/'
+
+* T1: 2-operand baseline
+        A = 'a' 'b'
+        OUTPUT = SIZE(A)
+        OUTPUT = A
+
+* T2: 4-operand
+        B = 'a' 'b' 'c' 'd'
+        OUTPUT = SIZE(B)
+        OUTPUT = B
+
+* T3: 5-operand string literals
+        C = 'a' 'b' 'c' 'd' 'e'
+        OUTPUT = SIZE(C)
+        OUTPUT = C
+
+* T4: the brief's 9-operand repro (5 letters + 4 separators)
+        D = 'a' NL 'b' NL 'c' NL 'd' NL 'e'
+        OUTPUT = SIZE(D)
+        OUTPUT = D
+
+* T5: 10-operand discriminator (2-byte operands)
+        E = 'aa' NL 'bb' NL 'cc' NL 'dd' NL 'ee'
+        OUTPUT = SIZE(E)
+        OUTPUT = E
+
+* T6: 12-operand string literals
+        F = 'a' 'b' 'c' 'd' 'e' 'f' 'g' 'h' 'i' 'j' 'k' 'l'
+        OUTPUT = SIZE(F)
+        OUTPUT = F
+
+* T7: 13-operand mixed strings + vars
+        X = 'X'
+        Y = 'Y'
+        G = X Y X Y X Y X Y X Y X Y X
+        OUTPUT = SIZE(G)
+        OUTPUT = G
+
+        OUTPUT = 'done'
+END

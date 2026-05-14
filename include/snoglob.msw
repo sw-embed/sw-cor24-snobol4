@@ -54,6 +54,7 @@
 %DEFINE OE_OP_SUB 18;
 %DEFINE OE_OP_MUL 19;
 %DEFINE OE_OP_MOD 20;
+%DEFINE OE_ANY 21;          /* pattern: ANY('class') -- match one char */
 %DEFINE GT_RET 4;
 %DEFINE GT_FRET 5;
 %DEFINE GT_NONE 0;
@@ -86,9 +87,16 @@
 %DEFINE STMAX 1024;
 
 /* Slots per statement for expression parts (EP) and pattern parts (PP).
- * EP_TYP[STMAX*EPSLOTS], PP_TYP[STMAX*EPSLOTS]. Code uses S*EPSLOTS. */
-%DEFINE EPSLOTS 8;
-%DEFINE EPMAX 8192;       /* STMAX * EPSLOTS = 1024 * 8 */
+ * EP_TYP[STMAX*EPSLOTS], PP_TYP[STMAX*EPSLOTS]. Code uses S*EPSLOTS.
+ * Bumped 8 -> 16 (dcsno-concat-truncation) then 16 -> 32 to fix
+ * dcsno-pattern-captures-truncation: 4+ `.` captures with key=
+ * separators (3 slots per capture group) need 12+ slots; 6 captures
+ * = 18 slots > 16. 32 covers up to ~10 captures with separators.
+ * Higher counts ("stretch" cases with 12+ captures) need pattern
+ * restructuring -- separate saga, with a compile-time diagnostic
+ * added in PARSE for the overflow path. */
+%DEFINE EPSLOTS 32;
+%DEFINE EPMAX 32768;      /* STMAX * EPSLOTS = 1024 * 32 */
 
 /* Eval stack depth */
 %DEFINE ESTK_DEPTH 256;
@@ -108,13 +116,14 @@
 /* Shared globals -- declared in every module.
  * Assembler uses first definition (from main module). */
 
-/* Source buffer -- 12KB. Previous 8KB silently truncated programs at
- * ~8184 bytes mid-line, corrupting downstream parse output (issue #14).
- * READ_SRC now sets SB_OVERFLOW with a diagnostic when input exceeds
- * SRC_LIMIT rather than truncating. 12KB is the largest that links
- * cleanly under the current module layout. */
-%DEFINE SRC_SIZE 12288;
-%DEFINE SRC_LIMIT 12280;    /* SRC_SIZE - 8, headroom for null terminator */
+/* Source buffer -- 64KB. History: 8KB silently truncated mid-line
+ * (issue #14) -> 12KB with diagnostic -> 64KB to unblock dcftn's
+ * FTI-0 emit_asm.sno (dcsno-source-byte-cap brief, sibling to the
+ * STMAX 256 -> 1024 bump). READ_SRC still sets SB_OVERFLOW with a
+ * diagnostic when input exceeds SRC_LIMIT; the cap itself just got
+ * comfortable headroom. */
+%DEFINE SRC_SIZE 65536;
+%DEFINE SRC_LIMIT 65528;    /* SRC_SIZE - 8, headroom for null terminator */
 DCL SRC(SRC_SIZE) BYTE;
 DCL INP_POS INT STATIC INIT(0);
 DCL SPOS INT STATIC INIT(0);
@@ -209,9 +218,14 @@ DCL ARR_DATA(ARR_POOL) INT;
 DCL ARR_TYP(ARR_POOL) INT;
 DCL ARR_CNT INT STATIC INIT(0);
 
-/* Pattern stack */
-DCL PSTK(16) INT;
-DCL PSTYP(16) INT;
+/* Pattern stack -- must hold all pattern parts of the largest
+ * single-statement pattern. Sized to match EPSLOTS so any pattern
+ * that fits the parser fits the runtime stack. Was a hard 16
+ * before the dcsno-pattern-captures-truncation fix; that capped
+ * useful captures at ~5 when each had a key= separator. */
+%DEFINE PSTK_DEPTH 32;        /* match EPSLOTS */
+DCL PSTK(PSTK_DEPTH) INT;
+DCL PSTYP(PSTK_DEPTH) INT;
 DCL PSTOP INT STATIC INIT(0);
 
 /* User function table (max 4 single-arg functions) */
@@ -243,6 +257,7 @@ DCL SB_OVERFLOW INT STATIC INIT(0);
 DCL SB_OVF_MSG(48) CHAR INIT('SNOBOL4: string buffer overflow at SBPOS=');
 DCL SRC_OVF_MSG(48) CHAR INIT('SNOBOL4: source too large, truncated at byte=');
 DCL STMT_OVF_MSG(56) CHAR INIT('SNOBOL4: program exceeds STMAX statements at STCNT=');
+DCL EP_OVF_MSG(56) CHAR INIT('SNOBOL4: pattern parts exceed EPSLOTS in statement ');
 
 /* SB compaction watermark: set at start of AM_EXEC to the end of the
  * compile-time string pool. Strings below this are stable (referenced

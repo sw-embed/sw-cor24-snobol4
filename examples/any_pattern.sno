@@ -1,0 +1,59 @@
+* any_pattern.sno -- regression for the dcftn brief
+* "dcsno-any-pattern-fails". Pre-fix, ANY(class) silently failed
+* even on trivial single-char matches (the parser didn't
+* recognize ANY at all -- it treated 'ANY' as an unknown variable,
+* so the pattern degenerated to an empty match against subject).
+* SPAN(class) worked, which is what dcftn worked around with.
+*
+* Post-fix, ANY('class') threads through the parser (OE_ANY),
+* lowering (OP_MAKE_ANY), runtime (PK_ANY), and PMATCH (single-
+* char class membership via the shared IN_CLASS helper).
+*
+* Each test prints 'TN ok' on success, 'TN FAIL' on failure.
+
+* T1: single-char subject + single-char class, match
+        S = 'X'
+        S ANY('X')                                                                      :S(T1OK)F(T1NO)
+T1OK    OUTPUT = 'T1 ok'                                                                :(T2)
+T1NO    OUTPUT = 'T1 FAIL'                                                              :(T2)
+
+* T2: single-char subject + single-char class, no match
+T2      S = 'X'
+        S ANY('Y')                                                                      :S(T2NO)F(T2OK)
+T2OK    OUTPUT = 'T2 ok'                                                                :(T3)
+T2NO    OUTPUT = 'T2 FAIL'                                                              :(T3)
+
+* T3: subject in 2-char class
+T3      S = 'X'
+        S ANY('XY')                                                                     :S(T3OK)F(T3NO)
+T3OK    OUTPUT = 'T3 ok'                                                                :(T4)
+T3NO    OUTPUT = 'T3 FAIL'                                                              :(T4)
+
+* T4: subject not in 2-char class
+T4      S = 'X'
+        S ANY('AB')                                                                     :S(T4NO)F(T4OK)
+T4OK    OUTPUT = 'T4 ok'                                                                :(T5)
+T4NO    OUTPUT = 'T4 FAIL'                                                              :(T5)
+
+* T5: empty subject, ANY must fail
+T5      S = ''
+        S ANY('X')                                                                      :S(T5NO)F(T5OK)
+T5OK    OUTPUT = 'T5 ok'                                                                :(T6)
+T5NO    OUTPUT = 'T5 FAIL'                                                              :(T6)
+
+* T6: multi-char subject, ANY matches first char, capture the matched char
+T6      S = 'ABC'
+        CH = '?'
+        S ANY('A') . CH                                                                 :S(T6OK)F(T6NO)
+T6OK    OUTPUT = 'T6 ok CH=' CH                                                         :(T7)
+T6NO    OUTPUT = 'T6 FAIL'                                                              :(T7)
+
+* T7: multi-char subject, no first-char match
+T7      S = 'ABC'
+        CH = '?'
+        S ANY('Z') . CH                                                                 :S(T7NO)F(T7OK)
+T7OK    OUTPUT = 'T7 ok'                                                                :(DONE)
+T7NO    OUTPUT = 'T7 FAIL'                                                              :(DONE)
+
+DONE    OUTPUT = 'done'
+END

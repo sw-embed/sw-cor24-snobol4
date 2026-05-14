@@ -86,12 +86,7 @@ AM_PATCH_WORD: PROC(OFF INT, V INT);
     AM_CODE(OFF + 2) = B2;
 END;
 
-/* ================================================================
- * Lowering: statement table -> AM bytecode
-/* ================================================================ */
-
-/* N_OUT, N_INP, N_RAWINP, OUT_SYM, INP_SYM, RAWINP_SYM in sno_util + snoglob */
-
+/* Lowering: statement table -> AM bytecode. */
 
 LOWER_STMT: PROC(S INT);
     DCL BR_OFF INT;
@@ -549,6 +544,10 @@ LOWER_STMT: PROC(S INT);
                         CALL AM_EMIT_OP(OP_MAKE_SPAN);
                         CALL AM_EMIT_WORD(PPV);
                     END;
+                    WHEN (PPT = OE_ANY) DO;
+                        CALL AM_EMIT_OP(OP_MAKE_ANY);
+                        CALL AM_EMIT_WORD(PPV);
+                    END;
                     WHEN (PPT = OE_BREAK) DO;
                         CALL AM_EMIT_OP(OP_MAKE_BREAK);
                         CALL AM_EMIT_WORD(PPV);
@@ -617,6 +616,10 @@ LOWER_STMT: PROC(S INT);
                 SELECT;
                     WHEN (RPPT = OE_SPAN) DO;
                         CALL AM_EMIT_OP(OP_MAKE_SPAN);
+                        CALL AM_EMIT_WORD(RPPV);
+                    END;
+                    WHEN (RPPT = OE_ANY) DO;
+                        CALL AM_EMIT_OP(OP_MAKE_ANY);
                         CALL AM_EMIT_WORD(RPPV);
                     END;
                     WHEN (RPPT = OE_BREAK) DO;
@@ -794,14 +797,9 @@ LOWER_ALL: PROC;
     CALL FIXUP_GOTOS;
 END;
 
-/* ================================================================
- * AM Executor -- split into grouped handler procedures
- *
- * X_PC, X_OP, X_V, X_IDX are declared in snoglob.msw for cross-handler
- * access. Each handler dispatches via SELECT/WHEN on X_OP.
-/* ================================================================ */
+/* AM Executor: handlers dispatch via SELECT on X_OP. X_PC/X_OP/
+ * X_V/X_IDX are declared in snoglob.msw for cross-handler access. */
 
-/* Read a 3-byte word from AM_CODE at X_PC, advance X_PC */
 AM_READ_WORD: PROC RETURNS(INT);
     DCL W INT;
     W = AM_CODE(X_PC + 2) * 65536 + AM_CODE(X_PC + 1) * 256 + AM_CODE(X_PC);
@@ -849,6 +847,14 @@ EXEC_BREAK: PROC(SUBJ PTR, SLEN2 INT, START INT, CLASS PTR) RETURNS(INT);
         POS = POS + 1;
     END;
     RETURN(0 - 1);
+END;
+
+/* ANY(class): 1 if subject[start] is in class, else 0. */
+EXEC_ANY: PROC(SUBJ PTR, SLEN2 INT, START INT, CLASS PTR) RETURNS(INT);
+    DCL P PTR;
+    IF (START >= SLEN2) THEN RETURN(0);
+    P = SUBJ + START;
+    RETURN(IN_CLASS(P->DTAG, CLASS));
 END;
 
 /* --- Handler: stack and variable operations --- */
@@ -1180,6 +1186,12 @@ EXEC_PAT_BUILD: PROC;
             PSTYP(PSTOP) = PK_BREAK;
             PSTOP = PSTOP + 1;
         END;
+        WHEN (X_OP = OP_MAKE_ANY) DO;
+            X_V = AM_READ_WORD();
+            PSTK(PSTOP) = X_V;
+            PSTYP(PSTOP) = PK_ANY;
+            PSTOP = PSTOP + 1;
+        END;
         WHEN (X_OP = OP_MAKE_REM) DO;
             PSTK(PSTOP) = 0;
             PSTYP(PSTOP) = PK_REM;
@@ -1341,6 +1353,13 @@ EXEC_PAT_MATCH2: PROC;
                     ELSE
                         MATCHED2 = 0;
                 END;
+                WHEN (PT = PK_ANY) DO;
+                    CAPSTART = CPOS;
+                    IF (EXEC_ANY(ADDR(SB) + SUBJ_OFF2, SUBJ_LEN2, CPOS, ADDR(SB) + PV) = 1) THEN
+                        CPOS = CPOS + 1;
+                    ELSE
+                        MATCHED2 = 0;
+                END;
                 WHEN (PT = PK_BREAK) DO;
                     CAPSTART = CPOS;
                     MLEN2 = EXEC_BREAK(ADDR(SB) + SUBJ_OFF2, SUBJ_LEN2, CPOS, ADDR(SB) + PV);
@@ -1473,6 +1492,13 @@ EXEC_PAT_REPLACE: PROC;
                     RMLEN = EXEC_SPAN(ADDR(SB) + RSUBJ_OFF, RSUBJ_LEN, RCPOS, ADDR(SB) + RPV);
                     IF (RMLEN > 0) THEN
                         RCPOS = RCPOS + RMLEN;
+                    ELSE
+                        RMATCHED = 0;
+                END;
+                WHEN (RPT = PK_ANY) DO;
+                    RCAPSTART = RCPOS;
+                    IF (EXEC_ANY(ADDR(SB) + RSUBJ_OFF, RSUBJ_LEN, RCPOS, ADDR(SB) + RPV) = 1) THEN
+                        RCPOS = RCPOS + 1;
                     ELSE
                         RMATCHED = 0;
                 END;
@@ -1731,16 +1757,9 @@ EXEC_BRANCH: PROC;
     END;
 END;
 
-/* ================================================================
- * SB compaction (mark-copy-rewrite)
- *
- * Reclaims dead strings from the runtime region of SB (offsets
- * >= SB_COMPILE_END). Skipped if any expression or pattern match
- * is in flight (ESP != 0, PSTOP != 0, CSTK_TOP != 0) since those
- * hold SB references we don't scan. See issue #12.
- * ================================================================ */
+/* SB mark-copy-rewrite compaction (issue #12). Skipped while any
+ * ESP/PSTOP/CSTK_TOP holds an unscanned SB ref. */
 
-/* Add an offset to the forwarding table if not already present. */
 SB_FWD_ADD: PROC(OFF INT);
     DCL J INT;
     J = 0;
@@ -1869,13 +1888,7 @@ SB_COMPACT: PROC;
     SBPOS = NEW_POS;
 END;
 
-/* ================================================================
- * Main executor: dispatch loop
- *
- * Single SELECT/WHEN dispatcher routes each opcode to a grouped
- * handler procedure. This shape is much friendlier to the PL/SW
- * compiler than a long IF/ELSE IF chain.
-/* ================================================================ */
+/* Main executor: single SELECT dispatcher to grouped handlers. */
 AM_EXEC: PROC;
     X_PC = 0;
     ESP = 0;
@@ -1914,6 +1927,7 @@ AM_EXEC: PROC;
 
             /* Pattern build */
             WHEN (X_OP = OP_MAKE_SPAN)    CALL EXEC_PAT_BUILD;
+            WHEN (X_OP = OP_MAKE_ANY)     CALL EXEC_PAT_BUILD;
             WHEN (X_OP = OP_MAKE_BREAK)   CALL EXEC_PAT_BUILD;
             WHEN (X_OP = OP_MAKE_REM)     CALL EXEC_PAT_BUILD;
             WHEN (X_OP = OP_MAKE_LEN)     CALL EXEC_PAT_BUILD;
