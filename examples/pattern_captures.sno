@@ -1,0 +1,60 @@
+* pattern_captures.sno -- regression for the dcftn brief
+* "dcsno-pattern-captures-truncation". Pre-fix, patterns with
+* 4+ `.` captures still matched but trailing capture variables
+* retained their default value (the pattern stack PSTK had a hard
+* 16-element cap and the parser PP slots had EPSLOTS=8 -- both
+* contributed to silent capture truncation past ~3 captures).
+*
+* Post-fix: EPSLOTS bumped 16 -> 32, PSTK_DEPTH 16 -> 32. Up to
+* ~10 captures with key= separators fit. Beyond that, the
+* parser's new EP_OVF_MSG diagnostic fires + SB_OVERFLOW halts
+* the program cleanly rather than silently producing wrong
+* bindings.
+
+* T1: single capture
+        L = 'x=1'
+        L 'x=' REM . X                                                                  :F(BAD1)
+        OUTPUT = 'T1 X=' X                                                              :(T2)
+BAD1    OUTPUT = 'T1 FAIL'                                                              :(T2)
+
+* T2: 2 captures
+T2      L = 'a=1 b=2'
+        A = '?'
+        B = '?'
+        L 'a=' BREAK(' ') . A ' b=' REM . B                                             :F(BAD2)
+        OUTPUT = 'T2 A=' A ' B=' B                                                      :(T3)
+BAD2    OUTPUT = 'T2 FAIL'                                                              :(T3)
+
+* T3: 3 captures
+T3      L = 'a=1 b=2 c=3'
+        A = '?'
+        B = '?'
+        C = '?'
+        L 'a=' BREAK(' ') . A ' b=' BREAK(' ') . B ' c=' REM . C                        :F(BAD3)
+        OUTPUT = 'T3 A=' A ' B=' B ' C=' C                                              :(T4)
+BAD3    OUTPUT = 'T3 FAIL'                                                              :(T4)
+
+* T4: the brief's 4-capture repro (was broken pre-fix; D dropped)
+T4      L = 'a=1 b=2 c=3 d=4'
+        A = '?'
+        B = '?'
+        C = '?'
+        D = '?'
+        L 'a=' BREAK(' ') . A ' b=' BREAK(' ') . B ' c=' BREAK(' ') . C ' d=' REM . D   :F(BAD4)
+        OUTPUT = 'T4 A=' A ' B=' B ' C=' C ' D=' D                                      :(T5)
+BAD4    OUTPUT = 'T4 FAIL'                                                              :(T5)
+
+* T5: 5 captures (15 PP slots)
+T5      L = 'a=1 b=2 c=3 d=4 e=5'
+        L 'a=' BREAK(' ') . A ' b=' BREAK(' ') . B ' c=' BREAK(' ') . C ' d=' BREAK(' ') . D ' e=' REM . E :F(BAD5)
+        OUTPUT = 'T5 A=' A ' B=' B ' C=' C ' D=' D ' E=' E                              :(T6)
+BAD5    OUTPUT = 'T5 FAIL'                                                              :(T6)
+
+* T6: 6 captures (18 PP slots; previously broke at PSTK_DEPTH=16)
+T6      L = 'a=1 b=2 c=3 d=4 e=5 f=6'
+        L 'a=' BREAK(' ') . A ' b=' BREAK(' ') . B ' c=' BREAK(' ') . C ' d=' BREAK(' ') . D ' e=' BREAK(' ') . E ' f=' REM . F :F(BAD6)
+        OUTPUT = 'T6 A=' A ' B=' B ' C=' C ' D=' D ' E=' E ' F=' F                      :(DONE)
+BAD6    OUTPUT = 'T6 FAIL'                                                              :(DONE)
+
+DONE    OUTPUT = 'done'
+END

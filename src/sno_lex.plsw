@@ -1066,6 +1066,18 @@ PARSE: PROC;
 
                 S_PPCNT(S) = PPI;
 
+                /* PP-slot overflow: loop exited because PPI hit
+                 * EPSLOTS while source still had unconsumed pattern
+                 * parts (e.g. trailing `.` captures past the cap).
+                 * Pre-fix this silently dropped trailing slots,
+                 * producing match-without-binding bugs. */
+                IF (PPI >= EPSLOTS AND TT != TK_COLON AND TT != TK_EQ AND TT != TK_EOL AND TT != TK_EOF) THEN DO;
+                    CALL UART_PUTS(ADDR(EP_OVF_MSG));
+                    CALL PUT_DEC(S);
+                    CALL UART_PUTCHAR(10);
+                    SB_OVERFLOW = 1;
+                END;
+
                 /* Pattern-replacement: SUBJ pattern = replacement */
                 IF (TT = TK_EQ) THEN DO;
                     DCL REPI INT;

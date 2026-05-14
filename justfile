@@ -112,12 +112,18 @@ any-pattern:
     ./scripts/run-snobol4.sh examples/any_pattern.sno
 
 # Long concat expressions -- regression for the dcftn brief
-# dcsno-concat-truncation (EPSLOTS bumped 8 -> 16)
+# dcsno-concat-truncation (EPSLOTS bumped 8 -> 16 then 16 -> 32)
 concat-chain:
     ./scripts/run-snobol4.sh examples/concat_chain.sno
 
+# Multi-capture patterns -- regression for the dcftn brief
+# dcsno-pattern-captures-truncation (PSTK_DEPTH 16 -> 32 + parser
+# overflow diagnostic for >EPSLOTS PP slots)
+pattern-captures:
+    ./scripts/run-snobol4.sh examples/pattern_captures.sno
+
 # Run all demos
-demos: hello hello-goto count span span-fail multiply concat break input array branches funcall-arith negative-output parens-expr builtin-arg-expr many-outputs large-source any-pattern concat-chain
+demos: hello hello-goto count span span-fail multiply concat break input array branches funcall-arith negative-output parens-expr builtin-arg-expr many-outputs large-source any-pattern concat-chain pattern-captures
 
 # --- Tests ---
 

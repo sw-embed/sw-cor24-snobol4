@@ -88,13 +88,15 @@
 
 /* Slots per statement for expression parts (EP) and pattern parts (PP).
  * EP_TYP[STMAX*EPSLOTS], PP_TYP[STMAX*EPSLOTS]. Code uses S*EPSLOTS.
- * Bumped 8 -> 16 to fix dcsno-concat-truncation: 9+ concat operands
- * were silently dropped because the parser's per-statement slot cap
- * was exactly EPSLOTS. 16 covers all realistic single-expression
- * concats; the brief's repro (5 strings + 4 separators = 9 slots)
- * fits comfortably. */
-%DEFINE EPSLOTS 16;
-%DEFINE EPMAX 16384;      /* STMAX * EPSLOTS = 1024 * 16 */
+ * Bumped 8 -> 16 (dcsno-concat-truncation) then 16 -> 32 to fix
+ * dcsno-pattern-captures-truncation: 4+ `.` captures with key=
+ * separators (3 slots per capture group) need 12+ slots; 6 captures
+ * = 18 slots > 16. 32 covers up to ~10 captures with separators.
+ * Higher counts ("stretch" cases with 12+ captures) need pattern
+ * restructuring -- separate saga, with a compile-time diagnostic
+ * added in PARSE for the overflow path. */
+%DEFINE EPSLOTS 32;
+%DEFINE EPMAX 32768;      /* STMAX * EPSLOTS = 1024 * 32 */
 
 /* Eval stack depth */
 %DEFINE ESTK_DEPTH 256;
@@ -216,9 +218,14 @@ DCL ARR_DATA(ARR_POOL) INT;
 DCL ARR_TYP(ARR_POOL) INT;
 DCL ARR_CNT INT STATIC INIT(0);
 
-/* Pattern stack */
-DCL PSTK(16) INT;
-DCL PSTYP(16) INT;
+/* Pattern stack -- must hold all pattern parts of the largest
+ * single-statement pattern. Sized to match EPSLOTS so any pattern
+ * that fits the parser fits the runtime stack. Was a hard 16
+ * before the dcsno-pattern-captures-truncation fix; that capped
+ * useful captures at ~5 when each had a key= separator. */
+%DEFINE PSTK_DEPTH 32;        /* match EPSLOTS */
+DCL PSTK(PSTK_DEPTH) INT;
+DCL PSTYP(PSTK_DEPTH) INT;
 DCL PSTOP INT STATIC INIT(0);
 
 /* User function table (max 4 single-arg functions) */
@@ -250,6 +257,7 @@ DCL SB_OVERFLOW INT STATIC INIT(0);
 DCL SB_OVF_MSG(48) CHAR INIT('SNOBOL4: string buffer overflow at SBPOS=');
 DCL SRC_OVF_MSG(48) CHAR INIT('SNOBOL4: source too large, truncated at byte=');
 DCL STMT_OVF_MSG(56) CHAR INIT('SNOBOL4: program exceeds STMAX statements at STCNT=');
+DCL EP_OVF_MSG(56) CHAR INIT('SNOBOL4: pattern parts exceed EPSLOTS in statement ');
 
 /* SB compaction watermark: set at start of AM_EXEC to the end of the
  * compile-time string pool. Strings below this are stable (referenced
