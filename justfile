@@ -199,7 +199,7 @@ test-pmatch:
     ./scripts/build.sh include/descr.msw include/heap.msw include/pat.msw src/test_pmatch.plsw
 
 # Run all tests
-test: test-am test-lower test-exec test-amdump test-pat test-cursor test-pmatch test-limits test-rawinput-matrix
+test: test-am test-lower test-exec test-amdump test-pat test-cursor test-pmatch test-limits test-rawinput-matrix test-stmt-bytecode-cap
     ./scripts/build.sh include/descr.msw include/heap.msw include/trace.msw src/test_descr.plsw
     ./scripts/build.sh include/descr.msw include/heap.msw src/snolib.plsw src/test_snolib.plsw
     ./scripts/build.sh include/descr.msw include/heap.msw src/snolib.plsw src/test_snolib2.plsw
@@ -217,3 +217,10 @@ test-limits:
 # {line-length, line-count} pairs and asserts reads=N for each.
 test-rawinput-matrix: build
     bash scripts/test-rawinput-matrix.sh
+
+# Statement-count vs bytecode buffer regression -- catches the
+# AM_CODE_SIZE cliff (dcsno-emit-asm-halt-near-364-stmts). Generates
+# N-statement programs at N in {100..1000} and asserts each produces
+# exactly N+1 output lines (no silent halt mid-emit).
+test-stmt-bytecode-cap: build
+    bash scripts/test-stmt-bytecode-cap.sh
