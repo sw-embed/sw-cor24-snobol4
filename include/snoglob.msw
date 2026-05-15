@@ -109,8 +109,15 @@
 /* Eval stack depth */
 %DEFINE ESTK_DEPTH 256;
 
-/* AM code buffer size (bytes) */
-%DEFINE AM_CODE_SIZE 4096;
+/* AM code buffer size (bytes). Raised 4 KiB -> 64 KiB to unblock
+ * dcftn's emit_asm.sno inlining at 364+ statements
+ * (brief dcsno-emit-asm-halt-near-364-stmts). With ~11 bytes of
+ * bytecode per emit_asm-style OUTPUT, the 4 KiB buffer overflowed
+ * around 364 stmts -- silent halt mid-emit, no diagnostic. The new
+ * 64 KiB ceiling covers ~5800 dcftn-style stmts, comfortably above
+ * STMAX=1024. AM_EMIT_* now set SB_OVERFLOW + diagnostic if AM_PC
+ * would exceed the cap (no more silent truncation). */
+%DEFINE AM_CODE_SIZE 65536;
 
 /* Array pool: ARR_MAX arrays, each up to ARR_ELEMS elements.
  * ARR_DATA and ARR_TYP sized as ARR_MAX * ARR_ELEMS. */
@@ -266,6 +273,7 @@ DCL SB_OVF_MSG(48) CHAR INIT('SNOBOL4: string buffer overflow at SBPOS=');
 DCL SRC_OVF_MSG(48) CHAR INIT('SNOBOL4: source too large, truncated at byte=');
 DCL STMT_OVF_MSG(56) CHAR INIT('SNOBOL4: program exceeds STMAX statements at STCNT=');
 DCL EP_OVF_MSG(56) CHAR INIT('SNOBOL4: pattern parts exceed EPSLOTS in statement ');
+DCL AM_OVF_MSG(56) CHAR INIT('SNOBOL4: bytecode exceeds AM_CODE_SIZE at AM_PC=');
 
 /* SB compaction watermark: set at start of AM_EXEC to the end of the
  * compile-time string pool. Strings below this are stable (referenced

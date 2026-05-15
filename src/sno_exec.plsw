@@ -29,12 +29,33 @@ PUT_SBSTR: PROC(OFF INT);
     END;
 END;
 
+/* Centralized AM_CODE overflow detection. Called from each
+ * AM_EMIT_* hot path before the write. Sets SB_OVERFLOW (which
+ * AM_EXEC already gates on for clean halt) and emits a one-shot
+ * diagnostic. Pre-fix this was unguarded -- AM_PC walked past
+ * AM_CODE_SIZE into adjacent BSS, silently corrupting state
+ * (dcsno-emit-asm-halt-near-364-stmts). */
+AM_CHECK_OVF: PROC RETURNS(INT);
+    IF (AM_PC >= AM_CODE_SIZE) THEN DO;
+        IF (SB_OVERFLOW = 0) THEN DO;
+            CALL UART_PUTS(ADDR(AM_OVF_MSG));
+            CALL PUT_DEC(AM_PC);
+            CALL UART_PUTCHAR(10);
+            SB_OVERFLOW = 1;
+        END;
+        RETURN(1);
+    END;
+    RETURN(0);
+END;
+
 AM_EMIT_OP: PROC(OP INT);
+    IF (AM_CHECK_OVF() = 1) THEN RETURN;
     AM_CODE(AM_PC) = OP;
     AM_PC = AM_PC + 1;
 END;
 
 AM_EMIT_BYTE: PROC(V INT);
+    IF (AM_CHECK_OVF() = 1) THEN RETURN;
     AM_CODE(AM_PC) = V;
     AM_PC = AM_PC + 1;
 END;
@@ -44,6 +65,7 @@ AM_EMIT_WORD: PROC(V INT);
     DCL B1 INT;
     DCL B2 INT;
     DCL REM INT;
+    IF (AM_CHECK_OVF() = 1) THEN RETURN;
     REM = V;
     B2 = 0;
     DO WHILE (REM > 65535);
